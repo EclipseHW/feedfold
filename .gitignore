@@ -1,0 +1,11 @@
+node_modules/
+dist/
+coverage/
+data/
+backups/
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+.env
+.impeccable/live/session.json

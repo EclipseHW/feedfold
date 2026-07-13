@@ -1,0 +1,40 @@
+services:
+  echovale:
+    build:
+      context: .
+    image: echovale:local
+    restart: unless-stopped
+    init: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      DATABASE_PATH: /data/echovale.db
+      POLL_INTERVAL_MINUTES: "${POLL_INTERVAL_MINUTES:-20}"
+      FEED_FETCH_TIMEOUT_MS: "${FEED_FETCH_TIMEOUT_MS:-15000}"
+      ARTICLE_FETCH_TIMEOUT_MS: "${ARTICLE_FETCH_TIMEOUT_MS:-20000}"
+    ports:
+      - "${ECHOVALE_BIND_ADDRESS:-127.0.0.1}:${ECHOVALE_PORT:-3000}:3000"
+    volumes:
+      - echovale-data:/data
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/health').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+    stop_grace_period: 30s
+
+volumes:
+  echovale-data:

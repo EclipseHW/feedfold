@@ -1,0 +1,13 @@
+node_modules
+dist
+coverage
+data
+backups
+.git
+.github
+.agents
+.codex
+.env
+*.db*
+.DS_Store
+npm-debug.log*

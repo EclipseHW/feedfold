@@ -1,0 +1,290 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import fastifyStatic from "@fastify/static";
+import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
+import { ZodError, z } from "zod";
+import type { ArticleQuery } from "../shared/types.js";
+import type { AppDatabase } from "./db.js";
+import type { ExtractionQueue } from "./extraction.js";
+import { exportOpml, importOpml } from "./opml.js";
+import type { FeedRefreshService } from "./refresh.js";
+
+export interface AppServices {
+  database: AppDatabase;
+  extractionQueue: ExtractionQueue;
+  refreshService: FeedRefreshService;
+  staticDir?: string;
+  logger?: boolean;
+}
+
+const idParams = z.object({ id: z.coerce.number().int().positive() });
+const nullableId = z.number().int().positive().nullable();
+const httpUrl = z
+  .string()
+  .trim()
+  .min(1)
+  .refine((value) => {
+    try {
+      const url = new URL(value);
+      return url.protocol === "http:" || url.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }, "Must be an HTTP or HTTPS URL");
+
+function missing(reply: FastifyReply, resource: string): FastifyReply {
+  return reply.code(404).send({ error: `${resource} not found` });
+}
+
+export async function createApp(services: AppServices): Promise<FastifyInstance> {
+  const app = Fastify({ logger: services.logger ?? false, bodyLimit: 10 * 1024 * 1024 });
+
+  app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof ZodError) {
+      reply.code(400).send({ error: error.issues[0]?.message ?? "Invalid request" });
+      return;
+    }
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (errorMessage.includes("UNIQUE constraint failed")) {
+      reply.code(409).send({ error: "That item already exists" });
+      return;
+    }
+    if (errorMessage.includes("FOREIGN KEY constraint failed")) {
+      reply.code(400).send({ error: "The selected folder or feed does not exist" });
+      return;
+    }
+    if (errorMessage.includes("cannot be moved inside itself")) {
+      reply.code(400).send({ error: errorMessage });
+      return;
+    }
+    if (errorMessage === "Invalid article cursor") {
+      reply.code(400).send({ error: errorMessage });
+      return;
+    }
+    app.log.error(error);
+    reply.code(500).send({ error: "Internal server error" });
+  });
+
+  app.get("/health", async () => {
+    services.database.sqlite.prepare("SELECT 1").get();
+    return { status: "ok" };
+  });
+
+  app.get("/api/bootstrap", async () => services.database.getBootstrap());
+
+  app.get("/api/articles", async (request) => {
+    const query = z
+      .object({
+        state: z.enum(["all", "unread", "read", "starred"]).default("unread"),
+        feedId: z.coerce.number().int().positive().optional(),
+        folderId: z.coerce.number().int().positive().optional(),
+        search: z.string().trim().max(300).optional(),
+        limit: z.coerce.number().int().min(1).max(500).optional(),
+        cursor: z.string().min(1).max(500).optional(),
+      })
+      .parse(request.query) as ArticleQuery;
+    return services.database.listArticlePage(query);
+  });
+
+  app.get("/api/articles/:id", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const article = services.database.getArticle(id);
+    return article ?? missing(reply, "Article");
+  });
+
+  app.patch("/api/articles/:id/state", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const body = z
+      .object({ isRead: z.boolean().optional(), isStarred: z.boolean().optional() })
+      .refine((value) => value.isRead !== undefined || value.isStarred !== undefined, {
+        message: "Provide isRead or isStarred",
+      })
+      .parse(request.body);
+    const article = services.database.updateArticleState(id, body);
+    return article ?? missing(reply, "Article");
+  });
+
+  app.post("/api/articles/mark-read", async (request) => {
+    const body = z
+      .object({
+        articleIds: z.array(z.number().int().positive()).max(1_000).optional(),
+        feedId: z.number().int().positive().optional(),
+        folderId: z.number().int().positive().optional(),
+      })
+      .parse(request.body ?? {});
+    return { updated: services.database.markArticlesRead(body) };
+  });
+
+  app.post("/api/articles/:id/extract", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    if (!services.database.getArticle(id)) return missing(reply, "Article");
+    if (services.database.retryExtraction(id)) services.extractionQueue.enqueue([id]);
+    return services.database.getArticle(id);
+  });
+
+  app.get("/api/feeds", async () => ({ feeds: services.database.listFeeds() }));
+
+  app.post("/api/feeds", async (request) => {
+    const body = z
+      .object({
+        title: z.string().trim().min(1).max(300).optional(),
+        feedUrl: httpUrl,
+        siteUrl: httpUrl.nullable().optional(),
+        folderId: nullableId.optional(),
+        paused: z.boolean().optional(),
+      })
+      .parse(request.body);
+    const feed = services.database.createFeed(body);
+    if (!feed.paused) services.refreshService.request([feed.id]);
+    return services.database.getFeed(feed.id);
+  });
+
+  app.patch("/api/feeds/:id", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const body = z
+      .object({
+        title: z.string().trim().min(1).max(300).optional(),
+        feedUrl: httpUrl.optional(),
+        siteUrl: httpUrl.nullable().optional(),
+        folderId: nullableId.optional(),
+        paused: z.boolean().optional(),
+      })
+      .parse(request.body);
+    const feed = services.database.updateFeed(id, body);
+    return feed ?? missing(reply, "Feed");
+  });
+
+  app.delete("/api/feeds/:id", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    if (!services.database.deleteFeed(id)) return missing(reply, "Feed");
+    return reply.code(204).send();
+  });
+
+  app.post("/api/feeds/:id/refresh", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    if (!services.database.getFeed(id)) return missing(reply, "Feed");
+    return services.refreshService.request([id]);
+  });
+
+  app.get("/api/folders", async () => ({ folders: services.database.listFolders() }));
+
+  app.post("/api/folders", async (request) => {
+    const body = z
+      .object({
+        name: z.string().trim().min(1).max(200),
+        parentId: nullableId.optional(),
+        position: z.number().int().min(0).optional(),
+      })
+      .parse(request.body);
+    return services.database.createFolder(body);
+  });
+
+  app.patch("/api/folders/:id", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const body = z
+      .object({
+        name: z.string().trim().min(1).max(200).optional(),
+        parentId: nullableId.optional(),
+        position: z.number().int().min(0).optional(),
+      })
+      .parse(request.body);
+    const folder = services.database.updateFolder(id, body);
+    return folder ?? missing(reply, "Folder");
+  });
+
+  app.delete("/api/folders/:id", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    if (!services.database.deleteFolder(id)) return missing(reply, "Folder");
+    return reply.code(204).send();
+  });
+
+  app.get("/api/rules", async () => ({ rules: services.database.listRules() }));
+
+  const ruleFields = z.object({
+    name: z.string().trim().min(1).max(200),
+    feedId: nullableId.optional(),
+    folderId: nullableId.optional(),
+    field: z.enum(["title", "author", "summary", "content", "any"]),
+    pattern: z.string().trim().min(1).max(500),
+    action: z.enum(["hide", "mark_read"]),
+    enabled: z.boolean().optional(),
+  });
+  const ruleBody = ruleFields.refine((value) => !(value.feedId && value.folderId), {
+    message: "A rule can target a feed or a folder, not both",
+  });
+
+  app.post("/api/rules", async (request) =>
+    services.database.createRule(ruleBody.parse(request.body)),
+  );
+
+  app.patch("/api/rules/:id", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const existing = services.database.getRule(id);
+    if (!existing) return missing(reply, "Rule");
+    const body = ruleFields.partial().parse(request.body);
+    if (
+      (body.feedId === undefined ? existing.feedId : body.feedId) &&
+      (body.folderId === undefined ? existing.folderId : body.folderId)
+    ) {
+      return reply.code(400).send({ error: "A rule can target a feed or a folder, not both" });
+    }
+    return services.database.updateRule(id, body);
+  });
+
+  app.delete("/api/rules/:id", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    if (!services.database.deleteRule(id)) return missing(reply, "Rule");
+    return reply.code(204).send();
+  });
+
+  app.get("/api/settings", async () => services.database.getSettings());
+
+  app.patch("/api/settings", async (request) => {
+    const body = z
+      .object({
+        pollIntervalMinutes: z.number().int().min(1).max(1_440).optional(),
+        singleKeyShortcuts: z.boolean().optional(),
+      })
+      .parse(request.body);
+    return services.database.updateSettings(body);
+  });
+
+  app.post("/api/refresh", async (request) => {
+    const body = z
+      .object({ feedIds: z.array(z.number().int().positive()).max(1_000).optional() })
+      .parse(request.body ?? {});
+    return services.refreshService.request(body.feedIds);
+  });
+
+  app.post("/api/opml/import", async (request, reply) => {
+    const { opml: source } = z.object({ opml: z.string().min(1) }).parse(request.body);
+    try {
+      const { feedIds, ...result } = importOpml(services.database, source);
+      services.refreshService.request(feedIds);
+      return result;
+    } catch (error) {
+      return reply
+        .code(400)
+        .send({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
+  app.get("/api/opml/export", async (_request, reply) => {
+    return reply
+      .header("Content-Type", "text/x-opml; charset=utf-8")
+      .header("Content-Disposition", 'attachment; filename="echovale-subscriptions.opml"')
+      .send(exportOpml(services.database));
+  });
+
+  if (services.staticDir && existsSync(join(services.staticDir, "index.html"))) {
+    await app.register(fastifyStatic, { root: services.staticDir, wildcard: false });
+    app.setNotFoundHandler((request, reply) => {
+      if (request.url.startsWith("/api/") || request.url === "/health") {
+        return reply.code(404).send({ error: "Not found" });
+      }
+      return reply.sendFile("index.html");
+    });
+  }
+
+  return app;
+}
