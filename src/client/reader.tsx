@@ -643,24 +643,23 @@ function ArticleHeader({ article, id }: { article: Article; id: string }) {
           </>
         ) : null}
       </div>
-      <h2 id={id}>{article.title}</h2>
-      <div className="article-source-status">
-        {article.contentSource === "article" ? (
-          <span>
-            <CheckCircle2 aria-hidden="true" size={14} /> Full text extracted
-          </span>
-        ) : article.contentSource === "feed" ? (
+      <h2 id={id}>
+        {article.url ? (
+          <a href={article.url} target="_blank" rel="noreferrer">
+            {article.title}
+            <span className="sr-only"> (opens in a new tab)</span>
+          </a>
+        ) : (
+          article.title
+        )}
+      </h2>
+      {article.contentSource === "feed" ? (
+        <div className="article-source-status">
           <span>
             <Rss aria-hidden="true" size={14} /> Feed content
           </span>
-        ) : null}
-        {article.url ? (
-          <a href={article.url} target="_blank" rel="noreferrer">
-            View source
-            <span className="sr-only"> in a new tab</span>
-          </a>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
     </header>
   );
 }
