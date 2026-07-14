@@ -1203,7 +1203,7 @@ export function SettingsPage({
     <div className="management-page settings-page">
       <PageHeader
         title="Settings"
-        description="Reading appearance, polling, shortcuts, and portable subscriptions."
+        description="Global reading preferences, polling, shortcuts, and portable subscriptions."
         onMenu={onMenu}
         actions={
           saving ? (
@@ -1237,8 +1237,8 @@ export function SettingsPage({
         </div>
         <div className="setting-row">
           <div>
-            <strong>Article text size</strong>
-            <p>Applies to extracted full text and the expanded stream.</p>
+            <strong>Global article text size</strong>
+            <p>One saved size applies to every full article in reader and expanded views.</p>
           </div>
           <div className="font-stepper">
             <button
@@ -1261,6 +1261,29 @@ export function SettingsPage({
               <Kbd>]</Kbd>
             </button>
           </div>
+        </div>
+      </section>
+
+      <section className="settings-section" aria-labelledby="reading-behavior-heading">
+        <div className="settings-heading">
+          <h2 id="reading-behavior-heading">Reading behavior</h2>
+          <p>Applied consistently across feeds and folders.</p>
+        </div>
+        <div className="setting-row">
+          <div>
+            <strong>Mark read on scroll</strong>
+            <p>Mark an unread card or expanded article only after you scroll completely past it.</p>
+          </div>
+          <button
+            className={`switch ${settings.markReadOnScroll ? "is-on" : ""}`}
+            type="button"
+            role="switch"
+            aria-checked={settings.markReadOnScroll}
+            disabled={saving}
+            onClick={() => void saveSettings({ markReadOnScroll: !settings.markReadOnScroll })}
+          >
+            <span />
+          </button>
         </div>
       </section>
 

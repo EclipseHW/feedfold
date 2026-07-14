@@ -81,6 +81,10 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         search: z.string().trim().max(300).optional(),
         limit: z.coerce.number().int().min(1).max(500).optional(),
         cursor: z.string().min(1).max(500).optional(),
+        includeContent: z
+          .enum(["true", "false"])
+          .transform((value) => value === "true")
+          .optional(),
       })
       .parse(request.query) as ArticleQuery;
     return services.database.listArticlePage(query);
@@ -118,7 +122,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
   app.post("/api/articles/:id/extract", async (request, reply) => {
     const { id } = idParams.parse(request.params);
     if (!services.database.getArticle(id)) return missing(reply, "Article");
-    if (services.database.retryExtraction(id)) services.extractionQueue.enqueue([id]);
+    if (services.database.retryExtraction(id)) services.extractionQueue.prioritize(id);
     return services.database.getArticle(id);
   });
 
@@ -244,6 +248,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
       .object({
         pollIntervalMinutes: z.number().int().min(1).max(1_440).optional(),
         singleKeyShortcuts: z.boolean().optional(),
+        markReadOnScroll: z.boolean().optional(),
       })
       .parse(request.body);
     return services.database.updateSettings(body);

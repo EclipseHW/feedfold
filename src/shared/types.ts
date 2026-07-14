@@ -40,6 +40,7 @@ export interface Article {
   publishedAt: string | null;
   discoveredAt: string;
   summary: string;
+  imageUrl: string | null;
   contentHtml: string | null;
   contentSource: "article" | "feed" | null;
   extractionStatus: ExtractionStatus;
@@ -65,6 +66,7 @@ export interface Rule {
 export interface AppSettings {
   pollIntervalMinutes: number;
   singleKeyShortcuts: boolean;
+  markReadOnScroll: boolean;
 }
 
 export interface BootstrapData {
@@ -85,6 +87,7 @@ export interface ArticleQuery {
   search?: string;
   limit?: number;
   cursor?: string;
+  includeContent?: boolean;
 }
 
 export interface ArticlePage {

@@ -8,7 +8,13 @@ describe("feed normalization", () => {
         <title>RSS</title><link>https://example.test/</link><description>RSS feed</description>
         <item><guid>rss-1</guid><title>RSS article</title><link>/rss-article</link>
           <author>Ada</author><pubDate>Mon, 13 Jul 2026 12:00:00 GMT</pubDate>
-          <description><![CDATA[<p>RSS summary</p>]]></description></item>
+          <description><![CDATA[<p>RSS summary</p>
+            <img src="https://img.shields.io/badge/build-passing" alt="Build">
+            <img src="https://slsa.dev/images/gh-badge-level3.svg?sanitize=true" alt="SLSA">
+            <img src="https://camo.githubusercontent.com/b83ac8c3241beb7dfa1141f7cbf7408bc1802f0bd126bd93a3f55edf0aacd00f/68747470733a2f2f696d672e736869656c64732e696f2f6e706d2f64772f40776f6e6465727768792d65722f6465736b746f702d636f6d6d616e646572" alt="npm downloads">
+            <img src="https://agentaudit.dev/api/badge/desktop-commander" alt="Agent audit">
+            <img src="https://camo.githubusercontent.com/48c220b32dbd1c6cff7b530b14421078f44d32f0b7ceff5b564827f3340457b1/68747470733a2f2f7472656e6473686966742e696f2f6170692f62616467652f7265706f7369746f726965732f3231393538" alt="Trending">
+            <img src="/hero.jpg" alt="Article hero">]]></description></item>
       </channel></rss>`,
       "https://example.test/rss.xml",
     );
@@ -22,6 +28,7 @@ describe("feed normalization", () => {
           url: "https://example.test/rss-article",
           author: "Ada",
           summary: "RSS summary",
+          imageUrl: "https://example.test/hero.jpg",
           publishedAt: "2026-07-13T12:00:00.000Z",
         },
       ],

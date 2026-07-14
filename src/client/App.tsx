@@ -132,10 +132,13 @@ export function App() {
   const [rulesError, setRulesError] = useState<string | null>(null);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
-  const [mobileReaderOpen, setMobileReaderOpen] = useState(false);
+  const [readerOpen, setReaderOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
   const sequence = useRef<{ startedAt: number } | null>(null);
+  const fullContentLoadedIds = useRef(new Set<number>());
+  const fullContentLoadingIds = useRef(new Set<number>());
+  const prioritizedExtractionIds = useRef(new Set<number>());
   const bootstrapReady = bootstrap !== null;
 
   const showToast = useCallback((message: string) => {
@@ -163,10 +166,16 @@ export function App() {
         ...(selectedFeedId !== null ? { feedId: selectedFeedId } : {}),
         ...(selectedFolderId !== null ? { folderId: selectedFolderId } : {}),
         ...(search ? { search } : {}),
-        limit: 200,
+        limit: readingMode === "expanded" ? 20 : 100,
+        includeContent: readingMode === "expanded",
       });
       setArticles(page.articles);
       setNextCursor(page.nextCursor);
+      fullContentLoadedIds.current = new Set(
+        readingMode === "expanded" ? page.articles.map((article) => article.id) : [],
+      );
+      fullContentLoadingIds.current.clear();
+      setReaderOpen(false);
       setActiveArticleId((current) => {
         if (current !== null && page.articles.some((article) => article.id === current))
           return current;
@@ -177,7 +186,7 @@ export function App() {
     } finally {
       setArticlesLoading(false);
     }
-  }, [articleStateFilter, bootstrapReady, search, selectedFeedId, selectedFolderId]);
+  }, [articleStateFilter, bootstrapReady, readingMode, search, selectedFeedId, selectedFolderId]);
 
   const loadRules = useCallback(async () => {
     setRulesLoading(true);
@@ -200,7 +209,8 @@ export function App() {
         ...(selectedFeedId !== null ? { feedId: selectedFeedId } : {}),
         ...(selectedFolderId !== null ? { folderId: selectedFolderId } : {}),
         ...(search ? { search } : {}),
-        limit: 200,
+        limit: readingMode === "expanded" ? 20 : 100,
+        includeContent: readingMode === "expanded",
         cursor: nextCursor,
       });
       const existingIds = new Set(articles.map((article) => article.id));
@@ -210,6 +220,9 @@ export function App() {
         return [...current, ...page.articles.filter((article) => !ids.has(article.id))];
       });
       setNextCursor(page.nextCursor);
+      if (readingMode === "expanded") {
+        for (const article of appended) fullContentLoadedIds.current.add(article.id);
+      }
       return appended;
     } catch (error) {
       showToast(`Could not load older articles: ${errorMessage(error)}`);
@@ -223,6 +236,7 @@ export function App() {
     articlesLoadingMore,
     bootstrapReady,
     nextCursor,
+    readingMode,
     search,
     selectedFeedId,
     selectedFolderId,
@@ -260,8 +274,67 @@ export function App() {
     [activeArticleId, articles],
   );
 
+  const mergeFullArticle = useCallback((updated: Article) => {
+    fullContentLoadedIds.current.add(updated.id);
+    setArticles((current) =>
+      current.map((article) =>
+        article.id === updated.id
+          ? { ...updated, isRead: article.isRead, isStarred: article.isStarred }
+          : article,
+      ),
+    );
+  }, []);
+
+  const prioritizeExtraction = useCallback(
+    async (article: Article) => {
+      if (
+        article.extractionStatus !== "pending" ||
+        prioritizedExtractionIds.current.has(article.id)
+      ) {
+        return;
+      }
+      prioritizedExtractionIds.current.add(article.id);
+      try {
+        mergeFullArticle(await api.retryExtraction(article.id));
+      } catch (error) {
+        prioritizedExtractionIds.current.delete(article.id);
+        showToast(`Could not prioritize full text: ${errorMessage(error)}`);
+      }
+    },
+    [mergeFullArticle, showToast],
+  );
+
+  const loadFullArticle = useCallback(
+    async (article: Article) => {
+      if (fullContentLoadedIds.current.has(article.id)) {
+        await prioritizeExtraction(article);
+        return;
+      }
+      if (fullContentLoadingIds.current.has(article.id)) return;
+
+      fullContentLoadingIds.current.add(article.id);
+      try {
+        const fullArticle = await api.article(article.id);
+        mergeFullArticle(fullArticle);
+        await prioritizeExtraction(fullArticle);
+      } catch (error) {
+        showToast(`Could not load full article: ${errorMessage(error)}`);
+      } finally {
+        fullContentLoadingIds.current.delete(article.id);
+      }
+    },
+    [mergeFullArticle, prioritizeExtraction, showToast],
+  );
+
+  useEffect(() => {
+    if (readingMode === "expanded" && activeArticle?.extractionStatus === "pending") {
+      void prioritizeExtraction(activeArticle);
+    }
+  }, [activeArticle, prioritizeExtraction, readingMode]);
+
   useEffect(() => {
     if (
+      (readingMode === "magazine" && !readerOpen) ||
       !activeArticle ||
       (activeArticle.extractionStatus !== "pending" &&
         activeArticle.extractionStatus !== "processing")
@@ -273,16 +346,14 @@ export function App() {
       void api
         .article(articleId)
         .then((updated) => {
-          setArticles((current) =>
-            current.map((article) => (article.id === updated.id ? updated : article)),
-          );
+          mergeFullArticle(updated);
         })
         .catch(() => {
           // A transient poll error should not replace readable feed content with an error screen.
         });
     }, 2000);
     return () => window.clearInterval(poll);
-  }, [activeArticle]);
+  }, [activeArticle, mergeFullArticle, readerOpen, readingMode]);
 
   const changeArticleState = useCallback(
     async (article: Article, change: { isRead?: boolean; isStarred?: boolean }) => {
@@ -311,17 +382,22 @@ export function App() {
   );
 
   const openArticle = useCallback(
-    (article: Article, openMobile = true) => {
+    (article: Article, openReader = true) => {
       setActiveArticleId(article.id);
-      if (openMobile) setMobileReaderOpen(true);
+      if (openReader) setReaderOpen(true);
       if (!article.isRead) void changeArticleState(article, { isRead: true });
+      void loadFullArticle(article);
     },
-    [changeArticleState],
+    [changeArticleState, loadFullArticle],
   );
 
   const moveArticle = useCallback(
     (direction: 1 | -1) => {
       if (articles.length === 0) return;
+      if (!readerOpen && activeArticle) {
+        openArticle(activeArticle, true);
+        return;
+      }
       const currentIndex = articles.findIndex((article) => article.id === activeArticleId);
       if (
         direction === 1 &&
@@ -341,7 +417,16 @@ export function App() {
       const next = articles[nextIndex];
       if (next) openArticle(next, true);
     },
-    [activeArticleId, articles, articlesLoadingMore, loadOlderArticles, nextCursor, openArticle],
+    [
+      activeArticle,
+      activeArticleId,
+      articles,
+      articlesLoadingMore,
+      loadOlderArticles,
+      nextCursor,
+      openArticle,
+      readerOpen,
+    ],
   );
 
   const copyArticleUrl = useCallback(
@@ -374,14 +459,15 @@ export function App() {
   const retryExtraction = useCallback(
     async (article: Article) => {
       try {
-        const updated = await api.retryExtraction(article.id);
-        setArticles((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+        prioritizedExtractionIds.current.add(article.id);
+        mergeFullArticle(await api.retryExtraction(article.id));
         showToast("Full-text extraction restarted");
       } catch (error) {
+        prioritizedExtractionIds.current.delete(article.id);
         showToast(`Could not retry extraction: ${errorMessage(error)}`);
       }
     },
-    [showToast],
+    [mergeFullArticle, showToast],
   );
 
   const selectScope = useCallback((feedId: number | null, folderId: number | null) => {
@@ -389,7 +475,7 @@ export function App() {
     setSelectedFolderId(folderId);
     setView("reader");
     setNavOpen(false);
-    setMobileReaderOpen(false);
+    setReaderOpen(false);
   }, []);
 
   const navigateTo = useCallback((nextView: AppView) => {
@@ -465,6 +551,39 @@ export function App() {
     [bootstrap, loadArticles, loadBootstrap, selectedFeedId, selectedFolderId, showToast],
   );
 
+  const markArticleBatchRead = useCallback(
+    async (candidates: Article[]): Promise<boolean> => {
+      const unique = new Map<number, Article>();
+      for (const article of candidates) {
+        if (!article.isRead) unique.set(article.id, article);
+      }
+      const unreadArticles = [...unique.values()];
+      if (unreadArticles.length === 0) return true;
+
+      const ids = new Set(unreadArticles.map((article) => article.id));
+      setArticles((current) =>
+        current.map((article) => (ids.has(article.id) ? { ...article, isRead: true } : article)),
+      );
+      setBootstrap((current) => {
+        if (!current) return current;
+        return unreadArticles.reduce(
+          (next, article) => updateBootstrapCounts(next, article, -1, 0),
+          current,
+        );
+      });
+
+      try {
+        await api.markRead({ articleIds: [...ids] });
+        return true;
+      } catch (error) {
+        showToast(`Could not mark articles read: ${errorMessage(error)}`);
+        await Promise.all([loadBootstrap(), loadArticles()]);
+        return false;
+      }
+    },
+    [loadArticles, loadBootstrap, showToast],
+  );
+
   const markVisibleRead = useCallback(async () => {
     const unreadArticles = articles.filter((article) => !article.isRead);
     if (unreadArticles.length === 0) {
@@ -472,27 +591,16 @@ export function App() {
       return;
     }
 
-    setArticles((current) => current.map((article) => ({ ...article, isRead: true })));
-    setBootstrap((current) => {
-      if (!current) return current;
-      return unreadArticles.reduce(
-        (next, article) => updateBootstrapCounts(next, article, -1, 0),
-        current,
-      );
-    });
-    try {
-      await api.markRead({ articleIds: unreadArticles.map((article) => article.id) });
+    if (await markArticleBatchRead(unreadArticles)) {
       showToast(
         `Marked ${unreadArticles.length} ${unreadArticles.length === 1 ? "article" : "articles"} read`,
       );
-    } catch (error) {
-      showToast(`Could not mark articles read: ${errorMessage(error)}`);
-      await Promise.all([loadBootstrap(), loadArticles()]);
     }
-  }, [articles, loadArticles, loadBootstrap, showToast]);
+  }, [articles, markArticleBatchRead, showToast]);
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
+    setReaderOpen(false);
     setSearch(searchInput.trim());
   };
 
@@ -501,7 +609,7 @@ export function App() {
       if (event.key === "Escape") {
         setShortcutHelpOpen(false);
         setNavOpen(false);
-        if (mobileReaderOpen) setMobileReaderOpen(false);
+        if (readerOpen) setReaderOpen(false);
         return;
       }
       if (isEditable(event.target) || !bootstrap?.settings.singleKeyShortcuts) return;
@@ -566,17 +674,23 @@ export function App() {
         "[": () =>
           setArticleFontSize((current) => {
             const next = Math.max(ARTICLE_FONT_MIN, current - 1);
-            showToast(`Article text ${next} pixels`);
+            showToast(`Global article text: ${next}px`);
             return next;
           }),
         "]": () =>
           setArticleFontSize((current) => {
             const next = Math.min(ARTICLE_FONT_MAX, current + 1);
-            showToast(`Article text ${next} pixels`);
+            showToast(`Global article text: ${next}px`);
             return next;
           }),
-        "1": () => setReadingMode("magazine"),
-        "2": () => setReadingMode("expanded"),
+        "1": () => {
+          setReaderOpen(false);
+          setReadingMode("magazine");
+        },
+        "2": () => {
+          setReaderOpen(false);
+          setReadingMode("expanded");
+        },
         "?": () => setShortcutHelpOpen(true),
       };
       if (actions[key]) {
@@ -592,7 +706,7 @@ export function App() {
     bootstrap?.settings.singleKeyShortcuts,
     changeArticleState,
     copyArticleUrl,
-    mobileReaderOpen,
+    readerOpen,
     moveArticle,
     navigateTo,
     refresh,
@@ -645,14 +759,21 @@ export function App() {
               refreshing={bootstrap.feeds.some((feed) => feed.refreshing)}
               navOpen={navOpen}
               onToggleNav={() => setNavOpen((current) => !current)}
-              onStateChange={setArticleStateFilter}
+              onStateChange={(state) => {
+                setReaderOpen(false);
+                setArticleStateFilter(state);
+              }}
               onSearchInput={setSearchInput}
               onSearch={submitSearch}
               onClearSearch={() => {
+                setReaderOpen(false);
                 setSearchInput("");
                 setSearch("");
               }}
-              onModeChange={setReadingMode}
+              onModeChange={(mode) => {
+                setReaderOpen(false);
+                setReadingMode(mode);
+              }}
               onRefresh={() => void refresh()}
               onRefreshAll={() => void refresh(undefined, true)}
               onMarkRead={() => void markVisibleRead()}
@@ -662,7 +783,7 @@ export function App() {
             />
 
             <div
-              className={`reading-workspace mode-${readingMode}${mobileReaderOpen ? " mobile-reading" : ""}`}
+              className={`reading-workspace mode-${readingMode}${readerOpen ? " is-reading-article" : ""}`}
             >
               {articlesLoading ? (
                 <ArticleListSkeleton mode={readingMode} />
@@ -680,6 +801,7 @@ export function App() {
                   onAddFeed={() => navigateTo("feeds")}
                   onShowAll={() => setArticleStateFilter("all")}
                   onClearSearch={() => {
+                    setReaderOpen(false);
                     setSearchInput("");
                     setSearch("");
                   }}
@@ -687,20 +809,25 @@ export function App() {
               ) : readingMode === "magazine" ? (
                 <>
                   <ArticleList
+                    key={`${articleStateFilter}:${selectedFeedId ?? "all"}:${selectedFolderId ?? "all"}:${search}`}
                     articles={articles}
                     activeId={activeArticleId}
+                    markReadOnScroll={bootstrap.settings.markReadOnScroll}
                     hasMore={nextCursor !== null}
                     loadingMore={articlesLoadingMore}
                     onLoadMore={() => void loadOlderArticles()}
                     onOpen={openArticle}
+                    onMarkPassedRead={markArticleBatchRead}
+                    onToggleRead={(article) =>
+                      void changeArticleState(article, { isRead: !article.isRead })
+                    }
                     onToggleStar={(article) =>
                       void changeArticleState(article, { isStarred: !article.isStarred })
                     }
                   />
                   <ReaderPane
                     article={activeArticle}
-                    fontSize={articleFontSize}
-                    onBack={() => setMobileReaderOpen(false)}
+                    onBack={() => setReaderOpen(false)}
                     onPrevious={() => moveArticle(-1)}
                     onNext={() => moveArticle(1)}
                     onMarkUnread={(article) =>
@@ -711,23 +838,18 @@ export function App() {
                     }
                     onCopy={(article) => void copyArticleUrl(article)}
                     onRetryExtraction={(article) => void retryExtraction(article)}
-                    onFontDecrease={() =>
-                      setArticleFontSize((current) => Math.max(ARTICLE_FONT_MIN, current - 1))
-                    }
-                    onFontIncrease={() =>
-                      setArticleFontSize((current) => Math.min(ARTICLE_FONT_MAX, current + 1))
-                    }
                   />
                 </>
               ) : (
                 <ExpandedStream
                   articles={articles}
                   activeId={activeArticleId}
+                  markReadOnScroll={bootstrap.settings.markReadOnScroll}
                   hasMore={nextCursor !== null}
                   loadingMore={articlesLoadingMore}
                   onLoadMore={() => void loadOlderArticles()}
-                  fontSize={articleFontSize}
-                  onActivate={openArticle}
+                  onActivate={(article) => setActiveArticleId(article.id)}
+                  onMarkPassedRead={markArticleBatchRead}
                   onMarkUnread={(article) =>
                     article.isRead && void changeArticleState(article, { isRead: false })
                   }
@@ -736,12 +858,6 @@ export function App() {
                   }
                   onCopy={(article) => void copyArticleUrl(article)}
                   onRetryExtraction={(article) => void retryExtraction(article)}
-                  onFontDecrease={() =>
-                    setArticleFontSize((current) => Math.max(ARTICLE_FONT_MIN, current - 1))
-                  }
-                  onFontIncrease={() =>
-                    setArticleFontSize((current) => Math.min(ARTICLE_FONT_MAX, current + 1))
-                  }
                 />
               )}
             </div>

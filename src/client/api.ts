@@ -52,6 +52,7 @@ function queryString(query: ArticleQuery): string {
   if (query.search) params.set("search", query.search);
   if (query.limit !== undefined) params.set("limit", String(query.limit));
   if (query.cursor) params.set("cursor", query.cursor);
+  if (query.includeContent) params.set("includeContent", "true");
   return params.toString();
 }
 

@@ -4,17 +4,16 @@ import {
   ArrowRight,
   BookOpen,
   CheckCircle2,
+  Circle,
   Copy,
   FileText,
   Inbox,
   LoaderCircle,
-  Minus,
-  Plus,
   RefreshCw,
   Rss,
   Star,
-  Type,
 } from "lucide-react";
+import { useEffect, useRef } from "react";
 import type { Article, ArticleState, ReadingMode } from "../shared/types";
 
 function formatRelativeDate(value: string | null): string {
@@ -42,6 +41,126 @@ function articleDate(article: Article): string {
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return <kbd>{children}</kbd>;
+}
+
+function useMarkReadOnScroll({
+  articles,
+  activeId,
+  enabled,
+  onMarkPassedRead,
+  rootRef,
+  useParent = false,
+}: {
+  articles: Article[];
+  activeId: number | null;
+  enabled: boolean;
+  onMarkPassedRead: (articles: Article[]) => Promise<unknown>;
+  rootRef: React.RefObject<HTMLElement | null>;
+  useParent?: boolean;
+}) {
+  const itemRefs = useRef(new Map<number, HTMLElement>());
+  const articlesRef = useRef(articles);
+  const enabledRef = useRef(enabled);
+  const markPassedRef = useRef(onMarkPassedRead);
+  const scrollIntentUntil = useRef(0);
+  const lastScrollTop = useRef(0);
+  const readRequests = useRef(new Set<number>());
+  const queuedReads = useRef(new Map<number, Article>());
+  const readTimer = useRef<number | null>(null);
+  articlesRef.current = articles;
+  enabledRef.current = enabled;
+  markPassedRef.current = onMarkPassedRead;
+
+  useEffect(() => {
+    const activeItem = activeId === null ? null : itemRefs.current.get(activeId);
+    activeItem?.scrollIntoView({ block: "nearest" });
+  }, [activeId]);
+
+  useEffect(() => {
+    const root = rootRef.current;
+    const container = useParent ? root?.parentElement : root;
+    if (!container) return;
+    lastScrollTop.current = container.scrollTop;
+
+    const noteScrollIntent = () => {
+      scrollIntentUntil.current = performance.now() + 1500;
+    };
+    const noteScrollbarIntent = (event: PointerEvent) => {
+      if (event.target === container) noteScrollIntent();
+    };
+    const noteKeyboardScrollIntent = (event: KeyboardEvent) => {
+      if (["ArrowDown", "End", "PageDown", " "].includes(event.key)) noteScrollIntent();
+    };
+    const flushQueuedReads = () => {
+      readTimer.current = null;
+      if (!enabledRef.current) {
+        queuedReads.current.clear();
+        return;
+      }
+      const currentArticles = new Map(articlesRef.current.map((article) => [article.id, article]));
+      const batch = [...queuedReads.current.keys()].flatMap((id) => {
+        const article = currentArticles.get(id);
+        return article && !article.isRead ? [article] : [];
+      });
+      queuedReads.current.clear();
+      if (batch.length === 0) return;
+      for (const article of batch) readRequests.current.add(article.id);
+      void markPassedRef.current(batch).finally(() => {
+        for (const article of batch) readRequests.current.delete(article.id);
+      });
+    };
+    const markPassedItemsRead = () => {
+      const scrollingDown = container.scrollTop > lastScrollTop.current + 1;
+      lastScrollTop.current = container.scrollTop;
+      if (
+        !enabledRef.current ||
+        !scrollingDown ||
+        container.scrollTop <= 0 ||
+        performance.now() > scrollIntentUntil.current
+      ) {
+        return;
+      }
+
+      const passedBoundary = container.getBoundingClientRect().top;
+      for (const article of articlesRef.current) {
+        if (
+          article.isRead ||
+          queuedReads.current.has(article.id) ||
+          readRequests.current.has(article.id)
+        ) {
+          continue;
+        }
+        const item = itemRefs.current.get(article.id);
+        if (!item || item.getBoundingClientRect().bottom > passedBoundary) continue;
+        queuedReads.current.set(article.id, article);
+      }
+
+      if (queuedReads.current.size > 0) {
+        if (readTimer.current) window.clearTimeout(readTimer.current);
+        readTimer.current = window.setTimeout(flushQueuedReads, 250);
+      }
+    };
+
+    container.addEventListener("wheel", noteScrollIntent, { passive: true });
+    container.addEventListener("pointerdown", noteScrollbarIntent, { passive: true });
+    container.addEventListener("touchmove", noteScrollIntent, { passive: true });
+    container.addEventListener("keydown", noteKeyboardScrollIntent, true);
+    container.addEventListener("scroll", markPassedItemsRead, { passive: true });
+    return () => {
+      container.removeEventListener("wheel", noteScrollIntent);
+      container.removeEventListener("pointerdown", noteScrollbarIntent);
+      container.removeEventListener("touchmove", noteScrollIntent);
+      container.removeEventListener("keydown", noteKeyboardScrollIntent, true);
+      container.removeEventListener("scroll", markPassedItemsRead);
+      if (readTimer.current) window.clearTimeout(readTimer.current);
+      flushQueuedReads();
+    };
+  }, [rootRef, useParent]);
+
+  return (id: number, element: HTMLElement | null) => {
+    if (element) itemRefs.current.set(id, element);
+    else itemRefs.current.delete(id);
+  };
 }
 
 export function AppSkeleton() {
@@ -219,22 +338,37 @@ export function EmptyArticles({
 export function ArticleList({
   articles,
   activeId,
+  markReadOnScroll,
   hasMore,
   loadingMore,
   onLoadMore,
   onOpen,
+  onMarkPassedRead,
+  onToggleRead,
   onToggleStar,
 }: {
   articles: Article[];
   activeId: number | null;
+  markReadOnScroll: boolean;
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
-  onOpen: (article: Article, openMobile?: boolean) => void;
+  onOpen: (article: Article, openReader?: boolean) => void;
+  onMarkPassedRead: (articles: Article[]) => Promise<unknown>;
+  onToggleRead: (article: Article) => void;
   onToggleStar: (article: Article) => void;
 }) {
+  const listRef = useRef<HTMLElement>(null);
+  const registerItem = useMarkReadOnScroll({
+    articles,
+    activeId,
+    enabled: markReadOnScroll,
+    onMarkPassedRead,
+    rootRef: listRef,
+  });
+
   return (
-    <section className="article-list" aria-label="Articles">
+    <section ref={listRef} className="article-list" aria-label="Articles">
       <div className="article-list-summary">
         <span>{articles.filter((article) => !article.isRead).length} unread loaded</span>
         <span>
@@ -245,6 +379,7 @@ export function ArticleList({
         {articles.map((article) => (
           <li
             key={article.id}
+            ref={(element) => registerItem(article.id, element)}
             className={`article-list-item${article.id === activeId ? " is-active" : ""}${article.isRead ? " is-read" : ""}`}
           >
             <button
@@ -253,39 +388,67 @@ export function ArticleList({
               aria-current={article.id === activeId ? "true" : undefined}
               onClick={() => onOpen(article)}
             >
-              <span className="article-list-meta">
-                <span className="feed-name truncate">{article.feedTitle}</span>
-                <time dateTime={article.publishedAt ?? article.discoveredAt}>
-                  {articleDate(article)}
-                </time>
-              </span>
-              <span className="article-list-title">
-                {!article.isRead ? (
-                  <span className="unread-dot">
-                    <span className="sr-only">Unread: </span>
-                  </span>
+              {article.imageUrl ? (
+                <img className="article-card-image" src={article.imageUrl} alt="" loading="lazy" />
+              ) : (
+                <span
+                  className="article-card-image article-card-image-placeholder"
+                  aria-hidden="true"
+                >
+                  <FileText size={18} />
+                </span>
+              )}
+              <span className="article-list-copy">
+                <span className="article-list-meta">
+                  <span className="feed-name truncate">{article.feedTitle}</span>
+                  <time dateTime={article.publishedAt ?? article.discoveredAt}>
+                    {articleDate(article)}
+                  </time>
+                </span>
+                <span className="article-list-title">
+                  {!article.isRead ? (
+                    <span className="unread-dot">
+                      <span className="sr-only">Unread: </span>
+                    </span>
+                  ) : null}
+                  {article.title}
+                </span>
+                {article.summary ? (
+                  <span className="article-list-summary-text">{article.summary}</span>
                 ) : null}
-                {article.title}
               </span>
-              {article.summary ? (
-                <span className="article-list-summary-text">{article.summary}</span>
-              ) : null}
             </button>
-            <button
-              className={`list-star-button${article.isStarred ? " is-starred" : ""}`}
-              type="button"
-              aria-label={
-                article.isStarred ? `Remove star from ${article.title}` : `Star ${article.title}`
-              }
-              aria-pressed={article.isStarred}
-              onClick={() => onToggleStar(article)}
-            >
-              <Star
-                aria-hidden="true"
-                size={15}
-                fill={article.isStarred ? "currentColor" : "none"}
-              />
-            </button>
+            <div className="article-card-state-actions">
+              <button
+                className="list-read-button"
+                type="button"
+                aria-label={
+                  article.isRead ? `Mark ${article.title} unread` : `Mark ${article.title} read`
+                }
+                onClick={() => onToggleRead(article)}
+              >
+                {article.isRead ? (
+                  <CheckCircle2 aria-hidden="true" size={15} />
+                ) : (
+                  <Circle aria-hidden="true" size={15} />
+                )}
+              </button>
+              <button
+                className={`list-star-button${article.isStarred ? " is-starred" : ""}`}
+                type="button"
+                aria-label={
+                  article.isStarred ? `Remove star from ${article.title}` : `Star ${article.title}`
+                }
+                aria-pressed={article.isStarred}
+                onClick={() => onToggleStar(article)}
+              >
+                <Star
+                  aria-hidden="true"
+                  size={15}
+                  fill={article.isStarred ? "currentColor" : "none"}
+                />
+              </button>
+            </div>
           </li>
         ))}
       </ol>
@@ -308,26 +471,20 @@ export function ArticleList({
 
 interface ArticleActionsProps {
   article: Article;
-  fontSize: number;
   onPrevious?: () => void;
   onNext?: () => void;
   onMarkUnread: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
-  onFontDecrease: () => void;
-  onFontIncrease: () => void;
 }
 
 function ArticleActions({
   article,
-  fontSize,
   onPrevious,
   onNext,
   onMarkUnread,
   onToggleStar,
   onCopy,
-  onFontDecrease,
-  onFontIncrease,
 }: ArticleActionsProps) {
   return (
     <div className="article-actions" role="toolbar" aria-label="Article actions">
@@ -389,38 +546,12 @@ function ArticleActions({
         <span className="action-label">Copy URL</span>
         <Kbd>C</Kbd>
       </button>
-      <span className="action-divider" />
-      <button
-        type="button"
-        onClick={onFontDecrease}
-        disabled={fontSize <= 15}
-        aria-label="Decrease article font size ([)"
-        title="Decrease font size ([)"
-      >
-        <Minus aria-hidden="true" size={15} />
-        <Kbd>[</Kbd>
-      </button>
-      <span className="font-size-value" title={`Article font size ${fontSize} pixels`}>
-        <Type aria-hidden="true" size={15} />
-        {fontSize}
-      </span>
-      <button
-        type="button"
-        onClick={onFontIncrease}
-        disabled={fontSize >= 23}
-        aria-label="Increase article font size (])"
-        title="Increase font size (])"
-      >
-        <Plus aria-hidden="true" size={15} />
-        <Kbd>]</Kbd>
-      </button>
     </div>
   );
 }
 
 export function ReaderPane({
   article,
-  fontSize,
   onBack,
   onPrevious,
   onNext,
@@ -428,11 +559,8 @@ export function ReaderPane({
   onToggleStar,
   onCopy,
   onRetryExtraction,
-  onFontDecrease,
-  onFontIncrease,
 }: {
   article: Article | null;
-  fontSize: number;
   onBack: () => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -440,8 +568,6 @@ export function ReaderPane({
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onRetryExtraction: (article: Article) => void;
-  onFontDecrease: () => void;
-  onFontIncrease: () => void;
 }) {
   if (!article) {
     return (
@@ -464,14 +590,11 @@ export function ReaderPane({
       <div className="reader-action-bar">
         <ArticleActions
           article={article}
-          fontSize={fontSize}
           onPrevious={onPrevious}
           onNext={onNext}
           onMarkUnread={onMarkUnread}
           onToggleStar={onToggleStar}
           onCopy={onCopy}
-          onFontDecrease={onFontDecrease}
-          onFontIncrease={onFontIncrease}
         />
       </div>
       <div className="article-document">
@@ -580,50 +703,56 @@ function ArticleBody({
 export function ExpandedStream({
   articles,
   activeId,
+  markReadOnScroll,
   hasMore,
   loadingMore,
   onLoadMore,
-  fontSize,
   onActivate,
+  onMarkPassedRead,
   onMarkUnread,
   onToggleStar,
   onCopy,
   onRetryExtraction,
-  onFontDecrease,
-  onFontIncrease,
 }: {
   articles: Article[];
   activeId: number | null;
+  markReadOnScroll: boolean;
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
-  fontSize: number;
-  onActivate: (article: Article, openMobile?: boolean) => void;
+  onActivate: (article: Article) => void;
+  onMarkPassedRead: (articles: Article[]) => Promise<unknown>;
   onMarkUnread: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onRetryExtraction: (article: Article) => void;
-  onFontDecrease: () => void;
-  onFontIncrease: () => void;
 }) {
+  const streamRef = useRef<HTMLElement>(null);
+  const registerItem = useMarkReadOnScroll({
+    articles,
+    activeId,
+    enabled: markReadOnScroll,
+    onMarkPassedRead,
+    rootRef: streamRef,
+    useParent: true,
+  });
+
   return (
-    <section className="expanded-stream" aria-label="Expanded articles">
+    <section ref={streamRef} className="expanded-stream" aria-label="Expanded articles">
       {articles.map((article) => (
         <article
+          ref={(element) => registerItem(article.id, element)}
           className={`expanded-article${article.id === activeId ? " is-active" : ""}${article.isRead ? " is-read" : ""}`}
           key={article.id}
           aria-labelledby={`expanded-${article.id}-title`}
-          onFocus={() => onActivate(article, false)}
+          onFocus={() => onActivate(article)}
         >
           <div className="expanded-actions">
             <ArticleActions
               article={article}
-              fontSize={fontSize}
               onMarkUnread={onMarkUnread}
               onToggleStar={onToggleStar}
               onCopy={onCopy}
-              onFontDecrease={onFontDecrease}
-              onFontIncrease={onFontIncrease}
             />
           </div>
           <div className="article-document">

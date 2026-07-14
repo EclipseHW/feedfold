@@ -41,7 +41,7 @@ describe("live API, OPML, and filtering rules", () => {
           <item><guid>noise</guid><title>Noisy weekly roundup</title><link>${feedBase}/missing-noise</link>
             <description><![CDATA[<p>Feed fallback for noise.</p>]]></description></item>
           <item><guid>keep</guid><title>Keep this story</title><link>${feedBase}/missing-keep</link>
-            <description><![CDATA[<p>Feed fallback worth reading.</p>]]></description></item>
+            <description><![CDATA[<p>Feed fallback worth reading.</p><img src="/keep.jpg" alt="Keep">]]></description></item>
         </channel></rss>`);
         return;
       }
@@ -84,6 +84,14 @@ describe("live API, OPML, and filtering rules", () => {
     expect(duplicate).toEqual({ imported: 0, duplicates: 1, failed: [] });
 
     const bootstrap = await json<BootstrapData>(`${apiBase}/api/bootstrap`);
+    expect(bootstrap.settings.markReadOnScroll).toBe(true);
+    expect(
+      await json(`${apiBase}/api/settings`, {
+        method: "PATCH",
+        body: JSON.stringify({ markReadOnScroll: false }),
+      }),
+    ).toMatchObject({ markReadOnScroll: false });
+    expect(await json(`${apiBase}/api/settings`)).toMatchObject({ markReadOnScroll: false });
     const parent = bootstrap.folders.find((folder) => folder.name === "Parent");
     const child = bootstrap.folders.find((folder) => folder.name === "Child");
     expect(child?.parentId).toBe(parent?.id);
@@ -159,6 +167,11 @@ describe("live API, OPML, and filtering rules", () => {
     const listed = await json<{ articles: Article[] }>(`${apiBase}/api/articles?state=all`);
     expect(listed.articles.map((article) => article.title)).toEqual(["Keep this story"]);
     const keep = listed.articles[0];
+    expect(keep).toMatchObject({ contentHtml: null, imageUrl: `${feedBase}/keep.jpg` });
+    const expanded = await json<{ articles: Article[] }>(
+      `${apiBase}/api/articles?state=all&includeContent=true`,
+    );
+    expect(expanded.articles[0].contentHtml).toContain("Feed fallback worth reading");
     const updated = await json<Article>(`${apiBase}/api/articles/${keep.id}/state`, {
       method: "PATCH",
       body: JSON.stringify({ isRead: true, isStarred: true }),
@@ -168,7 +181,11 @@ describe("live API, OPML, and filtering rules", () => {
       id: keep.id,
       isRead: true,
       isStarred: true,
+      imageUrl: `${feedBase}/keep.jpg`,
     });
+    expect((await json<Article>(`${apiBase}/api/articles/${keep.id}`)).contentHtml).toContain(
+      "Feed fallback worth reading",
+    );
 
     const retry = await json<Article>(`${apiBase}/api/articles/${keep.id}/extract`, {
       method: "POST",

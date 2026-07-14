@@ -4,6 +4,7 @@ import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { createApp } from "../../src/server/app.js";
 import { AppDatabase, type ParsedFeed } from "../../src/server/db.js";
 import { ExtractionQueue, extractArticle } from "../../src/server/extraction.js";
 import { FeedRefreshService } from "../../src/server/refresh.js";
@@ -103,6 +104,22 @@ describe("feed refresh and full-text extraction", () => {
         response.writeHead(503).end("offline");
         return;
       }
+      if (request.url === "/video") {
+        response.writeHead(200, {
+          "Content-Type": "video/mp4",
+          "Content-Length": "847456566",
+        });
+        response.end("not article HTML");
+        return;
+      }
+      if (request.url === "/oversized") {
+        response.writeHead(200, {
+          "Content-Type": "text/html",
+          "Content-Length": String(5 * 1024 * 1024 + 1),
+        });
+        response.end("<p>declared too large</p>");
+        return;
+      }
       response.writeHead(404).end();
     });
     baseUrl = await listen(server);
@@ -115,12 +132,33 @@ describe("feed refresh and full-text extraction", () => {
       database.close();
     });
 
+    const media = await extractArticle({
+      id: 100,
+      url: `${baseUrl}/video`,
+      feedContentHtml: "<p>Feed text remains readable.</p>",
+    });
+    expect(media).toMatchObject({
+      status: "feed",
+      contentSource: "feed",
+      error: "Article response is not HTML (video/mp4)",
+    });
+    const oversized = await extractArticle({
+      id: 101,
+      url: `${baseUrl}/oversized`,
+      feedContentHtml: "<p>Feed text remains readable.</p>",
+    });
+    expect(oversized).toMatchObject({
+      status: "feed",
+      contentSource: "feed",
+      error: "Article response exceeds the 5 MiB extraction limit",
+    });
+
     const feed = database.createFeed({ feedUrl: `${baseUrl}/feed` });
     expect(refresh.request([feed.id])).toEqual({ requested: 1, refreshingFeedIds: [feed.id] });
     await refresh.waitForIdle();
     await extraction.waitForIdle();
 
-    const articles = database.listArticles({ state: "all" });
+    const articles = database.listArticles({ state: "all", includeContent: true });
     expect(articles).toHaveLength(2);
     const extracted = articles.find((article) => article.title === "Extract me");
     expect(extracted?.extractionStatus).toBe("complete");
@@ -129,6 +167,7 @@ describe("feed refresh and full-text extraction", () => {
     expect(extracted?.contentHtml).toContain('target="_blank"');
     expect(extracted?.contentHtml).toContain(`src="${baseUrl}/image.jpg"`);
     expect(extracted?.contentHtml).not.toContain("<script");
+    expect(extracted?.imageUrl).toBe(`${baseUrl}/image.jpg`);
     if (!extracted) throw new Error("Extracted article was not stored");
 
     const fallback = articles.find((article) => article.title === "Use fallback");
@@ -191,6 +230,7 @@ describe("feed refresh and full-text extraction", () => {
         author: null,
         publishedAt: null,
         summary: "",
+        imageUrl: null,
         feedContentHtml: `<p>Readable feed content ${index}</p>`,
       })),
     };
@@ -224,5 +264,124 @@ describe("feed refresh and full-text extraction", () => {
     expect(
       new Set([...firstPage.articles, ...secondPage.articles].map((article) => article.id)).size,
     ).toBe(125);
+  });
+
+  it("preserves an extracted thumbnail when feed metadata changes", async () => {
+    const database = await temporaryDatabase();
+    cleanups.push(() => database.close());
+    const feed = database.createFeed({ feedUrl: "https://example.test/feed", title: "Feed" });
+    const parsedArticle = {
+      externalId: "story",
+      title: "Original title",
+      url: "https://example.test/story",
+      author: null,
+      publishedAt: null,
+      summary: "Summary",
+      imageUrl: null,
+      feedContentHtml: "<p>Feed summary without an image.</p>",
+    };
+    const [articleId] = database.markFeedSuccess(feed.id, {
+      httpStatus: 200,
+      etag: null,
+      lastModified: null,
+      pollIntervalMinutes: 20,
+      parsed: { title: "Feed", siteUrl: "https://example.test", articles: [parsedArticle] },
+    });
+    database.completeExtraction(articleId, {
+      contentHtml: '<p>Full article.</p><img src="https://cdn.example.test/hero.jpg">',
+      imageUrl: "https://cdn.example.test/hero.jpg",
+      contentSource: "article",
+      status: "complete",
+      error: null,
+    });
+
+    database.markFeedSuccess(feed.id, {
+      httpStatus: 200,
+      etag: null,
+      lastModified: null,
+      pollIntervalMinutes: 20,
+      parsed: {
+        title: "Feed",
+        siteUrl: "https://example.test",
+        articles: [{ ...parsedArticle, title: "Updated title" }],
+      },
+    });
+
+    expect(database.getArticle(articleId)).toMatchObject({
+      title: "Updated title",
+      imageUrl: "https://cdn.example.test/hero.jpg",
+      extractionStatus: "complete",
+    });
+  });
+
+  it("promotes an opened pending article ahead of the extraction backlog", async () => {
+    let releaseFirst: (() => void) | undefined;
+    let reportFirstStarted: (() => void) | undefined;
+    const firstStarted = new Promise<void>((resolve) => {
+      reportFirstStarted = resolve;
+    });
+    const firstReleased = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const requestOrder: string[] = [];
+    const articleBody = `<article><h1>Readable</h1><p>${"Article text. ".repeat(80)}</p></article>`;
+    const server = createServer((request, response) => {
+      const path = request.url ?? "";
+      requestOrder.push(path);
+      if (path === "/first") {
+        reportFirstStarted?.();
+        void firstReleased.then(() => {
+          response.writeHead(200, { "Content-Type": "text/html" });
+          response.end(articleBody);
+        });
+        return;
+      }
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end(articleBody);
+    });
+    const baseUrl = await listen(server);
+    const database = await temporaryDatabase();
+    const extraction = new ExtractionQueue(database, 1, 2_000);
+    const refresh = new FeedRefreshService(database, extraction, 1, 2_000);
+    const app = await createApp({ database, extractionQueue: extraction, refreshService: refresh });
+    cleanups.push(async () => {
+      releaseFirst?.();
+      await app.close();
+      await Promise.all([refresh.stop(), extraction.stop()]);
+      database.close();
+    });
+
+    const feed = database.createFeed({ feedUrl: `${baseUrl}/feed`, title: "Priority" });
+    const articleIds = database.markFeedSuccess(feed.id, {
+      httpStatus: 200,
+      etag: null,
+      lastModified: null,
+      pollIntervalMinutes: 20,
+      parsed: {
+        title: "Priority",
+        siteUrl: baseUrl,
+        articles: ["first", "second", "opened"].map((name) => ({
+          externalId: name,
+          title: name,
+          url: `${baseUrl}/${name}`,
+          author: null,
+          publishedAt: null,
+          summary: "",
+          imageUrl: null,
+          feedContentHtml: null,
+        })),
+      },
+    });
+    extraction.start();
+    await firstStarted;
+
+    const openedId = articleIds[2];
+    const response = await app.inject({ method: "POST", url: `/api/articles/${openedId}/extract` });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ id: openedId, extractionStatus: "pending" });
+    releaseFirst?.();
+    await extraction.waitForIdle();
+
+    expect(requestOrder).toEqual(["/first", "/opened", "/second"]);
   });
 });

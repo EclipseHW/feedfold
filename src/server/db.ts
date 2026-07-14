@@ -11,6 +11,7 @@ import type {
   RuleAction,
   RuleField,
 } from "../shared/types.js";
+import { firstSafeImageUrl } from "./article-image.js";
 
 export interface FeedRecord {
   id: number;
@@ -30,6 +31,7 @@ export interface ParsedArticle {
   author: string | null;
   publishedAt: string | null;
   summary: string;
+  imageUrl: string | null;
   feedContentHtml: string | null;
 }
 
@@ -47,8 +49,14 @@ export interface ExtractionRecord {
 
 type Row = Record<string, unknown>;
 
-const migrations = [
-  `
+interface Migration {
+  sql: string;
+  after?: (database: Sqlite.Database) => void;
+}
+
+const migrations: Migration[] = [
+  {
+    sql: `
     CREATE TABLE folders (
       id INTEGER PRIMARY KEY,
       parent_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
@@ -133,6 +141,47 @@ const migrations = [
     CREATE INDEX rules_folder_id_idx ON rules(folder_id);
     INSERT INTO settings (id, poll_interval_minutes, single_key_shortcuts) VALUES (1, 20, 1);
   `,
+  },
+  {
+    sql: `
+      ALTER TABLE settings ADD COLUMN mark_read_on_scroll INTEGER NOT NULL DEFAULT 1;
+      ALTER TABLE articles ADD COLUMN image_url TEXT;
+      UPDATE articles
+      SET content_html = NULL,
+          content_source = NULL,
+          extraction_status = 'pending',
+          extraction_error = NULL,
+          image_url = NULL
+      WHERE extraction_status IN ('complete', 'processing')
+        AND (
+          lower(url) LIKE '%.mp4'
+          OR instr(lower(url), '.mp4?') > 0
+          OR instr(lower(url), '.mp4#') > 0
+        );
+    `,
+    after: (database) => {
+      const rows = database
+        .prepare(
+          `SELECT id, url, content_html AS contentHtml, feed_content_html AS feedContentHtml
+           FROM articles
+           WHERE content_html IS NOT NULL OR feed_content_html IS NOT NULL`,
+        )
+        .all() as Array<{
+        id: number;
+        url: string | null;
+        contentHtml: string | null;
+        feedContentHtml: string | null;
+      }>;
+      const update = database.prepare("UPDATE articles SET image_url = ? WHERE id = ?");
+      for (const row of rows) {
+        const baseUrl = row.url ?? undefined;
+        const imageUrl =
+          firstSafeImageUrl(row.contentHtml, baseUrl) ??
+          firstSafeImageUrl(row.feedContentHtml, baseUrl);
+        update.run(imageUrl, row.id);
+      }
+    },
+  },
 ];
 
 function now(): string {
@@ -206,6 +255,7 @@ function mapArticle(row: Row): Article {
     publishedAt: row.publishedAt === null ? null : String(row.publishedAt),
     discoveredAt: String(row.discoveredAt),
     summary: String(row.summary),
+    imageUrl: row.imageUrl === null ? null : String(row.imageUrl),
     contentHtml: row.contentHtml === null ? null : String(row.contentHtml),
     contentSource:
       row.contentSource === "article" || row.contentSource === "feed" ? row.contentSource : null,
@@ -273,7 +323,9 @@ export class AppDatabase {
       .get() as { version: number };
     for (let index = current.version; index < migrations.length; index += 1) {
       const apply = this.sqlite.transaction(() => {
-        this.sqlite.exec(migrations[index]);
+        const migration = migrations[index];
+        this.sqlite.exec(migration.sql);
+        migration.after?.(this.sqlite);
         this.sqlite
           .prepare("INSERT INTO migrations (version, applied_at) VALUES (?, ?)")
           .run(index + 1, now());
@@ -290,13 +342,15 @@ export class AppDatabase {
     const row = this.sqlite
       .prepare(
         `SELECT poll_interval_minutes AS pollIntervalMinutes,
-                single_key_shortcuts AS singleKeyShortcuts
+                single_key_shortcuts AS singleKeyShortcuts,
+                mark_read_on_scroll AS markReadOnScroll
          FROM settings WHERE id = 1`,
       )
       .get() as Row;
     return {
       pollIntervalMinutes: Number(row.pollIntervalMinutes),
       singleKeyShortcuts: toBoolean(row.singleKeyShortcuts),
+      markReadOnScroll: toBoolean(row.markReadOnScroll),
     };
   }
 
@@ -305,12 +359,13 @@ export class AppDatabase {
     this.sqlite
       .prepare(
         `UPDATE settings
-         SET poll_interval_minutes = ?, single_key_shortcuts = ?
+         SET poll_interval_minutes = ?, single_key_shortcuts = ?, mark_read_on_scroll = ?
          WHERE id = 1`,
       )
       .run(
         input.pollIntervalMinutes ?? current.pollIntervalMinutes,
         (input.singleKeyShortcuts ?? current.singleKeyShortcuts) ? 1 : 0,
+        (input.markReadOnScroll ?? current.markReadOnScroll) ? 1 : 0,
       );
     return this.getSettings();
   }
@@ -630,18 +685,19 @@ export class AppDatabase {
           .run(input.parsed.title, input.parsed.siteUrl, now(), id);
         const findExisting = this.sqlite.prepare(
           `SELECT id, title, url, author, published_at AS publishedAt, summary,
-                  feed_content_html AS feedContentHtml
+                  image_url AS imageUrl, feed_content_html AS feedContentHtml
            FROM articles WHERE feed_id = ? AND external_id = ?`,
         );
         const insert = this.sqlite.prepare(
           `INSERT INTO articles (
              feed_id, external_id, title, url, author, published_at, discovered_at,
-             summary, feed_content_html, extraction_status
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             summary, image_url, feed_content_html, extraction_status
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         );
         const update = this.sqlite.prepare(
           `UPDATE articles
            SET title = ?, url = ?, author = ?, published_at = ?, summary = ?,
+               image_url = CASE WHEN ? = 1 THEN ? ELSE image_url END,
                feed_content_html = ?,
                content_html = CASE WHEN ? = 1 THEN NULL ELSE content_html END,
                content_source = CASE WHEN ? = 1 THEN NULL ELSE content_source END,
@@ -669,6 +725,8 @@ export class AppDatabase {
               article.author,
               article.publishedAt,
               article.summary,
+              sourceChanged ? 1 : 0,
+              article.imageUrl,
               article.feedContentHtml,
               sourceChanged ? 1 : 0,
               sourceChanged ? 1 : 0,
@@ -690,6 +748,7 @@ export class AppDatabase {
             article.publishedAt,
             now(),
             article.summary,
+            article.imageUrl,
             article.feedContentHtml,
             extractionStatus,
           );
@@ -810,7 +869,8 @@ export class AppDatabase {
                 articles.published_at AS publishedAt,
                 articles.discovered_at AS discoveredAt,
                 articles.summary,
-                articles.content_html AS contentHtml,
+                articles.image_url AS imageUrl,
+                ${query.includeContent ? "articles.content_html" : "NULL"} AS contentHtml,
                 articles.content_source AS contentSource,
                 articles.extraction_status AS extractionStatus,
                 articles.extraction_error AS extractionError,
@@ -848,6 +908,7 @@ export class AppDatabase {
                 articles.published_at AS publishedAt,
                 articles.discovered_at AS discoveredAt,
                 articles.summary,
+                articles.image_url AS imageUrl,
                 articles.content_html AS contentHtml,
                 articles.content_source AS contentSource,
                 articles.extraction_status AS extractionStatus,
@@ -1128,6 +1189,7 @@ export class AppDatabase {
     id: number,
     input: {
       contentHtml: string | null;
+      imageUrl: string | null;
       contentSource: "article" | "feed" | null;
       status: "complete" | "feed" | "failed";
       error: string | null;
@@ -1136,10 +1198,11 @@ export class AppDatabase {
     this.sqlite
       .prepare(
         `UPDATE articles
-         SET content_html = ?, content_source = ?, extraction_status = ?, extraction_error = ?
+         SET content_html = ?, image_url = COALESCE(?, image_url), content_source = ?,
+             extraction_status = ?, extraction_error = ?
          WHERE id = ?`,
       )
-      .run(input.contentHtml, input.contentSource, input.status, input.error, id);
+      .run(input.contentHtml, input.imageUrl, input.contentSource, input.status, input.error, id);
     this.recomputeRulesForArticle(id);
   }
 

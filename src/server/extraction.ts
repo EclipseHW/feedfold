@@ -1,7 +1,13 @@
 import { Readability } from "@mozilla/readability";
-import { JSDOM } from "jsdom";
+import { JSDOM, VirtualConsole } from "jsdom";
 import sanitizeHtml from "sanitize-html";
+import { firstSafeImageUrl } from "./article-image.js";
 import type { AppDatabase, ExtractionRecord } from "./db.js";
+
+const MAX_ARTICLE_BYTES = 5 * 1024 * 1024;
+const articleVirtualConsole = new VirtualConsole().forwardTo(console, {
+  jsdomErrors: ["not-implemented", "resource-loading", "unhandled-exception"],
+});
 
 const sanitizeOptions: sanitizeHtml.IOptions = {
   allowedTags: [
@@ -80,7 +86,10 @@ function absoluteUrl(value: string, baseUrl: string): string {
 }
 
 function resolveRelativeUrls(html: string, baseUrl: string): string {
-  const dom = new JSDOM(`<body>${html}</body>`, { url: baseUrl });
+  const dom = new JSDOM(`<body>${html}</body>`, {
+    url: baseUrl,
+    virtualConsole: articleVirtualConsole,
+  });
   try {
     for (const element of dom.window.document.querySelectorAll<HTMLElement>("[href], [src]")) {
       for (const attribute of ["href", "src"] as const) {
@@ -129,8 +138,33 @@ function message(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, 500);
 }
 
+async function cancelBody(response: Response): Promise<void> {
+  if (!response.body) return;
+  try {
+    await response.body.cancel();
+  } catch {
+    // The extraction error remains factual even if the remote peer closes first.
+  }
+}
+
+async function readHtmlResponse(response: Response): Promise<string> {
+  const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
+  if (contentType && contentType !== "text/html" && contentType !== "application/xhtml+xml") {
+    await cancelBody(response);
+    throw new Error(`Article response is not HTML (${contentType})`);
+  }
+
+  const declaredLength = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_ARTICLE_BYTES) {
+    await cancelBody(response);
+    throw new Error("Article response exceeds the 5 MiB extraction limit");
+  }
+  return response.text();
+}
+
 export type ExtractionOutcome = {
   contentHtml: string | null;
+  imageUrl: string | null;
   contentSource: "article" | "feed" | null;
   status: "complete" | "feed" | "failed";
   error: string | null;
@@ -146,6 +180,7 @@ export async function extractArticle(
   if (feedContent && !containsText(feedContent) && containsArticleMedia(feedContent)) {
     return {
       contentHtml: feedContent,
+      imageUrl: firstSafeImageUrl(feedContent, record.url ?? undefined),
       contentSource: "feed",
       status: "feed",
       error: null,
@@ -163,8 +198,11 @@ export async function extractArticle(
         signal: AbortSignal.timeout(timeoutMs),
       });
       if (!response.ok) throw new Error(`Article request returned HTTP ${response.status}`);
-      const html = await response.text();
-      const dom = new JSDOM(html, { url: response.url || record.url });
+      const html = await readHtmlResponse(response);
+      const dom = new JSDOM(html, {
+        url: response.url || record.url,
+        virtualConsole: articleVirtualConsole,
+      });
       try {
         const result = new Readability(dom.window.document).parse();
         if (!result?.content) throw new Error("No readable article content was found");
@@ -172,6 +210,7 @@ export async function extractArticle(
         if (!containsText(contentHtml)) throw new Error("Extracted article content was empty");
         return {
           contentHtml,
+          imageUrl: firstSafeImageUrl(contentHtml, response.url || record.url),
           contentSource: "article",
           status: "complete",
           error: null,
@@ -190,6 +229,7 @@ export async function extractArticle(
     if (containsText(feedContent) || containsArticleMedia(feedContent)) {
       return {
         contentHtml: feedContent,
+        imageUrl: firstSafeImageUrl(feedContent, record.url ?? undefined),
         contentSource: "feed",
         status: "feed",
         error: extractionError,
@@ -199,6 +239,7 @@ export async function extractArticle(
 
   return {
     contentHtml: null,
+    imageUrl: null,
     contentSource: null,
     status: "failed",
     error: extractionError ?? "Feed did not include readable content",
@@ -229,6 +270,20 @@ export class ExtractionQueue {
       this.enqueued.add(articleId);
       this.pending.push(articleId);
     }
+    this.pump();
+  }
+
+  prioritize(articleId: number): void {
+    if (this.stopped) return;
+    const queuedIndex = this.pending.indexOf(articleId);
+    if (queuedIndex >= 0) {
+      this.pending.splice(queuedIndex, 1);
+    } else if (this.enqueued.has(articleId)) {
+      return;
+    } else {
+      this.enqueued.add(articleId);
+    }
+    this.pending.unshift(articleId);
     this.pump();
   }
 

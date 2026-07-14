@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { parseFeed } from "feedsmith";
 import sanitizeHtml from "sanitize-html";
+import { firstSafeImageUrl } from "./article-image.js";
 import type { ParsedArticle, ParsedFeed } from "./db.js";
 
 type UnknownRecord = Record<string, unknown>;
@@ -115,6 +116,7 @@ function normalizeRss(feed: UnknownRecord, feedUrl: string): ParsedFeed {
       author,
       publishedAt,
       summary: plainText(summaryHtml).slice(0, 1_000),
+      imageUrl: firstSafeImageUrl(feedContentHtml, itemUrl ?? siteUrl ?? feedUrl),
       feedContentHtml,
     };
   });
@@ -150,6 +152,7 @@ function normalizeAtom(feed: UnknownRecord, feedUrl: string): ParsedFeed {
       author: authorNames(entry.authors) ?? feedAuthors,
       publishedAt,
       summary: plainText(summaryHtml).slice(0, 1_000),
+      imageUrl: firstSafeImageUrl(feedContentHtml, itemUrl ?? siteUrl ?? feedUrl),
       feedContentHtml,
     };
   });
@@ -178,6 +181,7 @@ function normalizeJson(feed: UnknownRecord, feedUrl: string): ParsedFeed {
       author: authorNames(item.authors) ?? feedAuthors,
       publishedAt,
       summary: plainText(summary).slice(0, 1_000),
+      imageUrl: firstSafeImageUrl(feedContentHtml, itemUrl ?? siteUrl ?? feedUrl),
       feedContentHtml,
     };
   });
@@ -214,6 +218,7 @@ function normalizeRdf(feed: UnknownRecord, feedUrl: string): ParsedFeed {
       author: firstString(dc.creators) ?? string(dc.creator),
       publishedAt,
       summary: plainText(summaryHtml).slice(0, 1_000),
+      imageUrl: firstSafeImageUrl(feedContentHtml, itemUrl ?? siteUrl ?? feedUrl),
       feedContentHtml,
     };
   });
