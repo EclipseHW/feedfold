@@ -225,6 +225,40 @@ function normalizeRdf(feed: UnknownRecord, feedUrl: string): ParsedFeed {
   return { title, siteUrl, articles };
 }
 
+export function parseAndNormalizeWordPressPosts(
+  source: string,
+  feedUrl: string,
+  feedTitle: string,
+): ParsedFeed {
+  const siteUrl = new URL(feedUrl).origin;
+  const articles = records(JSON.parse(source)).map((post): ParsedArticle => {
+    const itemUrl = url(post.link, siteUrl);
+    const excerptHtml = nestedString(post.excerpt, "rendered");
+    const feedContentHtml = nestedString(post.content, "rendered") ?? excerptHtml;
+    const summaryHtml = excerptHtml ?? feedContentHtml;
+    const dateGmt = string(post.date_gmt);
+    const publishedAt = date(dateGmt ? `${dateGmt}Z` : null) ?? date(post.date);
+    const itemTitle =
+      plainText(nestedString(post.title, "rendered")) ||
+      plainText(summaryHtml).slice(0, 160) ||
+      "Untitled article";
+    return {
+      externalId:
+        nestedString(post.guid, "rendered") ??
+        itemUrl ??
+        fallbackId([itemTitle, publishedAt, summaryHtml]),
+      title: itemTitle,
+      url: itemUrl,
+      author: null,
+      publishedAt,
+      summary: plainText(summaryHtml).slice(0, 1_000),
+      imageUrl: firstSafeImageUrl(feedContentHtml, itemUrl ?? siteUrl),
+      feedContentHtml,
+    };
+  });
+  return { title: feedTitle, siteUrl, articles };
+}
+
 export function parseAndNormalizeFeed(source: string, feedUrl: string): ParsedFeed {
   const parsed = parseFeed(source);
   const feed = record(parsed.feed);

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { parseAndNormalizeFeed } from "../../src/server/feed-parser.js";
+import {
+  parseAndNormalizeFeed,
+  parseAndNormalizeWordPressPosts,
+} from "../../src/server/feed-parser.js";
 
 describe("feed normalization", () => {
   it("normalizes RSS, Atom, and JSON Feed into the same article contract", () => {
@@ -80,5 +83,42 @@ describe("feed normalization", () => {
       summary: "First line Second <unsafe> line",
     });
     expect(json.articles[0].feedContentHtml).toContain("Second &lt;unsafe&gt; line");
+  });
+
+  it("normalizes WordPress REST posts while preserving the stable post GUID", () => {
+    const wordpress = parseAndNormalizeWordPressPosts(
+      JSON.stringify([
+        {
+          guid: { rendered: "https://example.test/?p=42" },
+          title: { rendered: "A &amp; B <em>together</em>" },
+          link: "https://example.test/articles/a-and-b",
+          date_gmt: "2026-07-13T14:00:00",
+          date: "2026-07-13T16:00:00",
+          excerpt: { rendered: "<p>Short &amp; useful summary.</p>" },
+          content: {
+            rendered: '<p>Full article</p><img src="/images/hero.jpg" alt="Hero">',
+          },
+        },
+      ]),
+      "https://example.test/wp-json/wp/v2/posts",
+      "Example publication",
+    );
+
+    expect(wordpress).toEqual({
+      title: "Example publication",
+      siteUrl: "https://example.test",
+      articles: [
+        {
+          externalId: "https://example.test/?p=42",
+          title: "A & B together",
+          url: "https://example.test/articles/a-and-b",
+          author: null,
+          publishedAt: "2026-07-13T14:00:00.000Z",
+          summary: "Short & useful summary.",
+          imageUrl: "https://example.test/images/hero.jpg",
+          feedContentHtml: '<p>Full article</p><img src="/images/hero.jpg" alt="Hero">',
+        },
+      ],
+    });
   });
 });

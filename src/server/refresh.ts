@@ -1,12 +1,44 @@
 import type { RefreshResult } from "../shared/types.js";
-import type { AppDatabase, FeedRecord } from "./db.js";
+import type { AppDatabase, FeedRecord, ParsedFeed } from "./db.js";
 import type { ExtractionQueue } from "./extraction.js";
-import { parseAndNormalizeFeed } from "./feed-parser.js";
+import { parseAndNormalizeFeed, parseAndNormalizeWordPressPosts } from "./feed-parser.js";
+
+const USER_AGENT = "Echovale/0.1 (+self-hosted RSS reader)";
 
 class FeedHttpError extends Error {
-  constructor(readonly status: number) {
-    super(`Feed request returned HTTP ${status}`);
+  constructor(
+    readonly status: number,
+    detail?: string,
+  ) {
+    super(detail ?? `Feed request returned HTTP ${status}`);
   }
+}
+
+function browserVerificationProvider(response: Response, source: string | null): string | null {
+  if (response.headers.get("cf-mitigated") === "challenge") return "Cloudflare";
+  if (response.headers.get("x-vercel-mitigated") === "challenge") return "Vercel";
+  if (
+    source?.includes("Imunify360 bot-protection") ||
+    (source?.includes("One moment, please") &&
+      source.includes("Please wait while your request is being verified"))
+  ) {
+    return "Imunify360";
+  }
+  return null;
+}
+
+function wordpressPostsUrl(feedUrl: string): string | null {
+  const url = new URL(feedUrl);
+  if (url.pathname.replace(/\/+$/, "") !== "/feed" && url.searchParams.get("feed") !== "rss2") {
+    return null;
+  }
+  url.pathname = "/wp-json/wp/v2/posts";
+  url.search = new URLSearchParams({
+    per_page: "20",
+    _fields: "id,guid,date_gmt,link,title,excerpt,content",
+  }).toString();
+  url.hash = "";
+  return url.toString();
 }
 
 function message(error: unknown): string {
@@ -71,11 +103,11 @@ export class FeedRefreshService {
       const headers = new Headers({
         Accept:
           "application/atom+xml,application/rss+xml,application/feed+json,application/json;q=0.9,application/xml;q=0.8,text/xml;q=0.8,*/*;q=0.5",
-        "User-Agent": "Echovale/0.1 (+self-hosted RSS reader)",
+        "User-Agent": USER_AGENT,
       });
       if (feed.etag) headers.set("If-None-Match", feed.etag);
       if (feed.lastModified) headers.set("If-Modified-Since", feed.lastModified);
-      const response = await fetch(feed.feedUrl, {
+      let response = await fetch(feed.feedUrl, {
         headers,
         redirect: "follow",
         signal: AbortSignal.timeout(this.timeoutMs),
@@ -91,9 +123,30 @@ export class FeedRefreshService {
         });
         return;
       }
-      if (!response.ok) throw new FeedHttpError(response.status);
-      const source = await response.text();
-      const parsed = parseAndNormalizeFeed(source, response.url || feed.feedUrl);
+      let source = response.ok ? await response.text() : null;
+      const verificationProvider = browserVerificationProvider(response, source);
+      let parsed: ParsedFeed | null = null;
+      if (verificationProvider || response.status === 415) {
+        const fallback = await this.fetchWordPressPosts(feed, response.url || feed.feedUrl);
+        if (fallback) {
+          response = fallback.response;
+          httpStatus = response.status;
+          parsed = fallback.parsed;
+          source = null;
+        } else if (verificationProvider) {
+          throw new FeedHttpError(
+            response.status,
+            `Feed host requires browser verification (${verificationProvider}); automated refresh cannot access this URL`,
+          );
+        }
+      }
+      if (!parsed) {
+        if (!response.ok) throw new FeedHttpError(response.status);
+        parsed = parseAndNormalizeFeed(
+          source ?? (await response.text()),
+          response.url || feed.feedUrl,
+        );
+      }
       const articleIds = this.database.markFeedSuccess(feed.id, {
         httpStatus: response.status,
         etag: response.headers.get("etag"),
@@ -110,6 +163,24 @@ export class FeedRefreshService {
         retryMinutes,
       });
     }
+  }
+
+  private async fetchWordPressPosts(
+    feed: FeedRecord,
+    feedUrl: string,
+  ): Promise<{ response: Response; parsed: ParsedFeed } | null> {
+    const url = wordpressPostsUrl(feedUrl);
+    if (!url) return null;
+    const response = await fetch(url, {
+      headers: { Accept: "application/json", "User-Agent": USER_AGENT },
+      redirect: "follow",
+      signal: AbortSignal.timeout(this.timeoutMs),
+    });
+    if (!response.ok) return null;
+    return {
+      response,
+      parsed: parseAndNormalizeWordPressPosts(await response.text(), feedUrl, feed.title),
+    };
   }
 
   async waitForIdle(): Promise<void> {

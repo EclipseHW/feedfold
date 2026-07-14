@@ -212,6 +212,112 @@ describe("feed refresh and full-text extraction", () => {
     expect(database.getFeed(broken.id)?.lastError).toContain("HTTP 503");
   });
 
+  it("uses the publisher's WordPress API when bot protection replaces its feed", async () => {
+    let wordpressRequests = 0;
+    const server = createServer((request, response) => {
+      if (request.url === "/feed") {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(
+          JSON.stringify({
+            message:
+              "Access denied by Imunify360 bot-protection. IPs used for automation should be whitelisted",
+          }),
+        );
+        return;
+      }
+      if (request.url?.startsWith("/wp-json/wp/v2/posts?")) {
+        wordpressRequests += 1;
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(
+          JSON.stringify([
+            {
+              id: 1292,
+              guid: { rendered: `http://${request.headers.host}/?p=1292` },
+              date_gmt: "2026-01-12T10:56:53",
+              link: `http://${request.headers.host}/story`,
+              title: { rendered: "Publisher &amp; post" },
+              excerpt: { rendered: "<p>Fallback summary.</p>" },
+              content: { rendered: "<p>Complete first-party post content.</p>" },
+            },
+          ]),
+        );
+        return;
+      }
+      if (request.url === "/story") {
+        response.writeHead(503).end("offline");
+        return;
+      }
+      response.writeHead(404).end();
+    });
+    const baseUrl = await listen(server);
+    const database = await temporaryDatabase();
+    const extraction = new ExtractionQueue(database, 1, 2_000);
+    const refresh = new FeedRefreshService(database, extraction, 1, 2_000);
+    cleanups.push(async () => {
+      await Promise.all([refresh.stop(), extraction.stop()]);
+      database.close();
+    });
+
+    const feed = database.createFeed({ feedUrl: `${baseUrl}/feed`, title: "Publisher" });
+    refresh.request([feed.id]);
+    await refresh.waitForIdle();
+    await extraction.waitForIdle();
+
+    expect(wordpressRequests).toBe(1);
+    expect(database.getFeed(feed.id)).toMatchObject({
+      title: "Publisher",
+      siteUrl: baseUrl,
+      lastHttpStatus: 200,
+      lastError: null,
+      totalCount: 1,
+    });
+    expect(database.listArticles({ state: "all", includeContent: true })[0]).toMatchObject({
+      title: "Publisher & post",
+      summary: "Fallback summary.",
+      contentHtml: "<p>Complete first-party post content.</p>",
+      contentSource: "feed",
+    });
+  });
+
+  it("identifies browser-verification responses instead of reporting parser errors", async () => {
+    const server = createServer((request, response) => {
+      if (request.url === "/imunify") {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end('{"message":"Access denied by Imunify360 bot-protection"}');
+        return;
+      }
+      if (request.url === "/cloudflare") {
+        response.writeHead(403, { "cf-mitigated": "challenge" }).end("challenge");
+        return;
+      }
+      if (request.url === "/vercel") {
+        response.writeHead(429, { "x-vercel-mitigated": "challenge" }).end("challenge");
+        return;
+      }
+      response.writeHead(404).end();
+    });
+    const baseUrl = await listen(server);
+    const database = await temporaryDatabase();
+    const extraction = new ExtractionQueue(database, 1, 2_000);
+    const refresh = new FeedRefreshService(database, extraction, 3, 2_000);
+    cleanups.push(async () => {
+      await Promise.all([refresh.stop(), extraction.stop()]);
+      database.close();
+    });
+
+    const feeds = ["imunify", "cloudflare", "vercel"].map((provider) =>
+      database.createFeed({ feedUrl: `${baseUrl}/${provider}`, title: provider }),
+    );
+    refresh.request(feeds.map((feed) => feed.id));
+    await refresh.waitForIdle();
+
+    expect(feeds.map((feed) => database.getFeed(feed.id)?.lastError)).toEqual([
+      "Feed host requires browser verification (Imunify360); automated refresh cannot access this URL",
+      "Feed host requires browser verification (Cloudflare); automated refresh cannot access this URL",
+      "Feed host requires browser verification (Vercel); automated refresh cannot access this URL",
+    ]);
+  });
+
   it("drains more than one extraction batch after a restart", async () => {
     const database = await temporaryDatabase();
     const extraction = new ExtractionQueue(database, 4, 1_000);
