@@ -50,6 +50,7 @@ function useMarkReadOnScroll({
   onMarkPassedRead,
   rootRef,
   useParent = false,
+  topAlignedId = null,
 }: {
   articles: Article[];
   activeId: number | null;
@@ -57,6 +58,7 @@ function useMarkReadOnScroll({
   onMarkPassedRead: (articles: Article[]) => Promise<unknown>;
   rootRef: React.RefObject<HTMLElement | null>;
   useParent?: boolean;
+  topAlignedId?: number | null;
 }) {
   const itemRefs = useRef(new Map<number, HTMLElement>());
   const articlesRef = useRef(articles);
@@ -73,8 +75,30 @@ function useMarkReadOnScroll({
 
   useEffect(() => {
     const activeItem = activeId === null ? null : itemRefs.current.get(activeId);
-    activeItem?.scrollIntoView({ block: "nearest" });
-  }, [activeId]);
+    if (!activeItem) return;
+    if (!useParent) {
+      activeItem.scrollIntoView({ behavior: "auto", block: "nearest" });
+      return;
+    }
+    const root = rootRef.current;
+    const container = root?.parentElement;
+    if (!container) return;
+    const itemRect = activeItem.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+
+    if (activeId === topAlignedId) {
+      container.scrollTop += itemRect.top - containerRect.top;
+      return;
+    }
+
+    const isVisible = itemRect.bottom > containerRect.top && itemRect.top < containerRect.bottom;
+    if (isVisible) return;
+    if (itemRect.top >= containerRect.bottom && itemRect.height <= containerRect.height) {
+      container.scrollTop += itemRect.bottom - containerRect.bottom;
+      return;
+    }
+    container.scrollTop += itemRect.top - containerRect.top;
+  }, [activeId, rootRef, topAlignedId, useParent]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -703,6 +727,7 @@ function ArticleBody({
 export function ExpandedStream({
   articles,
   activeId,
+  topAlignedId,
   markReadOnScroll,
   hasMore,
   loadingMore,
@@ -716,6 +741,7 @@ export function ExpandedStream({
 }: {
   articles: Article[];
   activeId: number | null;
+  topAlignedId: number | null;
   markReadOnScroll: boolean;
   hasMore: boolean;
   loadingMore: boolean;
@@ -735,6 +761,7 @@ export function ExpandedStream({
     onMarkPassedRead,
     rootRef: streamRef,
     useParent: true,
+    topAlignedId,
   });
 
   return (

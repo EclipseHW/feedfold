@@ -133,6 +133,7 @@ export function App() {
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
+  const [expandedKeyboardTargetId, setExpandedKeyboardTargetId] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const toastTimer = useRef<number | null>(null);
   const sequence = useRef<{ startedAt: number } | null>(null);
@@ -176,6 +177,7 @@ export function App() {
       );
       fullContentLoadingIds.current.clear();
       setReaderOpen(false);
+      setExpandedKeyboardTargetId(null);
       setActiveArticleId((current) => {
         if (current !== null && page.articles.some((article) => article.id === current))
           return current;
@@ -394,7 +396,8 @@ export function App() {
   const moveArticle = useCallback(
     (direction: 1 | -1) => {
       if (articles.length === 0) return;
-      if (!readerOpen && activeArticle) {
+      const openReader = readingMode === "magazine";
+      if (openReader && !readerOpen && activeArticle) {
         openArticle(activeArticle, true);
         return;
       }
@@ -406,7 +409,10 @@ export function App() {
         !articlesLoadingMore
       ) {
         void loadOlderArticles().then((appended) => {
-          if (appended[0]) openArticle(appended[0], true);
+          const next = appended[0];
+          if (!next) return;
+          if (!openReader) setExpandedKeyboardTargetId(next.id);
+          openArticle(next, openReader);
         });
         return;
       }
@@ -415,7 +421,10 @@ export function App() {
         Math.max(0, (currentIndex < 0 ? 0 : currentIndex) + direction),
       );
       const next = articles[nextIndex];
-      if (next) openArticle(next, true);
+      if (next) {
+        if (!openReader && next.id !== activeArticleId) setExpandedKeyboardTargetId(next.id);
+        openArticle(next, openReader);
+      }
     },
     [
       activeArticle,
@@ -425,6 +434,7 @@ export function App() {
       loadOlderArticles,
       nextCursor,
       openArticle,
+      readingMode,
       readerOpen,
     ],
   );
@@ -685,10 +695,12 @@ export function App() {
           }),
         "1": () => {
           setReaderOpen(false);
+          setExpandedKeyboardTargetId(null);
           setReadingMode("magazine");
         },
         "2": () => {
           setReaderOpen(false);
+          setExpandedKeyboardTargetId(null);
           setReadingMode("expanded");
         },
         "?": () => setShortcutHelpOpen(true),
@@ -772,6 +784,7 @@ export function App() {
               }}
               onModeChange={(mode) => {
                 setReaderOpen(false);
+                setExpandedKeyboardTargetId(null);
                 setReadingMode(mode);
               }}
               onRefresh={() => void refresh()}
@@ -844,11 +857,15 @@ export function App() {
                 <ExpandedStream
                   articles={articles}
                   activeId={activeArticleId}
+                  topAlignedId={expandedKeyboardTargetId}
                   markReadOnScroll={bootstrap.settings.markReadOnScroll}
                   hasMore={nextCursor !== null}
                   loadingMore={articlesLoadingMore}
                   onLoadMore={() => void loadOlderArticles()}
-                  onActivate={(article) => setActiveArticleId(article.id)}
+                  onActivate={(article) => {
+                    setExpandedKeyboardTargetId(null);
+                    setActiveArticleId(article.id);
+                  }}
                   onMarkPassedRead={markArticleBatchRead}
                   onMarkUnread={(article) =>
                     article.isRead && void changeArticleState(article, { isRead: false })
