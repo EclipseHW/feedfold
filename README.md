@@ -2,7 +2,7 @@
 
 Echovale is a dark-first, keyboard-first RSS reader for a private household. It keeps each account's daily reading loop in one place: OPML subscriptions, folders, filtering rules, full-text articles, explicit read and starred state, and visible feed health.
 
-It deliberately has no social, discovery, recommendation, registration, or public account-management features.
+It deliberately has no social, discovery, recommendation, or public account-management features.
 
 ## Features
 
@@ -15,7 +15,7 @@ It deliberately has no social, discovery, recommendation, registration, or publi
 - Manual refresh and server-side background polling.
 - Per-feed last attempt, last success, HTTP status, and error details.
 - Persistent article font sizing, visible keyboard focus, and reduced-motion support.
-- Password login with separate subscriptions, rules, settings, and reading state per account.
+- In-app account registration and password login, with separate subscriptions, rules, settings, and reading state per account.
 
 ## Deploy with Docker Compose
 
@@ -26,25 +26,15 @@ Requirements:
 - Docker Engine with Docker Compose v2.
 - A Tailscale-connected host if Echovale will be used from another device.
 
-Create the local configuration and set the household accounts before the first start:
-
-```sh
-cp .env.example .env
-```
-
-`ECHOVALE_ACCOUNTS` is a JSON array. Keep the first account stable: when an existing single-account database is upgraded, its current feeds, folders, rules, settings, and article state belong to that first account. For example:
-
-```dotenv
-ECHOVALE_ACCOUNTS=[{"username":"alex","password":"use-a-long-password"},{"username":"sam","password":"use-another-long-password"}]
-```
-
-Passwords are hashed before they are stored in SQLite. Changing a configured password invalidates that account's existing sessions. Removing an account from the array disables login without deleting its data; adding the same username again restores access.
-
 Build and start Echovale:
 
 ```sh
 docker compose up -d --build
 ```
+
+Open Echovale and choose **Create an account** on the sign-in screen. Registration signs the new account in immediately, and passwords are hashed before they are stored in SQLite. To add another household member, sign out and register another account.
+
+When an existing single-account database is upgraded, its feeds, folders, rules, settings, and article state belong to the first account registered after the upgrade. Later accounts start with an empty reading queue.
 
 Check container and database readiness:
 
@@ -74,7 +64,7 @@ Never add `--volumes` to that command unless the SQLite database should be perma
 
 ## Private HTTPS over Tailscale
 
-Echovale has password authentication, but the Compose port remains bound to host loopback by default rather than the LAN or public internet. Keep access private and let tailnet access rules provide the outer network boundary.
+Echovale has password authentication, but registration remains available to anyone who can reach the sign-in screen. The Compose port remains bound to host loopback by default rather than the LAN or public internet. Keep access private and let tailnet access rules provide the outer network boundary.
 
 On the Docker host, publish the loopback service through Tailscale Serve:
 
@@ -109,7 +99,6 @@ Compose accepts these values from a project-level `.env` file or the shell:
 | `POLL_INTERVAL_MINUTES` | `20` | Initial background polling interval for a new database. |
 | `FEED_FETCH_TIMEOUT_MS` | `15000` | Feed request timeout in milliseconds. |
 | `ARTICLE_FETCH_TIMEOUT_MS` | `20000` | Full-text article request timeout in milliseconds. |
-| `ECHOVALE_ACCOUNTS` | Required | JSON array of login credentials. Usernames are case-insensitive; the first account owns data migrated from the former single-account schema. |
 
 The container fixes its internal runtime settings to `HOST=0.0.0.0`, `PORT=3000`, and `DATABASE_PATH=/data/echovale.db`. For a non-container run, all server settings are listed in `.env.example`.
 

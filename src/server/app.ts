@@ -4,7 +4,7 @@ import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { ZodError, z } from "zod";
 import type { ArticleQuery } from "../shared/types.js";
-import { type AuthService, sessionToken } from "./auth.js";
+import { type AuthService, type LoginSession, sessionToken } from "./auth.js";
 import type { AppDatabase } from "./db.js";
 import type { ExtractionQueue } from "./extraction.js";
 import { exportOpml, importOpml } from "./opml.js";
@@ -21,6 +21,10 @@ export interface AppServices {
 
 const idParams = z.object({ id: z.coerce.number().int().positive() });
 const nullableId = z.number().int().positive().nullable();
+const credentials = z.object({
+  username: z.string().trim().min(1).max(80),
+  password: z.string().min(1).max(1_024),
+});
 const httpUrl = z
   .string()
   .trim()
@@ -40,6 +44,17 @@ function missing(reply: FastifyReply, resource: string): FastifyReply {
 
 function secureRequest(request: FastifyRequest): boolean {
   return request.protocol === "https";
+}
+
+function sendSession(
+  reply: FastifyReply,
+  request: FastifyRequest,
+  authService: AuthService,
+  session: LoginSession,
+): FastifyReply {
+  return reply
+    .header("Set-Cookie", authService.sessionCookie(session.token, secureRequest(request)))
+    .send({ user: session.user });
 }
 
 export async function createApp(services: AppServices): Promise<FastifyInstance> {
@@ -94,29 +109,27 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     if (!request.url.startsWith("/api/")) return;
     reply.header("Cache-Control", "no-store");
     const path = request.url.split("?", 1)[0];
-    if (path === "/api/auth/login" || path === "/api/auth/session") return;
+    if (path === "/api/auth/login" || path === "/api/auth/register" || path === "/api/auth/session")
+      return;
     const user = services.authService.userForToken(sessionToken(request.headers.cookie));
     if (!user) return reply.code(401).send({ error: "Sign in required" });
     requestUsers.set(request, user);
   });
 
   app.post("/api/auth/login", async (request, reply) => {
-    const body = z
-      .object({
-        username: z.string().trim().min(1).max(80),
-        password: z.string().min(1).max(1_024),
-      })
-      .parse(request.body);
+    const body = credentials.parse(request.body);
     const session = services.authService.login(body.username, body.password);
     if (!session) {
       return reply.code(401).send({ error: "Username or password is incorrect" });
     }
-    return reply
-      .header(
-        "Set-Cookie",
-        services.authService.sessionCookie(session.token, secureRequest(request)),
-      )
-      .send({ user: session.user });
+    return sendSession(reply, request, services.authService, session);
+  });
+
+  app.post("/api/auth/register", async (request, reply) => {
+    const body = credentials.parse(request.body);
+    const session = services.authService.register(body.username, body.password);
+    if (!session) return reply.code(409).send({ error: "That username is already taken" });
+    return sendSession(reply.code(201), request, services.authService, session);
   });
 
   app.get("/api/auth/session", async (request, reply) => {

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Sqlite from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
+import { AuthService } from "../../src/server/auth.js";
 import { AppDatabase } from "../../src/server/db.js";
 
 const directories: string[] = [];
@@ -131,6 +132,33 @@ describe("database migrations", () => {
 
     const database = new AppDatabase(path);
     try {
+      const authService = new AuthService(database);
+      const registration = authService.register("reader", "reader-password");
+      expect(registration?.user).toEqual({ id: 1, username: "reader" });
+      expect(authService.login("reader", "wrong-password")).toBeNull();
+      expect(authService.login("READER", "reader-password")?.user).toEqual({
+        id: 1,
+        username: "reader",
+      });
+      expect(database.listFeeds(1)).toMatchObject([{ title: "Migration feed" }]);
+      expect(database.listArticles(1, { state: "all" })).toHaveLength(3);
+      const storedUser = database.sqlite
+        .prepare("SELECT username, password_hash AS passwordHash FROM users WHERE id = 1")
+        .get() as { username: string; passwordHash: string };
+      expect(storedUser).toMatchObject({ username: "reader" });
+      expect(storedUser.passwordHash).toMatch(/^scrypt\$/);
+      expect(storedUser.passwordHash).not.toContain("reader-password");
+
+      const partner = authService.register("partner", "partner-password");
+      expect(partner?.user).toEqual({ id: 2, username: "partner" });
+      expect(database.listFeeds(2)).toEqual([]);
+      expect(database.getSettings(2)).toEqual({
+        pollIntervalMinutes: 20,
+        singleKeyShortcuts: true,
+        markReadOnScroll: true,
+      });
+      expect(authService.register("READER", "another-password")).toBeNull();
+
       expect(database.getSettings(1)).toMatchObject({ markReadOnScroll: true });
       expect(
         database.sqlite
@@ -175,6 +203,11 @@ describe("database migrations", () => {
 
     const reopened = new AppDatabase(path);
     try {
+      const authService = new AuthService(reopened);
+      expect(authService.login("reader", "reader-password")?.user).toEqual({
+        id: 1,
+        username: "reader",
+      });
       expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(3);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
