@@ -29,6 +29,9 @@
   --z-scrim: 20;
   --z-dialog: 50;
   --z-toast: 60;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
@@ -217,6 +220,11 @@ kbd {
   border-radius: var(--radius-sm);
   font-weight: 600;
   text-decoration: none;
+  transition:
+    transform 140ms var(--ease-out),
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
 }
 
 .primary-button {
@@ -224,11 +232,6 @@ kbd {
   border: 1px solid var(--accent);
   background: var(--accent);
   color: var(--on-accent);
-}
-
-.primary-button:hover:not(:disabled) {
-  border-color: var(--accent-strong);
-  background: var(--accent-strong);
 }
 
 .secondary-button,
@@ -239,13 +242,6 @@ kbd {
   color: var(--text-secondary);
 }
 
-.secondary-button:hover:not(:disabled),
-.quiet-button:hover:not(:disabled) {
-  border-color: var(--border-strong);
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
 .icon-button {
   min-width: 36px;
   padding: 6px;
@@ -254,14 +250,38 @@ kbd {
   color: var(--text-secondary);
 }
 
-.icon-button:hover:not(:disabled) {
-  border-color: var(--border);
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
 .icon-button kbd {
   margin-left: 1px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .primary-button:hover:not(:disabled) {
+    border-color: var(--accent-strong);
+    background: var(--accent-strong);
+  }
+
+  .secondary-button:hover:not(:disabled),
+  .quiet-button:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .icon-button:hover:not(:disabled) {
+    border-color: var(--border);
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .primary-button:active:not(:disabled, :focus-visible),
+  .secondary-button:active:not(:disabled, :focus-visible),
+  .quiet-button:active:not(:disabled, :focus-visible) {
+    transform: scale(0.97);
+  }
+
+  .icon-button:active:not(:disabled, :focus-visible) {
+    transform: scale(0.95);
+  }
 }
 
 .menu-button,
@@ -372,11 +392,6 @@ kbd {
   text-align: left;
 }
 
-.nav-item:hover {
-  background: var(--surface-hover);
-  color: var(--text);
-}
-
 .nav-item[aria-current="page"] {
   border-color: var(--border);
   background: var(--surface-active);
@@ -394,10 +409,9 @@ kbd {
 .nav-item kbd {
   margin-left: auto;
   opacity: 0;
-  transition: opacity 150ms ease-out;
+  transition: opacity 150ms var(--ease-out);
 }
 
-.nav-item:hover kbd,
 .nav-item:focus-visible kbd {
   opacity: 1;
 }
@@ -435,11 +449,7 @@ kbd {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
-}
-
-.sidebar-section-heading button:hover {
-  background: var(--surface-hover);
-  color: var(--text);
+  transition: transform 140ms var(--ease-out);
 }
 
 .tree-row {
@@ -457,6 +467,7 @@ kbd {
   border: 0;
   background: transparent;
   color: var(--muted);
+  transition: transform 140ms var(--ease-out);
 }
 
 .tree-toggle:disabled {
@@ -516,6 +527,27 @@ kbd {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-secondary);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .nav-item:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .nav-item:hover kbd {
+    opacity: 1;
+  }
+
+  .sidebar-section-heading button:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .tree-toggle:active:not(:disabled, :focus-visible),
+  .sidebar-section-heading button:active:not(:focus-visible) {
+    transform: scale(0.9);
+  }
 }
 
 .sidebar-footer {
@@ -628,12 +660,21 @@ kbd {
   background: transparent;
   color: var(--accent);
   font-weight: 650;
+  transition:
+    transform 140ms var(--ease-out),
+    color 140ms ease;
 }
 
-.auth-switch button:hover:not(:disabled) {
-  color: var(--accent-strong);
-  text-decoration: underline;
-  text-underline-offset: 2px;
+@media (hover: hover) and (pointer: fine) {
+  .auth-switch button:hover:not(:disabled) {
+    color: var(--accent-strong);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+
+  .auth-switch button:active:not(:disabled, :focus-visible) {
+    transform: scale(0.97);
+  }
 }
 
 .session-loading {
@@ -705,11 +746,15 @@ kbd {
   border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--muted);
+  outline: 1px solid transparent;
+  transition:
+    border-color 140ms ease,
+    outline-color 140ms ease;
 }
 
 .search-form:focus-within {
   border-color: var(--focus);
-  outline: 1px solid var(--focus);
+  outline-color: var(--focus);
 }
 
 .search-form input {
@@ -747,6 +792,13 @@ kbd {
   color: var(--text-secondary);
   font-size: 12px;
   font-weight: 650;
+}
+
+.search-form button,
+.segmented-control button,
+.view-switcher button,
+.theme-options button {
+  transition: transform 140ms var(--ease-out);
 }
 
 .toolbar-actions {
@@ -797,17 +849,26 @@ kbd {
   font-weight: 600;
 }
 
-.segmented-control button:hover,
-.view-switcher button:hover,
-.theme-options button:hover {
-  color: var(--text);
-}
-
 .segmented-control button[aria-pressed="true"],
 .view-switcher button[aria-pressed="true"],
 .theme-options button[aria-pressed="true"] {
   background: var(--surface-active);
   color: var(--text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .segmented-control button:hover,
+  .view-switcher button:hover,
+  .theme-options button:hover {
+    color: var(--text);
+  }
+
+  .search-form button:active:not(:focus-visible),
+  .segmented-control button:active:not(:focus-visible),
+  .view-switcher button:active:not(:focus-visible),
+  .theme-options button:active:not(:focus-visible) {
+    transform: scale(0.96);
+  }
 }
 
 /* Reading surfaces */
@@ -900,11 +961,6 @@ kbd {
   border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: var(--surface);
-}
-
-.article-list-item:hover {
-  background: var(--surface-hover);
-  border-color: var(--border);
 }
 
 .article-list-item.is-active {
@@ -1051,12 +1107,36 @@ kbd {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
+  transition: transform 140ms var(--ease-out);
 }
 
-.list-read-button:hover:not(:disabled),
-.list-star-button:hover:not(:disabled) {
-  background: var(--surface-raised);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .article-list-item:hover {
+    background: var(--surface-hover);
+    border-color: var(--border);
+  }
+
+  .article-card-state-actions {
+    opacity: 0;
+  }
+
+  .article-list-item:hover .article-card-state-actions,
+  .article-list-item:focus-within .article-card-state-actions,
+  .article-list-item.is-active .article-card-state-actions,
+  .article-card-state-actions:has(.is-starred) {
+    opacity: 1;
+  }
+
+  .list-read-button:hover:not(:disabled),
+  .list-star-button:hover:not(:disabled) {
+    background: var(--surface-raised);
+    color: var(--text);
+  }
+
+  .list-read-button:active:not(:disabled, :focus-visible),
+  .list-star-button:active:not(:disabled, :focus-visible) {
+    transform: scale(0.9);
+  }
 }
 
 .reader-pane {
@@ -1099,18 +1179,30 @@ kbd {
   background: transparent;
   color: var(--text-secondary);
   font-size: 12px;
+  transition: transform 140ms var(--ease-out);
 }
 
-.article-actions button:hover:not(:disabled) {
-  border-color: var(--border);
-  background: var(--surface-hover);
-  color: var(--text);
+@media (hover: hover) and (pointer: fine) {
+  .article-actions button:hover:not(:disabled) {
+    border-color: var(--border);
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .article-actions button:active:not(:disabled, :focus-visible) {
+    transform: scale(0.94);
+  }
 }
 
 .list-star-button.is-starred,
-.article-actions button.is-starred,
-.article-actions button.is-starred:hover:not(:disabled) {
+.article-actions button.is-starred {
   color: var(--warning);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .article-actions button.is-starred:hover:not(:disabled) {
+    color: var(--warning);
+  }
 }
 
 .article-actions .action-divider {
@@ -1174,10 +1266,12 @@ kbd {
   text-decoration: none;
 }
 
-.article-header h2 a:hover {
-  color: var(--accent);
-  text-decoration: underline;
-  text-decoration-thickness: 0.07em;
+@media (hover: hover) and (pointer: fine) {
+  .article-header h2 a:hover {
+    color: var(--accent);
+    text-decoration: underline;
+    text-decoration-thickness: 0.07em;
+  }
 }
 
 .article-source-status {
@@ -1404,7 +1498,7 @@ kbd {
 .skeleton-toolbar {
   border-radius: 4px;
   background: var(--surface-hover);
-  animation: skeleton-pulse 1.35s ease-in-out infinite alternate;
+  animation: skeleton-pulse 1.35s var(--ease-in-out) infinite alternate;
 }
 
 .skeleton-line {
@@ -1475,6 +1569,24 @@ kbd {
   color: var(--text);
   box-shadow: 0 4px 8px oklch(0 0 0 / 0.28);
   font-weight: 600;
+  opacity: 0;
+  transform: translateY(6px) scale(0.98);
+  transition:
+    opacity 140ms var(--ease-out),
+    transform 140ms var(--ease-out);
+}
+
+.toast > span[data-state="open"] {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition-duration: 180ms;
+}
+
+@starting-style {
+  .toast > span[data-state="open"] {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
 }
 
 .toast svg {
@@ -1605,10 +1717,6 @@ kbd {
 .data-table tbody tr:last-child td {
   border-bottom: 0;
 }
-.data-table tbody tr:hover:not(.editing-row) {
-  background: var(--surface-hover);
-}
-
 .feed-cell {
   display: flex;
   min-width: 210px;
@@ -1692,16 +1800,27 @@ kbd {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
+  transition: transform 140ms var(--ease-out);
 }
 
-.row-actions button:hover:not(:disabled) {
-  border-color: var(--border);
-  background: var(--surface-raised);
-  color: var(--text);
-}
+@media (hover: hover) and (pointer: fine) {
+  .data-table tbody tr:hover:not(.editing-row) {
+    background: var(--surface-hover);
+  }
 
-.row-actions .danger-action:hover:not(:disabled) {
-  color: var(--danger);
+  .row-actions button:hover:not(:disabled) {
+    border-color: var(--border);
+    background: var(--surface-raised);
+    color: var(--text);
+  }
+
+  .row-actions .danger-action:hover:not(:disabled) {
+    color: var(--danger);
+  }
+
+  .row-actions button:active:not(:disabled, :focus-visible) {
+    transform: scale(0.9);
+  }
 }
 
 .section-empty,
@@ -1970,8 +2089,8 @@ kbd {
   border-radius: 50%;
   background: var(--muted);
   transition:
-    transform 160ms ease-out,
-    background 160ms ease-out;
+    transform 160ms var(--ease-out),
+    background-color 160ms ease;
 }
 
 .switch.is-on {
@@ -2056,10 +2175,18 @@ kbd {
   border: 0;
   background: transparent;
   color: var(--text-secondary);
+  transition: transform 140ms var(--ease-out);
 }
-.font-stepper button:hover:not(:disabled) {
-  background: var(--surface-hover);
-  color: var(--text);
+
+@media (hover: hover) and (pointer: fine) {
+  .font-stepper button:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .font-stepper button:active:not(:disabled, :focus-visible) {
+    transform: scale(0.92);
+  }
 }
 .font-stepper output {
   min-width: 54px;
@@ -2127,10 +2254,42 @@ kbd {
   background: var(--surface-raised);
   color: var(--text);
   box-shadow: 0 8px 8px oklch(0 0 0 / 0.34);
+  opacity: 0;
+  transform: scale(0.98);
+  transition:
+    opacity 180ms var(--ease-out),
+    transform 180ms var(--ease-out),
+    display 180ms allow-discrete,
+    overlay 180ms allow-discrete;
+}
+
+.shortcut-dialog[open] {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .shortcut-dialog::backdrop {
   background: oklch(0 0 0 / 0.7);
+  opacity: 0;
+  transition:
+    opacity 180ms var(--ease-out),
+    display 180ms allow-discrete,
+    overlay 180ms allow-discrete;
+}
+
+.shortcut-dialog[open]::backdrop {
+  opacity: 1;
+}
+
+@starting-style {
+  .shortcut-dialog[open] {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  .shortcut-dialog[open]::backdrop {
+    opacity: 0;
+  }
 }
 .dialog-heading {
   display: flex;
@@ -2226,10 +2385,12 @@ kbd {
     inset: 0 auto 0 0;
     width: min(300px, calc(100vw - 42px));
     transform: translateX(-102%);
-    transition: transform 180ms ease-out;
+    transition: transform 170ms var(--ease-out);
   }
   .sidebar.is-open {
     transform: translateX(0);
+    transition-duration: 220ms;
+    transition-timing-function: var(--ease-drawer);
   }
   .close-nav,
   .menu-button {
@@ -2244,12 +2405,13 @@ kbd {
     background: oklch(0 0 0 / 0.58);
     opacity: 0;
     transition:
-      opacity 180ms ease-out,
-      visibility 180ms;
+      opacity 150ms var(--ease-out),
+      visibility 150ms;
   }
   .nav-scrim.is-open {
     visibility: visible;
     opacity: 1;
+    transition-duration: 200ms;
   }
   .article-document {
     padding-inline: 38px;
@@ -2530,8 +2692,17 @@ kbd {
   .nav-item kbd,
   .switch span,
   .sidebar,
-  .nav-scrim {
+  .nav-scrim,
+  .toast > span,
+  .shortcut-dialog,
+  .shortcut-dialog::backdrop {
     transition: none;
+  }
+
+  .toast > span,
+  .shortcut-dialog,
+  .shortcut-dialog[open] {
+    transform: none;
   }
 }
 

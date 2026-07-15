@@ -449,6 +449,7 @@ export function ArticleList({
                 aria-label={
                   article.isRead ? `Mark ${article.title} unread` : `Mark ${article.title} read`
                 }
+                title={article.isRead ? "Mark unread" : "Mark read"}
                 onClick={() => onToggleRead(article)}
               >
                 {article.isRead ? (
@@ -463,6 +464,7 @@ export function ArticleList({
                 aria-label={
                   article.isStarred ? `Remove star from ${article.title}` : `Star ${article.title}`
                 }
+                title={article.isStarred ? "Remove star" : "Star"}
                 aria-pressed={article.isStarred}
                 onClick={() => onToggleStar(article)}
               >
