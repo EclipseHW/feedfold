@@ -29,6 +29,7 @@ type Theme = "dark" | "light";
 const ARTICLE_FONT_MIN = 15;
 const ARTICLE_FONT_MAX = 23;
 const ARTICLE_FONT_DEFAULT = 18;
+const TOAST_EXIT_MS = 140;
 
 function storedValue<T extends string>(key: string, fallback: T): T {
   const value = window.localStorage.getItem(key);
@@ -193,8 +194,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const [navOpen, setNavOpen] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
   const [expandedKeyboardTargetId, setExpandedKeyboardTargetId] = useState<number | null>(null);
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null);
   const toastTimer = useRef<number | null>(null);
+  const toastExitTimer = useRef<number | null>(null);
   const sequence = useRef<{ startedAt: number } | null>(null);
   const fullContentLoadedIds = useRef(new Set<number>());
   const fullContentLoadingIds = useRef(new Set<number>());
@@ -202,10 +204,22 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const bootstrapReady = bootstrap !== null;
 
   const showToast = useCallback((message: string) => {
-    setToast(message);
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    toastTimer.current = window.setTimeout(() => setToast(null), 2800);
+    if (toastExitTimer.current) window.clearTimeout(toastExitTimer.current);
+    setToast({ message, visible: true });
+    toastTimer.current = window.setTimeout(() => {
+      setToast((current) => (current ? { ...current, visible: false } : current));
+      toastExitTimer.current = window.setTimeout(() => setToast(null), TOAST_EXIT_MS);
+    }, 2800);
   }, []);
+
+  useEffect(
+    () => () => {
+      if (toastTimer.current) window.clearTimeout(toastTimer.current);
+      if (toastExitTimer.current) window.clearTimeout(toastExitTimer.current);
+    },
+    [],
+  );
 
   const loadBootstrap = useCallback(async () => {
     setBootstrapError(null);
@@ -993,9 +1007,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       />
       <div className="toast" role="status" aria-live="polite" aria-atomic="true">
         {toast ? (
-          <span>
+          <span data-state={toast.visible ? "open" : "closed"}>
             <Check aria-hidden="true" size={16} />
-            {toast}
+            {toast.message}
           </span>
         ) : null}
       </div>

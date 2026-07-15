@@ -25,7 +25,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import type {
   ArticleState,
   BootstrapData,
@@ -36,6 +36,25 @@ import type {
 } from "../shared/types";
 
 export type AppView = "reader" | "feeds" | "rules" | "settings";
+
+function selectedFolderPath(
+  folders: FolderType[],
+  feeds: Feed[],
+  selectedFeedId: number | null,
+  selectedFolderId: number | null,
+): Set<number> {
+  const parentIds = new Map(folders.map((folder) => [folder.id, folder.parentId]));
+  let folderId =
+    selectedFolderId ?? feeds.find((feed) => feed.id === selectedFeedId)?.folderId ?? null;
+  const path = new Set<number>();
+
+  while (folderId !== null) {
+    path.add(folderId);
+    folderId = parentIds.get(folderId) ?? null;
+  }
+
+  return path;
+}
 
 function Kbd({ children }: { children: ReactNode }) {
   return <kbd>{children}</kbd>;
@@ -108,6 +127,12 @@ export function Sidebar({
   const uncategorized = bootstrap.feeds.filter((feed) => feed.folderId === null);
   const hasFeedErrors = bootstrap.feeds.some((feed) => feed.lastError);
   const refreshing = bootstrap.feeds.some((feed) => feed.refreshing);
+  const selectedFolderPathIds = selectedFolderPath(
+    bootstrap.folders,
+    bootstrap.feeds,
+    selectedFeedId,
+    selectedFolderId,
+  );
 
   return (
     <aside className={`sidebar${open ? " is-open" : ""}`} aria-label="Primary navigation">
@@ -227,6 +252,7 @@ export function Sidebar({
                 feeds={bootstrap.feeds}
                 selectedFeedId={selectedFeedId}
                 selectedFolderId={selectedFolderId}
+                selectedFolderPathIds={selectedFolderPathIds}
                 currentView={currentView}
                 onSelectScope={onSelectScope}
               />
@@ -304,6 +330,7 @@ function SidebarFolder({
   feeds,
   selectedFeedId,
   selectedFolderId,
+  selectedFolderPathIds,
   currentView,
   onSelectScope,
 }: {
@@ -312,15 +339,27 @@ function SidebarFolder({
   feeds: Feed[];
   selectedFeedId: number | null;
   selectedFolderId: number | null;
+  selectedFolderPathIds: Set<number>;
   currentView: AppView;
   onSelectScope: (feedId: number | null, folderId: number | null) => void;
 }) {
-  const [expanded, setExpanded] = useState(true);
+  const revealsSelection = selectedFolderPathIds.has(folder.id);
+  const [expanded, setExpanded] = useState(revealsSelection);
   const childFolders = folders
     .filter((candidate) => candidate.parentId === folder.id)
     .sort((a, b) => a.position - b.position);
   const childFeeds = feeds.filter((feed) => feed.folderId === folder.id);
   const hasChildren = childFolders.length > 0 || childFeeds.length > 0;
+  const selectedScope =
+    selectedFeedId !== null
+      ? `feed:${selectedFeedId}`
+      : selectedFolderId !== null
+        ? `folder:${selectedFolderId}`
+        : null;
+
+  useEffect(() => {
+    if (revealsSelection && selectedScope) setExpanded(true);
+  }, [revealsSelection, selectedScope]);
 
   return (
     <li>
@@ -364,6 +403,7 @@ function SidebarFolder({
               feeds={feeds}
               selectedFeedId={selectedFeedId}
               selectedFolderId={selectedFolderId}
+              selectedFolderPathIds={selectedFolderPathIds}
               currentView={currentView}
               onSelectScope={onSelectScope}
             />
