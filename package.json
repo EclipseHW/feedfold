@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "A quiet, keyboard-first RSS reader for one self-hoster.",
+  "description": "A quiet, keyboard-first RSS reader for a private household.",
   "engines": {
     "node": ">=24.18.0 <25"
   },

@@ -113,13 +113,12 @@ export class FeedRefreshService {
         signal: AbortSignal.timeout(this.timeoutMs),
       });
       httpStatus = response.status;
-      const settings = this.database.getSettings();
       if (response.status === 304) {
         this.database.markFeedSuccess(feed.id, {
           httpStatus: response.status,
           etag: response.headers.get("etag"),
           lastModified: response.headers.get("last-modified"),
-          pollIntervalMinutes: settings.pollIntervalMinutes,
+          pollIntervalMinutes: feed.pollIntervalMinutes,
         });
         return;
       }
@@ -151,16 +150,15 @@ export class FeedRefreshService {
         httpStatus: response.status,
         etag: response.headers.get("etag"),
         lastModified: response.headers.get("last-modified"),
-        pollIntervalMinutes: settings.pollIntervalMinutes,
+        pollIntervalMinutes: feed.pollIntervalMinutes,
         parsed,
       });
       this.extractionQueue.enqueue(articleIds);
     } catch (error) {
-      const retryMinutes = this.database.getSettings().pollIntervalMinutes;
       this.database.markFeedFailure(feed.id, {
         httpStatus: error instanceof FeedHttpError ? error.status : httpStatus,
         error: message(error),
-        retryMinutes,
+        retryMinutes: feed.pollIntervalMinutes,
       });
     }
   }
@@ -197,7 +195,7 @@ export class FeedRefreshService {
       this.database.markFeedFailure(feed.id, {
         httpStatus: null,
         error: "Refresh stopped during server shutdown",
-        retryMinutes: this.database.getSettings().pollIntervalMinutes,
+        retryMinutes: feed.pollIntervalMinutes,
       });
     }
     await this.waitForIdle();

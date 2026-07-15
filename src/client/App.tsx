@@ -7,8 +7,10 @@ import type {
   Folder as FolderType,
   ReadingMode,
   Rule,
+  SessionUser,
 } from "../shared/types";
-import { api, errorMessage } from "./api";
+import { AUTH_REQUIRED_EVENT, api, errorMessage } from "./api";
+import { LoginPage, SessionLoading } from "./auth";
 import { FeedsPage, RulesPage, SettingsPage, ShortcutHelp } from "./management";
 import { type AppView, ReaderToolbar, Sidebar } from "./navigation";
 import {
@@ -38,6 +40,10 @@ function storedNumber(key: string, fallback: number): number {
   if (stored === null) return fallback;
   const value = Number(stored);
   return Number.isFinite(value) ? value : fallback;
+}
+
+function accountStorageKey(userId: number, setting: string): string {
+  return `echovale-account-${userId}-${setting}`;
 }
 
 function isEditable(target: EventTarget | null): boolean {
@@ -103,6 +109,54 @@ function updateBootstrapCounts(
 }
 
 export function App() {
+  const [checkingSession, setCheckingSession] = useState(true);
+  const [user, setUser] = useState<SessionUser | null>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = "dark";
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    void api
+      .session()
+      .then((sessionUser) => {
+        if (active) setUser(sessionUser);
+      })
+      .catch(() => {
+        if (active) setUser(null);
+      })
+      .finally(() => {
+        if (active) setCheckingSession(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const requireAuthentication = () => {
+      setUser(null);
+      setCheckingSession(false);
+    };
+    window.addEventListener(AUTH_REQUIRED_EVENT, requireAuthentication);
+    return () => window.removeEventListener(AUTH_REQUIRED_EVENT, requireAuthentication);
+  }, []);
+
+  const logout = useCallback(async () => {
+    try {
+      await api.logout();
+    } finally {
+      setUser(null);
+    }
+  }, []);
+
+  if (checkingSession) return <SessionLoading />;
+  if (!user) return <LoginPage onAuthenticated={setUser} />;
+  return <ReaderApp key={user.id} user={user} onLogout={logout} />;
+}
+
+function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Promise<void> }) {
   const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
@@ -117,13 +171,18 @@ export function App() {
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [readingMode, setReadingMode] = useState<ReadingMode>(() =>
-    storedValue<ReadingMode>("echovale-reading-mode", "magazine"),
+    storedValue<ReadingMode>(accountStorageKey(user.id, "reading-mode"), "magazine"),
   );
-  const [theme, setTheme] = useState<Theme>(() => storedValue<Theme>("echovale-theme", "dark"));
+  const [theme, setTheme] = useState<Theme>(() =>
+    storedValue<Theme>(accountStorageKey(user.id, "theme"), "dark"),
+  );
   const [articleFontSize, setArticleFontSize] = useState(() =>
     Math.min(
       ARTICLE_FONT_MAX,
-      Math.max(ARTICLE_FONT_MIN, storedNumber("echovale-article-font-size", ARTICLE_FONT_DEFAULT)),
+      Math.max(
+        ARTICLE_FONT_MIN,
+        storedNumber(accountStorageKey(user.id, "article-font-size"), ARTICLE_FONT_DEFAULT),
+      ),
     ),
   );
   const [view, setView] = useState<AppView>("reader");
@@ -259,17 +318,20 @@ export function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("echovale-theme", theme);
-  }, [theme]);
+    window.localStorage.setItem(accountStorageKey(user.id, "theme"), theme);
+  }, [theme, user.id]);
 
   useEffect(() => {
     document.documentElement.style.setProperty("--article-font-size", `${articleFontSize}px`);
-    window.localStorage.setItem("echovale-article-font-size", String(articleFontSize));
-  }, [articleFontSize]);
+    window.localStorage.setItem(
+      accountStorageKey(user.id, "article-font-size"),
+      String(articleFontSize),
+    );
+  }, [articleFontSize, user.id]);
 
   useEffect(() => {
-    window.localStorage.setItem("echovale-reading-mode", readingMode);
-  }, [readingMode]);
+    window.localStorage.setItem(accountStorageKey(user.id, "reading-mode"), readingMode);
+  }, [readingMode, user.id]);
 
   const activeArticle = useMemo(
     () => articles.find((article) => article.id === activeArticleId) ?? null,
@@ -743,6 +805,7 @@ export function App() {
       </a>
       <Sidebar
         bootstrap={bootstrap}
+        user={user}
         currentState={articleStateFilter}
         selectedFeedId={selectedFeedId}
         selectedFolderId={selectedFolderId}
@@ -756,6 +819,7 @@ export function App() {
         onSelectScope={selectScope}
         onNavigate={navigateTo}
         onRefresh={() => void refresh()}
+        onLogout={onLogout}
       />
 
       <main id="main-content" className="main-column" tabIndex={-1}>

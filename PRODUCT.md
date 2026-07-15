@@ -6,7 +6,7 @@ product
 
 ## Users
 
-Echovale is for one technically capable self-hoster who reads RSS on a desktop over a private tailnet. Reading happens in focused sessions: scanning a queue, opening an article, moving through it by keyboard, and deliberately preserving anything worth returning to.
+Echovale is for a small household using a self-hosted RSS reader over a private tailnet. Each person has a separate account, subscriptions, rules, and reading state. Reading happens in focused sessions: scanning a queue, opening an article, moving through it by keyboard, and deliberately preserving anything worth returning to.
 
 ## Product Purpose
 

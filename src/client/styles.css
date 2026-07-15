@@ -523,6 +523,98 @@ kbd {
   border-top: 1px solid var(--border);
 }
 
+.sidebar-account {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 7px;
+  padding: 7px 4px 0 7px;
+  border-top: 1px solid var(--border);
+}
+
+.account-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.account-name svg {
+  flex: 0 0 auto;
+}
+
+/* Authentication */
+.auth-page {
+  display: flex;
+  width: 100%;
+  min-height: 100dvh;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  overflow: auto;
+  background: var(--bg);
+}
+
+.login-panel {
+  width: min(100%, 390px);
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.login-brand,
+.session-loading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.login-heading {
+  margin: 30px 0 22px;
+}
+
+.login-heading h1 {
+  margin: 0 0 5px;
+  font-size: 24px;
+  letter-spacing: -0.02em;
+}
+
+.login-heading p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.login-error {
+  padding: 9px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-surface);
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.login-button {
+  width: 100%;
+  margin-top: 3px;
+}
+
+.session-loading {
+  color: var(--text-secondary);
+}
+
 /* Reader toolbar */
 .reader-toolbar {
   position: relative;

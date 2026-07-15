@@ -11,7 +11,10 @@ import type {
   Rule,
   RuleAction,
   RuleField,
+  SessionUser,
 } from "../shared/types";
+
+export const AUTH_REQUIRED_EVENT = "echovale:auth-required";
 
 class ApiError extends Error {
   status: number;
@@ -29,7 +32,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(path, { ...init, headers });
+  const response = await fetch(path, { ...init, headers, credentials: "same-origin" });
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
     try {
@@ -37,6 +40,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       message = body.error ?? body.message ?? message;
     } catch {
       // The status code still gives the user a useful error when no JSON body exists.
+    }
+    if (
+      response.status === 401 &&
+      !path.startsWith("/api/auth/") &&
+      typeof window !== "undefined"
+    ) {
+      window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT));
     }
     throw new ApiError(message, response.status);
   }
@@ -78,6 +88,21 @@ export interface RuleInput {
 }
 
 export const api = {
+  async session(): Promise<SessionUser> {
+    const body = await request<{ user: SessionUser }>("/api/auth/session");
+    return body.user;
+  },
+
+  async login(username: string, password: string): Promise<SessionUser> {
+    const body = await request<{ user: SessionUser }>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+    return body.user;
+  },
+
+  logout: () => request<void>("/api/auth/logout", { method: "POST" }),
+
   bootstrap: () => request<BootstrapData>("/api/bootstrap"),
 
   articles: (query: ArticleQuery) => request<ArticlePage>(`/api/articles?${queryString(query)}`),

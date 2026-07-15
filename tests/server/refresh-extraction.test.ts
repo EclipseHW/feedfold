@@ -5,11 +5,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/server/app.js";
+import { AuthService } from "../../src/server/auth.js";
 import { AppDatabase, type ParsedFeed } from "../../src/server/db.js";
 import { ExtractionQueue, extractArticle } from "../../src/server/extraction.js";
 import { FeedRefreshService } from "../../src/server/refresh.js";
 
 const cleanups: Array<() => Promise<void> | void> = [];
+const TEST_USER_ID = 1;
+const TEST_ACCOUNT = [{ username: "reader", password: "test-password" }];
 
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
@@ -153,12 +156,12 @@ describe("feed refresh and full-text extraction", () => {
       error: "Article response exceeds the 5 MiB extraction limit",
     });
 
-    const feed = database.createFeed({ feedUrl: `${baseUrl}/feed` });
+    const feed = database.createFeed(TEST_USER_ID, { feedUrl: `${baseUrl}/feed` });
     expect(refresh.request([feed.id])).toEqual({ requested: 1, refreshingFeedIds: [feed.id] });
     await refresh.waitForIdle();
     await extraction.waitForIdle();
 
-    const articles = database.listArticles({ state: "all", includeContent: true });
+    const articles = database.listArticles(TEST_USER_ID, { state: "all", includeContent: true });
     expect(articles).toHaveLength(2);
     const extracted = articles.find((article) => article.title === "Extract me");
     expect(extracted?.extractionStatus).toBe("complete");
@@ -177,39 +180,44 @@ describe("feed refresh and full-text extraction", () => {
     expect(fallback?.contentHtml).not.toContain("<script");
     expect(fallback?.extractionError).toContain("HTTP 503");
 
-    expect(database.getFeed(feed.id)?.title).toBe("Remote title");
+    expect(database.getFeed(TEST_USER_ID, feed.id)?.title).toBe("Remote title");
     refresh.request([feed.id]);
     await refresh.waitForIdle();
     expect(feedRequests).toBe(2);
     expect(conditionalHeader).toBe('"v1"');
-    expect(database.getFeed(feed.id)?.lastHttpStatus).toBe(304);
-    expect(database.listArticles({ state: "all" })).toHaveLength(2);
+    expect(database.getFeed(TEST_USER_ID, feed.id)?.lastHttpStatus).toBe(304);
+    expect(database.listArticles(TEST_USER_ID, { state: "all" })).toHaveLength(2);
 
-    database.updateArticleState(extracted.id, { isRead: true, isStarred: true });
+    database.updateArticleState(TEST_USER_ID, extracted.id, { isRead: true, isStarred: true });
     forceFullResponse = true;
     revised = true;
     refresh.request([feed.id]);
     await refresh.waitForIdle();
     await extraction.waitForIdle();
     expect(feedRequests).toBe(3);
-    expect(database.getArticle(extracted.id)).toMatchObject({
+    expect(database.getArticle(TEST_USER_ID, extracted.id)).toMatchObject({
       title: "Extract me (corrected)",
       summary: "Corrected feed summary",
       isRead: true,
       isStarred: true,
     });
-    expect(database.getArticle(extracted.id)?.contentHtml).toContain("Corrected article");
-    expect(database.listArticles({ state: "all" })).toHaveLength(2);
+    expect(database.getArticle(TEST_USER_ID, extracted.id)?.contentHtml).toContain(
+      "Corrected article",
+    );
+    expect(database.listArticles(TEST_USER_ID, { state: "all" })).toHaveLength(2);
 
-    const broken = database.createFeed({ feedUrl: `${baseUrl}/broken`, title: "Broken" });
+    const broken = database.createFeed(TEST_USER_ID, {
+      feedUrl: `${baseUrl}/broken`,
+      title: "Broken",
+    });
     refresh.request([broken.id]);
     await refresh.waitForIdle();
-    expect(database.getFeed(broken.id)).toMatchObject({
+    expect(database.getFeed(TEST_USER_ID, broken.id)).toMatchObject({
       lastHttpStatus: 503,
       lastSuccessAt: null,
       refreshing: false,
     });
-    expect(database.getFeed(broken.id)?.lastError).toContain("HTTP 503");
+    expect(database.getFeed(TEST_USER_ID, broken.id)?.lastError).toContain("HTTP 503");
   });
 
   it("uses the publisher's WordPress API when bot protection replaces its feed", async () => {
@@ -258,20 +266,25 @@ describe("feed refresh and full-text extraction", () => {
       database.close();
     });
 
-    const feed = database.createFeed({ feedUrl: `${baseUrl}/feed`, title: "Publisher" });
+    const feed = database.createFeed(TEST_USER_ID, {
+      feedUrl: `${baseUrl}/feed`,
+      title: "Publisher",
+    });
     refresh.request([feed.id]);
     await refresh.waitForIdle();
     await extraction.waitForIdle();
 
     expect(wordpressRequests).toBe(1);
-    expect(database.getFeed(feed.id)).toMatchObject({
+    expect(database.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
       title: "Publisher",
       siteUrl: baseUrl,
       lastHttpStatus: 200,
       lastError: null,
       totalCount: 1,
     });
-    expect(database.listArticles({ state: "all", includeContent: true })[0]).toMatchObject({
+    expect(
+      database.listArticles(TEST_USER_ID, { state: "all", includeContent: true })[0],
+    ).toMatchObject({
       title: "Publisher & post",
       summary: "Fallback summary.",
       contentHtml: "<p>Complete first-party post content.</p>",
@@ -306,12 +319,12 @@ describe("feed refresh and full-text extraction", () => {
     });
 
     const feeds = ["imunify", "cloudflare", "vercel"].map((provider) =>
-      database.createFeed({ feedUrl: `${baseUrl}/${provider}`, title: provider }),
+      database.createFeed(TEST_USER_ID, { feedUrl: `${baseUrl}/${provider}`, title: provider }),
     );
     refresh.request(feeds.map((feed) => feed.id));
     await refresh.waitForIdle();
 
-    expect(feeds.map((feed) => database.getFeed(feed.id)?.lastError)).toEqual([
+    expect(feeds.map((feed) => database.getFeed(TEST_USER_ID, feed.id)?.lastError)).toEqual([
       "Feed host requires browser verification (Imunify360); automated refresh cannot access this URL",
       "Feed host requires browser verification (Cloudflare); automated refresh cannot access this URL",
       "Feed host requires browser verification (Vercel); automated refresh cannot access this URL",
@@ -325,7 +338,10 @@ describe("feed refresh and full-text extraction", () => {
       await extraction.stop();
       database.close();
     });
-    const feed = database.createFeed({ feedUrl: "https://example.test/feed", title: "Batch" });
+    const feed = database.createFeed(TEST_USER_ID, {
+      feedUrl: "https://example.test/feed",
+      title: "Batch",
+    });
     const parsed: ParsedFeed = {
       title: "Batch",
       siteUrl: "https://example.test",
@@ -357,10 +373,10 @@ describe("feed refresh and full-text extraction", () => {
     expect(count.count).toBe(125);
     expect(database.getPendingExtractions()).toHaveLength(0);
 
-    const firstPage = database.listArticlePage({ state: "all", limit: 100 });
+    const firstPage = database.listArticlePage(TEST_USER_ID, { state: "all", limit: 100 });
     expect(firstPage.articles).toHaveLength(100);
     expect(firstPage.nextCursor).not.toBeNull();
-    const secondPage = database.listArticlePage({
+    const secondPage = database.listArticlePage(TEST_USER_ID, {
       state: "all",
       limit: 100,
       cursor: firstPage.nextCursor ?? undefined,
@@ -375,7 +391,10 @@ describe("feed refresh and full-text extraction", () => {
   it("preserves an extracted thumbnail when feed metadata changes", async () => {
     const database = await temporaryDatabase();
     cleanups.push(() => database.close());
-    const feed = database.createFeed({ feedUrl: "https://example.test/feed", title: "Feed" });
+    const feed = database.createFeed(TEST_USER_ID, {
+      feedUrl: "https://example.test/feed",
+      title: "Feed",
+    });
     const parsedArticle = {
       externalId: "story",
       title: "Original title",
@@ -413,7 +432,7 @@ describe("feed refresh and full-text extraction", () => {
       },
     });
 
-    expect(database.getArticle(articleId)).toMatchObject({
+    expect(database.getArticle(TEST_USER_ID, articleId)).toMatchObject({
       title: "Updated title",
       imageUrl: "https://cdn.example.test/hero.jpg",
       extractionStatus: "complete",
@@ -449,7 +468,13 @@ describe("feed refresh and full-text extraction", () => {
     const database = await temporaryDatabase();
     const extraction = new ExtractionQueue(database, 1, 2_000);
     const refresh = new FeedRefreshService(database, extraction, 1, 2_000);
-    const app = await createApp({ database, extractionQueue: extraction, refreshService: refresh });
+    const authService = new AuthService(database, TEST_ACCOUNT);
+    const app = await createApp({
+      database,
+      authService,
+      extractionQueue: extraction,
+      refreshService: refresh,
+    });
     cleanups.push(async () => {
       releaseFirst?.();
       await app.close();
@@ -457,7 +482,10 @@ describe("feed refresh and full-text extraction", () => {
       database.close();
     });
 
-    const feed = database.createFeed({ feedUrl: `${baseUrl}/feed`, title: "Priority" });
+    const feed = database.createFeed(TEST_USER_ID, {
+      feedUrl: `${baseUrl}/feed`,
+      title: "Priority",
+    });
     const articleIds = database.markFeedSuccess(feed.id, {
       httpStatus: 200,
       etag: null,
@@ -482,7 +510,18 @@ describe("feed refresh and full-text extraction", () => {
     await firstStarted;
 
     const openedId = articleIds[2];
-    const response = await app.inject({ method: "POST", url: `/api/articles/${openedId}/extract` });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: TEST_ACCOUNT[0].username, password: TEST_ACCOUNT[0].password },
+    });
+    const setCookie = login.headers["set-cookie"];
+    const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(";", 1)[0];
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/articles/${openedId}/extract`,
+      headers: { cookie: cookie ?? "" },
+    });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toMatchObject({ id: openedId, extractionStatus: "pending" });
     releaseFirst?.();

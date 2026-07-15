@@ -13,6 +13,7 @@ import {
   LayoutList,
   ListFilter,
   LoaderCircle,
+  LogOut,
   Menu,
   Pause,
   Plus,
@@ -21,6 +22,7 @@ import {
   Search,
   Settings,
   Star,
+  UserRound,
   X,
 } from "lucide-react";
 import { type FormEvent, type ReactNode, useState } from "react";
@@ -30,6 +32,7 @@ import type {
   Feed,
   Folder as FolderType,
   ReadingMode,
+  SessionUser,
 } from "../shared/types";
 
 export type AppView = "reader" | "feeds" | "rules" | "settings";
@@ -70,6 +73,7 @@ function IconButton({
 
 interface SidebarProps {
   bootstrap: BootstrapData;
+  user: SessionUser;
   currentState: ArticleState;
   selectedFeedId: number | null;
   selectedFolderId: number | null;
@@ -80,10 +84,12 @@ interface SidebarProps {
   onSelectScope: (feedId: number | null, folderId: number | null) => void;
   onNavigate: (view: AppView) => void;
   onRefresh: () => void;
+  onLogout: () => Promise<void>;
 }
 
 export function Sidebar({
   bootstrap,
+  user,
   currentState,
   selectedFeedId,
   selectedFolderId,
@@ -94,6 +100,7 @@ export function Sidebar({
   onSelectScope,
   onNavigate,
   onRefresh,
+  onLogout,
 }: SidebarProps) {
   const rootFolders = bootstrap.folders
     .filter((folder) => folder.parentId === null)
@@ -271,6 +278,21 @@ export function Sidebar({
           <span>Settings</span>
           <Kbd>g ,</Kbd>
         </button>
+        <div className="sidebar-account">
+          <span className="account-name" title={user.username}>
+            <UserRound aria-hidden="true" size={16} />
+            <span className="truncate">{user.username}</span>
+          </span>
+          <button
+            className="icon-button"
+            type="button"
+            aria-label={`Log out ${user.username}`}
+            title="Log out"
+            onClick={() => void onLogout()}
+          >
+            <LogOut aria-hidden="true" size={16} />
+          </button>
+        </div>
       </div>
     </aside>
   );
