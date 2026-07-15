@@ -611,6 +611,31 @@ kbd {
   margin-top: 3px;
 }
 
+.auth-switch {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-top: 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.auth-switch button {
+  min-height: 32px;
+  padding: 4px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.auth-switch button:hover:not(:disabled) {
+  color: var(--accent-strong);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .session-loading {
   color: var(--text-secondary);
 }

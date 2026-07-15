@@ -12,7 +12,7 @@ import { FeedRefreshService } from "../../src/server/refresh.js";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 const TEST_USER_ID = 1;
-const TEST_ACCOUNT = [{ username: "reader", password: "test-password" }];
+const TEST_ACCOUNT = { username: "reader", password: "test-password" };
 
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
@@ -468,7 +468,8 @@ describe("feed refresh and full-text extraction", () => {
     const database = await temporaryDatabase();
     const extraction = new ExtractionQueue(database, 1, 2_000);
     const refresh = new FeedRefreshService(database, extraction, 1, 2_000);
-    const authService = new AuthService(database, TEST_ACCOUNT);
+    const authService = new AuthService(database);
+    expect(authService.register(TEST_ACCOUNT.username, TEST_ACCOUNT.password)).not.toBeNull();
     const app = await createApp({
       database,
       authService,
@@ -513,7 +514,7 @@ describe("feed refresh and full-text extraction", () => {
     const login = await app.inject({
       method: "POST",
       url: "/api/auth/login",
-      payload: { username: TEST_ACCOUNT[0].username, password: TEST_ACCOUNT[0].password },
+      payload: TEST_ACCOUNT,
     });
     const setCookie = login.headers["set-cookie"];
     const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(";", 1)[0];

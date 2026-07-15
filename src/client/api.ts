@@ -101,6 +101,14 @@ export const api = {
     return body.user;
   },
 
+  async register(username: string, password: string): Promise<SessionUser> {
+    const body = await request<{ user: SessionUser }>("/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify({ username, password }),
+    });
+    return body.user;
+  },
+
   logout: () => request<void>("/api/auth/logout", { method: "POST" }),
 
   bootstrap: () => request<BootstrapData>("/api/bootstrap"),

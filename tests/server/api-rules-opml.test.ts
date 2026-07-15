@@ -40,7 +40,7 @@ describe("live API, OPML, and filtering rules", () => {
     const directory = await mkdtemp(join(tmpdir(), "echovale-auth-test-"));
     cleanups.push(() => rm(directory, { recursive: true, force: true }));
     const database = new AppDatabase(join(directory, "echovale.db"));
-    const authService = new AuthService(database, TEST_ACCOUNTS);
+    const authService = new AuthService(database);
     const extraction = new ExtractionQueue(database, 1, 1_000);
     const refresh = new FeedRefreshService(database, extraction, 1, 1_000);
     const app = await createApp({
@@ -55,22 +55,69 @@ describe("live API, OPML, and filtering rules", () => {
       database.close();
     });
 
-    const login = async (account: (typeof TEST_ACCOUNTS)[number]): Promise<string> => {
+    expect((await app.inject({ method: "GET", url: "/api/bootstrap" })).statusCode).toBe(401);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/auth/login",
+          payload: TEST_ACCOUNTS[0],
+        })
+      ).statusCode,
+    ).toBe(401);
+
+    const register = async (account: (typeof TEST_ACCOUNTS)[number]): Promise<string> => {
       const response = await app.inject({
         method: "POST",
-        url: "/api/auth/login",
+        url: "/api/auth/register",
         payload: account,
       });
-      expect(response.statusCode).toBe(200);
+      expect(response.statusCode).toBe(201);
       const setCookie = response.headers["set-cookie"];
       const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(";", 1)[0];
-      if (!cookie) throw new Error("Login did not return a session cookie");
+      if (!cookie) throw new Error("Registration did not return a session cookie");
       return cookie;
     };
-    const readerCookie = await login(TEST_ACCOUNTS[0]);
-    const partnerCookie = await login(TEST_ACCOUNTS[1]);
+    const registrationCookie = await register(TEST_ACCOUNTS[0]);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/auth/session",
+          headers: { cookie: registrationCookie },
+        })
+      ).json(),
+    ).toEqual({ user: { id: 1, username: "reader" } });
 
-    expect((await app.inject({ method: "GET", url: "/api/bootstrap" })).statusCode).toBe(401);
+    const duplicate = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { username: "READER", password: "another-password" },
+    });
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json()).toEqual({ error: "That username is already taken" });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/auth/login",
+          payload: { username: "reader", password: "wrong-password" },
+        })
+      ).statusCode,
+    ).toBe(401);
+
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: TEST_ACCOUNTS[0],
+    });
+    expect(login.statusCode).toBe(200);
+    const loginSetCookie = login.headers["set-cookie"];
+    const readerCookie = (
+      Array.isArray(loginSetCookie) ? loginSetCookie[0] : loginSetCookie
+    )?.split(";", 1)[0];
+    if (!readerCookie) throw new Error("Login did not return a session cookie");
+    const partnerCookie = await register(TEST_ACCOUNTS[1]);
 
     const folderResponse = await app.inject({
       method: "POST",
@@ -230,7 +277,10 @@ describe("live API, OPML, and filtering rules", () => {
     const directory = await mkdtemp(join(tmpdir(), "echovale-api-test-"));
     cleanups.push(() => rm(directory, { recursive: true, force: true }));
     const database = new AppDatabase(join(directory, "echovale.db"));
-    const authService = new AuthService(database, TEST_ACCOUNTS);
+    const authService = new AuthService(database);
+    expect(
+      authService.register(TEST_ACCOUNTS[0].username, TEST_ACCOUNTS[0].password),
+    ).not.toBeNull();
     const extraction = new ExtractionQueue(database, 2, 2_000);
     const refresh = new FeedRefreshService(database, extraction, 2, 2_000);
     const app = await createApp({
