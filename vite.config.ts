@@ -2,6 +2,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
 export default defineConfig({
+  base: "/echovale/",
   plugins: [react()],
   root: ".",
   build: {
@@ -11,8 +12,14 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     proxy: {
-      "/api": "http://127.0.0.1:3000",
-      "/health": "http://127.0.0.1:3000",
+      "/echovale/api": {
+        target: "http://127.0.0.1:3000",
+        rewrite: (path) => path.replace(/^\/echovale/, ""),
+      },
+      "/echovale/health": {
+        target: "http://127.0.0.1:3000",
+        rewrite: (path) => path.replace(/^\/echovale/, ""),
+      },
     },
   },
 });

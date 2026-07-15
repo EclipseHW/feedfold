@@ -198,7 +198,7 @@ Start the API and Vite development server:
 npm run dev
 ```
 
-Open `http://localhost:5173`. Vite proxies `/api` and `/health` to the API on port 3000.
+Open `http://localhost:5173/echovale/`. Vite proxies the app's API and health paths to the API on port 3000.
 
 Run the complete validation suite:
 
@@ -224,7 +224,7 @@ The configured homeserver remote deploys `master` automatically through the bare
 git push homeserver master
 ```
 
-The production app is available to the tailnet at `https://hs.tailb4f5f1.ts.net:8766/`.
+The production app is available to the tailnet at `https://hs.tailb4f5f1.ts.net/echovale/`.
 
 For another Docker host, back up the database, update the checkout, and rebuild the image:
 

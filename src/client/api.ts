@@ -15,6 +15,11 @@ import type {
 } from "../shared/types";
 
 export const AUTH_REQUIRED_EVENT = "echovale:auth-required";
+const appBase = import.meta.env.BASE_URL.replace(/\/$/, "");
+
+export function appUrl(path: string): string {
+  return `${appBase}${path}`;
+}
 
 class ApiError extends Error {
   status: number;
@@ -32,7 +37,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("Content-Type", "application/json");
   }
 
-  const response = await fetch(path, { ...init, headers, credentials: "same-origin" });
+  const response = await fetch(appUrl(path), { ...init, headers, credentials: "same-origin" });
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
     try {

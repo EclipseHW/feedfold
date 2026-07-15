@@ -33,7 +33,7 @@ import type {
   RuleAction,
   RuleField,
 } from "../shared/types";
-import { api, errorMessage, type RuleInput } from "./api";
+import { api, appUrl, errorMessage, type RuleInput } from "./api";
 
 type Theme = "dark" | "light";
 
@@ -160,7 +160,7 @@ export function FeedsPage({
             <ImportOpmlButton onImported={onReload} showToast={showToast} />
             <a
               className="secondary-button"
-              href="/api/opml/export"
+              href={appUrl("/api/opml/export")}
               download="echovale-subscriptions.opml"
             >
               <Download aria-hidden="true" size={16} />
@@ -1354,7 +1354,7 @@ export function SettingsPage({
             <ImportOpmlButton onImported={onReload} showToast={showToast} />
             <a
               className="secondary-button"
-              href="/api/opml/export"
+              href={appUrl("/api/opml/export")}
               download="echovale-subscriptions.opml"
             >
               <Download aria-hidden="true" size={16} />
