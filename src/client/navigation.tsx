@@ -521,7 +521,6 @@ export function ReaderToolbar({
           </IconButton>
           <IconButton label="Show keyboard shortcuts (?)" onClick={onHelp}>
             <CircleHelp aria-hidden="true" size={18} />
-            <Kbd>?</Kbd>
           </IconButton>
         </div>
       </div>
