@@ -213,7 +213,15 @@ npm start
 
 ## Updating
 
-Back up the database, update the checkout, and rebuild the image:
+The configured homeserver remote deploys `master` automatically through the bare repository hook:
+
+```sh
+git push homeserver master
+```
+
+The production app is available to the tailnet at `https://hs.tailb4f5f1.ts.net:8766/`.
+
+For another Docker host, back up the database, update the checkout, and rebuild the image:
 
 ```sh
 git pull --ff-only
