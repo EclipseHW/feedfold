@@ -954,6 +954,20 @@ kbd {
   list-style: none;
 }
 
+.article-load-sentinel {
+  display: flex;
+  min-height: 1px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.article-load-sentinel.is-loading {
+  min-height: 48px;
+}
+
 .article-list-item {
   position: relative;
   display: flex;
