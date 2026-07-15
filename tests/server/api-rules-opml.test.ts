@@ -5,12 +5,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/server/app.js";
+import { AuthService } from "../../src/server/auth.js";
 import { AppDatabase } from "../../src/server/db.js";
 import { ExtractionQueue } from "../../src/server/extraction.js";
 import { FeedRefreshService } from "../../src/server/refresh.js";
 import type { Article, BootstrapData, ImportResult, Rule } from "../../src/shared/types.js";
 
 const cleanups: Array<() => Promise<void> | void> = [];
+const TEST_ACCOUNTS = [
+  { username: "reader", password: "reader-password" },
+  { username: "partner", password: "partner-password" },
+];
 
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
@@ -31,6 +36,179 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 describe("live API, OPML, and filtering rules", () => {
+  it("requires a session and keeps each account's data isolated", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "echovale-auth-test-"));
+    cleanups.push(() => rm(directory, { recursive: true, force: true }));
+    const database = new AppDatabase(join(directory, "echovale.db"));
+    const authService = new AuthService(database, TEST_ACCOUNTS);
+    const extraction = new ExtractionQueue(database, 1, 1_000);
+    const refresh = new FeedRefreshService(database, extraction, 1, 1_000);
+    const app = await createApp({
+      database,
+      authService,
+      extractionQueue: extraction,
+      refreshService: refresh,
+    });
+    cleanups.push(async () => {
+      await app.close();
+      await Promise.all([refresh.stop(), extraction.stop()]);
+      database.close();
+    });
+
+    const login = async (account: (typeof TEST_ACCOUNTS)[number]): Promise<string> => {
+      const response = await app.inject({
+        method: "POST",
+        url: "/api/auth/login",
+        payload: account,
+      });
+      expect(response.statusCode).toBe(200);
+      const setCookie = response.headers["set-cookie"];
+      const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(";", 1)[0];
+      if (!cookie) throw new Error("Login did not return a session cookie");
+      return cookie;
+    };
+    const readerCookie = await login(TEST_ACCOUNTS[0]);
+    const partnerCookie = await login(TEST_ACCOUNTS[1]);
+
+    expect((await app.inject({ method: "GET", url: "/api/bootstrap" })).statusCode).toBe(401);
+
+    const folderResponse = await app.inject({
+      method: "POST",
+      url: "/api/folders",
+      headers: { cookie: readerCookie },
+      payload: { name: "Reader folder", parentId: null },
+    });
+    expect(folderResponse.statusCode).toBe(200);
+    const folder = folderResponse.json() as { id: number };
+
+    const feedUrl = "https://shared.example.test/feed";
+    const readerFeedResponse = await app.inject({
+      method: "POST",
+      url: "/api/feeds",
+      headers: { cookie: readerCookie },
+      payload: { title: "Reader copy", feedUrl, folderId: folder.id, paused: true },
+    });
+    const partnerFeedResponse = await app.inject({
+      method: "POST",
+      url: "/api/feeds",
+      headers: { cookie: partnerCookie },
+      payload: { title: "Partner copy", feedUrl, folderId: null, paused: true },
+    });
+    expect(readerFeedResponse.statusCode).toBe(200);
+    expect(partnerFeedResponse.statusCode).toBe(200);
+    const readerFeed = readerFeedResponse.json() as { id: number };
+    const partnerFeed = partnerFeedResponse.json() as { id: number };
+
+    database.markFeedSuccess(readerFeed.id, {
+      httpStatus: 200,
+      etag: null,
+      lastModified: null,
+      pollIntervalMinutes: 20,
+      parsed: {
+        title: "Reader copy",
+        siteUrl: null,
+        articles: [
+          {
+            externalId: "private-story",
+            title: "Reader-only story",
+            url: null,
+            author: null,
+            publishedAt: null,
+            summary: "Private reading state",
+            imageUrl: null,
+            feedContentHtml: null,
+          },
+        ],
+      },
+    });
+    const articleId = database.sqlite
+      .prepare("SELECT id FROM articles WHERE feed_id = ? AND external_id = ?")
+      .pluck()
+      .get(readerFeed.id, "private-story") as number;
+
+    const readerBootstrap = await app.inject({
+      method: "GET",
+      url: "/api/bootstrap",
+      headers: { cookie: readerCookie },
+    });
+    const partnerBootstrap = await app.inject({
+      method: "GET",
+      url: "/api/bootstrap",
+      headers: { cookie: partnerCookie },
+    });
+    expect(readerBootstrap.json()).toMatchObject({
+      counts: { all: 1 },
+      feeds: [{ id: readerFeed.id, title: "Reader copy" }],
+    });
+    expect(partnerBootstrap.json()).toMatchObject({
+      counts: { all: 0 },
+      feeds: [{ id: partnerFeed.id, title: "Partner copy" }],
+      folders: [],
+    });
+
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/articles/${articleId}`,
+          headers: { cookie: partnerCookie },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: `/api/feeds/${partnerFeed.id}`,
+          headers: { cookie: readerCookie },
+          payload: { title: "Stolen" },
+        })
+      ).statusCode,
+    ).toBe(404);
+    const crossAccountRefresh = await app.inject({
+      method: "POST",
+      url: "/api/refresh",
+      headers: { cookie: readerCookie },
+      payload: { feedIds: [partnerFeed.id] },
+    });
+    expect(crossAccountRefresh.json()).toEqual({ requested: 0, refreshingFeedIds: [] });
+
+    await app.inject({
+      method: "PATCH",
+      url: "/api/settings",
+      headers: { cookie: readerCookie },
+      payload: { markReadOnScroll: false },
+    });
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/settings",
+          headers: { cookie: partnerCookie },
+        })
+      ).json(),
+    ).toMatchObject({ markReadOnScroll: true });
+
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/auth/logout",
+          headers: { cookie: readerCookie },
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/bootstrap",
+          headers: { cookie: readerCookie },
+        })
+      ).statusCode,
+    ).toBe(401);
+  });
+
   it("imports nested folders, refreshes subscriptions, applies parent-folder rules, and exports OPML", async () => {
     let feedBase = "";
     const feedServer = createServer((request, response) => {
@@ -52,9 +230,15 @@ describe("live API, OPML, and filtering rules", () => {
     const directory = await mkdtemp(join(tmpdir(), "echovale-api-test-"));
     cleanups.push(() => rm(directory, { recursive: true, force: true }));
     const database = new AppDatabase(join(directory, "echovale.db"));
+    const authService = new AuthService(database, TEST_ACCOUNTS);
     const extraction = new ExtractionQueue(database, 2, 2_000);
     const refresh = new FeedRefreshService(database, extraction, 2, 2_000);
-    const app = await createApp({ database, extractionQueue: extraction, refreshService: refresh });
+    const app = await createApp({
+      database,
+      authService,
+      extractionQueue: extraction,
+      refreshService: refresh,
+    });
     await app.listen({ host: "127.0.0.1", port: 0 });
     const apiBase = `http://127.0.0.1:${(app.server.address() as AddressInfo).port}`;
     cleanups.push(async () => {
@@ -64,12 +248,32 @@ describe("live API, OPML, and filtering rules", () => {
     });
 
     expect(await json(`${apiBase}/health`)).toEqual({ status: "ok" });
+    expect((await fetch(`${apiBase}/api/bootstrap`)).status).toBe(401);
+    const rejectedLogin = await fetch(`${apiBase}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username: "reader", password: "wrong-password" }),
+    });
+    expect(rejectedLogin.status).toBe(401);
+    const login = await fetch(`${apiBase}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(TEST_ACCOUNTS[0]),
+    });
+    expect(login.status).toBe(200);
+    const cookie = login.headers.get("set-cookie")?.split(";", 1)[0];
+    if (!cookie) throw new Error("Login did not return a session cookie");
+    const asReader = <T>(path: string, init?: RequestInit): Promise<T> => {
+      const headers = new Headers(init?.headers);
+      headers.set("Cookie", cookie);
+      return json<T>(`${apiBase}${path}`, { ...init, headers });
+    };
     const opml = `<?xml version="1.0"?><opml version="2.0"><body>
       <outline text="Parent"><outline text="Child">
         <outline type="rss" text="My saved label" title="My saved label" xmlUrl="${feedBase}/feed" htmlUrl="${feedBase}"/>
       </outline></outline><outline text="Someday"/>
     </body></opml>`;
-    const imported = await json<ImportResult>(`${apiBase}/api/opml/import`, {
+    const imported = await asReader<ImportResult>("/api/opml/import", {
       method: "POST",
       body: JSON.stringify({ opml }),
     });
@@ -77,21 +281,21 @@ describe("live API, OPML, and filtering rules", () => {
     await refresh.waitForIdle();
     await extraction.waitForIdle();
 
-    const duplicate = await json<ImportResult>(`${apiBase}/api/opml/import`, {
+    const duplicate = await asReader<ImportResult>("/api/opml/import", {
       method: "POST",
       body: JSON.stringify({ opml }),
     });
     expect(duplicate).toEqual({ imported: 0, duplicates: 1, failed: [] });
 
-    const bootstrap = await json<BootstrapData>(`${apiBase}/api/bootstrap`);
+    const bootstrap = await asReader<BootstrapData>("/api/bootstrap");
     expect(bootstrap.settings.markReadOnScroll).toBe(true);
     expect(
-      await json(`${apiBase}/api/settings`, {
+      await asReader("/api/settings", {
         method: "PATCH",
         body: JSON.stringify({ markReadOnScroll: false }),
       }),
     ).toMatchObject({ markReadOnScroll: false });
-    expect(await json(`${apiBase}/api/settings`)).toMatchObject({ markReadOnScroll: false });
+    expect(await asReader("/api/settings")).toMatchObject({ markReadOnScroll: false });
     const parent = bootstrap.folders.find((folder) => folder.name === "Parent");
     const child = bootstrap.folders.find((folder) => folder.name === "Child");
     expect(child?.parentId).toBe(parent?.id);
@@ -99,7 +303,7 @@ describe("live API, OPML, and filtering rules", () => {
     expect(bootstrap.feeds[0]).toMatchObject({ title: "My saved label", folderId: child?.id });
     expect(bootstrap.counts).toMatchObject({ unread: 2, all: 2 });
 
-    const rule = await json<Rule>(`${apiBase}/api/rules`, {
+    const rule = await asReader<Rule>("/api/rules", {
       method: "POST",
       body: JSON.stringify({
         name: "Remove roundups",
@@ -124,79 +328,75 @@ describe("live API, OPML, and filtering rules", () => {
         .pluck()
         .get() as number,
     );
-    const rules = await json<{ rules: Rule[] }>(`${apiBase}/api/rules`);
+    const rules = await asReader<{ rules: Rule[] }>("/api/rules");
     expect(rules.rules[0].matchedCount).toBe(1);
 
-    const disabledRule = await json<Rule>(`${apiBase}/api/rules/${rule.id}`, {
+    const disabledRule = await asReader<Rule>(`/api/rules/${rule.id}`, {
       method: "PATCH",
       body: JSON.stringify({ enabled: false }),
     });
     expect(disabledRule).toMatchObject({ enabled: false, matchedCount: 1 });
-    const visibleWhileDisabled = await json<{ articles: Article[] }>(
-      `${apiBase}/api/articles?state=all`,
-    );
+    const visibleWhileDisabled = await asReader<{ articles: Article[] }>("/api/articles?state=all");
     expect(new Set(visibleWhileDisabled.articles.map((article) => article.title))).toEqual(
       new Set(["Noisy weekly roundup", "Keep this story"]),
     );
 
-    const enabledRule = await json<Rule>(`${apiBase}/api/rules/${rule.id}`, {
+    const enabledRule = await asReader<Rule>(`/api/rules/${rule.id}`, {
       method: "PATCH",
       body: JSON.stringify({ enabled: true }),
     });
     expect(enabledRule).toMatchObject({ enabled: true, matchedCount: 1 });
     expect(
-      (await json<{ articles: Article[] }>(`${apiBase}/api/articles?state=all`)).articles.map(
+      (await asReader<{ articles: Article[] }>("/api/articles?state=all")).articles.map(
         (article) => article.title,
       ),
     ).toEqual(["Keep this story"]);
 
-    await json(`${apiBase}/api/folders/${child?.id}`, {
+    await asReader(`/api/folders/${child?.id}`, {
       method: "PATCH",
       body: JSON.stringify({ parentId: null }),
     });
-    const movedOut = await json<{ articles: Article[] }>(`${apiBase}/api/articles?state=all`);
+    const movedOut = await asReader<{ articles: Article[] }>("/api/articles?state=all");
     expect(new Set(movedOut.articles.map((article) => article.title))).toEqual(
       new Set(["Noisy weekly roundup", "Keep this story"]),
     );
-    expect((await json<{ rules: Rule[] }>(`${apiBase}/api/rules`)).rules[0].matchedCount).toBe(0);
-    await json(`${apiBase}/api/folders/${child?.id}`, {
+    expect((await asReader<{ rules: Rule[] }>("/api/rules")).rules[0].matchedCount).toBe(0);
+    await asReader(`/api/folders/${child?.id}`, {
       method: "PATCH",
       body: JSON.stringify({ parentId: parent?.id }),
     });
 
-    const listed = await json<{ articles: Article[] }>(`${apiBase}/api/articles?state=all`);
+    const listed = await asReader<{ articles: Article[] }>("/api/articles?state=all");
     expect(listed.articles.map((article) => article.title)).toEqual(["Keep this story"]);
     const keep = listed.articles[0];
     expect(keep).toMatchObject({ contentHtml: null, imageUrl: `${feedBase}/keep.jpg` });
-    const expanded = await json<{ articles: Article[] }>(
-      `${apiBase}/api/articles?state=all&includeContent=true`,
+    const expanded = await asReader<{ articles: Article[] }>(
+      "/api/articles?state=all&includeContent=true",
     );
     expect(expanded.articles[0].contentHtml).toContain("Feed fallback worth reading");
-    const updated = await json<Article>(`${apiBase}/api/articles/${keep.id}/state`, {
+    const updated = await asReader<Article>(`/api/articles/${keep.id}/state`, {
       method: "PATCH",
       body: JSON.stringify({ isRead: true, isStarred: true }),
     });
     expect(updated).toMatchObject({ isRead: true, isStarred: true });
-    expect(await json<Article>(`${apiBase}/api/articles/${keep.id}`)).toMatchObject({
+    expect(await asReader<Article>(`/api/articles/${keep.id}`)).toMatchObject({
       id: keep.id,
       isRead: true,
       isStarred: true,
       imageUrl: `${feedBase}/keep.jpg`,
     });
-    expect((await json<Article>(`${apiBase}/api/articles/${keep.id}`)).contentHtml).toContain(
+    expect((await asReader<Article>(`/api/articles/${keep.id}`)).contentHtml).toContain(
       "Feed fallback worth reading",
     );
 
-    const retry = await json<Article>(`${apiBase}/api/articles/${keep.id}/extract`, {
+    const retry = await asReader<Article>(`/api/articles/${keep.id}/extract`, {
       method: "POST",
     });
     expect(["pending", "processing"]).toContain(retry.extractionStatus);
     await extraction.waitForIdle();
-    expect((await json<Article>(`${apiBase}/api/articles/${keep.id}`)).extractionStatus).toBe(
-      "feed",
-    );
+    expect((await asReader<Article>(`/api/articles/${keep.id}`)).extractionStatus).toBe("feed");
 
-    const exported = await fetch(`${apiBase}/api/opml/export`);
+    const exported = await fetch(`${apiBase}/api/opml/export`, { headers: { Cookie: cookie } });
     expect(exported.headers.get("content-disposition")).toContain("echovale-subscriptions.opml");
     const exportedText = await exported.text();
     expect(exportedText).toContain('text="Parent"');

@@ -1,9 +1,10 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import fastifyStatic from "@fastify/static";
-import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { ZodError, z } from "zod";
 import type { ArticleQuery } from "../shared/types.js";
+import { type AuthService, sessionToken } from "./auth.js";
 import type { AppDatabase } from "./db.js";
 import type { ExtractionQueue } from "./extraction.js";
 import { exportOpml, importOpml } from "./opml.js";
@@ -11,6 +12,7 @@ import type { FeedRefreshService } from "./refresh.js";
 
 export interface AppServices {
   database: AppDatabase;
+  authService: AuthService;
   extractionQueue: ExtractionQueue;
   refreshService: FeedRefreshService;
   staticDir?: string;
@@ -36,8 +38,22 @@ function missing(reply: FastifyReply, resource: string): FastifyReply {
   return reply.code(404).send({ error: `${resource} not found` });
 }
 
+function secureRequest(request: FastifyRequest): boolean {
+  return request.protocol === "https";
+}
+
 export async function createApp(services: AppServices): Promise<FastifyInstance> {
-  const app = Fastify({ logger: services.logger ?? false, bodyLimit: 10 * 1024 * 1024 });
+  const app = Fastify({
+    logger: services.logger ?? false,
+    bodyLimit: 10 * 1024 * 1024,
+    trustProxy: true,
+  });
+  const requestUsers = new WeakMap<FastifyRequest, { id: number; username: string }>();
+  const userId = (request: FastifyRequest): number => {
+    const user = requestUsers.get(request);
+    if (!user) throw new Error("Authenticated user is missing");
+    return user.id;
+  };
 
   app.setErrorHandler((error, _request, reply) => {
     if (error instanceof ZodError) {
@@ -57,6 +73,10 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
       reply.code(400).send({ error: errorMessage });
       return;
     }
+    if (errorMessage === "The selected folder or feed does not exist") {
+      reply.code(400).send({ error: errorMessage });
+      return;
+    }
     if (errorMessage === "Invalid article cursor") {
       reply.code(400).send({ error: errorMessage });
       return;
@@ -70,7 +90,50 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     return { status: "ok" };
   });
 
-  app.get("/api/bootstrap", async () => services.database.getBootstrap());
+  app.addHook("onRequest", async (request, reply) => {
+    if (!request.url.startsWith("/api/")) return;
+    reply.header("Cache-Control", "no-store");
+    const path = request.url.split("?", 1)[0];
+    if (path === "/api/auth/login" || path === "/api/auth/session") return;
+    const user = services.authService.userForToken(sessionToken(request.headers.cookie));
+    if (!user) return reply.code(401).send({ error: "Sign in required" });
+    requestUsers.set(request, user);
+  });
+
+  app.post("/api/auth/login", async (request, reply) => {
+    const body = z
+      .object({
+        username: z.string().trim().min(1).max(80),
+        password: z.string().min(1).max(1_024),
+      })
+      .parse(request.body);
+    const session = services.authService.login(body.username, body.password);
+    if (!session) {
+      return reply.code(401).send({ error: "Username or password is incorrect" });
+    }
+    return reply
+      .header(
+        "Set-Cookie",
+        services.authService.sessionCookie(session.token, secureRequest(request)),
+      )
+      .send({ user: session.user });
+  });
+
+  app.get("/api/auth/session", async (request, reply) => {
+    const user = services.authService.userForToken(sessionToken(request.headers.cookie));
+    if (!user) return reply.code(401).send({ error: "Sign in required" });
+    return { user };
+  });
+
+  app.post("/api/auth/logout", async (request, reply) => {
+    services.authService.endSession(sessionToken(request.headers.cookie));
+    return reply
+      .header("Set-Cookie", services.authService.clearSessionCookie(secureRequest(request)))
+      .code(204)
+      .send();
+  });
+
+  app.get("/api/bootstrap", async (request) => services.database.getBootstrap(userId(request)));
 
   app.get("/api/articles", async (request) => {
     const query = z
@@ -87,12 +150,12 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
           .optional(),
       })
       .parse(request.query) as ArticleQuery;
-    return services.database.listArticlePage(query);
+    return services.database.listArticlePage(userId(request), query);
   });
 
   app.get("/api/articles/:id", async (request, reply) => {
     const { id } = idParams.parse(request.params);
-    const article = services.database.getArticle(id);
+    const article = services.database.getArticle(userId(request), id);
     return article ?? missing(reply, "Article");
   });
 
@@ -104,7 +167,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         message: "Provide isRead or isStarred",
       })
       .parse(request.body);
-    const article = services.database.updateArticleState(id, body);
+    const article = services.database.updateArticleState(userId(request), id, body);
     return article ?? missing(reply, "Article");
   });
 
@@ -116,17 +179,20 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         folderId: z.number().int().positive().optional(),
       })
       .parse(request.body ?? {});
-    return { updated: services.database.markArticlesRead(body) };
+    return { updated: services.database.markArticlesRead(userId(request), body) };
   });
 
   app.post("/api/articles/:id/extract", async (request, reply) => {
     const { id } = idParams.parse(request.params);
-    if (!services.database.getArticle(id)) return missing(reply, "Article");
-    if (services.database.retryExtraction(id)) services.extractionQueue.prioritize(id);
-    return services.database.getArticle(id);
+    const accountId = userId(request);
+    if (!services.database.getArticle(accountId, id)) return missing(reply, "Article");
+    if (services.database.retryExtraction(accountId, id)) services.extractionQueue.prioritize(id);
+    return services.database.getArticle(accountId, id);
   });
 
-  app.get("/api/feeds", async () => ({ feeds: services.database.listFeeds() }));
+  app.get("/api/feeds", async (request) => ({
+    feeds: services.database.listFeeds(userId(request)),
+  }));
 
   app.post("/api/feeds", async (request) => {
     const body = z
@@ -138,9 +204,10 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         paused: z.boolean().optional(),
       })
       .parse(request.body);
-    const feed = services.database.createFeed(body);
+    const accountId = userId(request);
+    const feed = services.database.createFeed(accountId, body);
     if (!feed.paused) services.refreshService.request([feed.id]);
-    return services.database.getFeed(feed.id);
+    return services.database.getFeed(accountId, feed.id);
   });
 
   app.patch("/api/feeds/:id", async (request, reply) => {
@@ -154,23 +221,25 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         paused: z.boolean().optional(),
       })
       .parse(request.body);
-    const feed = services.database.updateFeed(id, body);
+    const feed = services.database.updateFeed(userId(request), id, body);
     return feed ?? missing(reply, "Feed");
   });
 
   app.delete("/api/feeds/:id", async (request, reply) => {
     const { id } = idParams.parse(request.params);
-    if (!services.database.deleteFeed(id)) return missing(reply, "Feed");
+    if (!services.database.deleteFeed(userId(request), id)) return missing(reply, "Feed");
     return reply.code(204).send();
   });
 
   app.post("/api/feeds/:id/refresh", async (request, reply) => {
     const { id } = idParams.parse(request.params);
-    if (!services.database.getFeed(id)) return missing(reply, "Feed");
+    if (!services.database.getFeed(userId(request), id)) return missing(reply, "Feed");
     return services.refreshService.request([id]);
   });
 
-  app.get("/api/folders", async () => ({ folders: services.database.listFolders() }));
+  app.get("/api/folders", async (request) => ({
+    folders: services.database.listFolders(userId(request)),
+  }));
 
   app.post("/api/folders", async (request) => {
     const body = z
@@ -180,7 +249,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         position: z.number().int().min(0).optional(),
       })
       .parse(request.body);
-    return services.database.createFolder(body);
+    return services.database.createFolder(userId(request), body);
   });
 
   app.patch("/api/folders/:id", async (request, reply) => {
@@ -192,17 +261,19 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         position: z.number().int().min(0).optional(),
       })
       .parse(request.body);
-    const folder = services.database.updateFolder(id, body);
+    const folder = services.database.updateFolder(userId(request), id, body);
     return folder ?? missing(reply, "Folder");
   });
 
   app.delete("/api/folders/:id", async (request, reply) => {
     const { id } = idParams.parse(request.params);
-    if (!services.database.deleteFolder(id)) return missing(reply, "Folder");
+    if (!services.database.deleteFolder(userId(request), id)) return missing(reply, "Folder");
     return reply.code(204).send();
   });
 
-  app.get("/api/rules", async () => ({ rules: services.database.listRules() }));
+  app.get("/api/rules", async (request) => ({
+    rules: services.database.listRules(userId(request)),
+  }));
 
   const ruleFields = z.object({
     name: z.string().trim().min(1).max(200),
@@ -218,12 +289,13 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
   });
 
   app.post("/api/rules", async (request) =>
-    services.database.createRule(ruleBody.parse(request.body)),
+    services.database.createRule(userId(request), ruleBody.parse(request.body)),
   );
 
   app.patch("/api/rules/:id", async (request, reply) => {
     const { id } = idParams.parse(request.params);
-    const existing = services.database.getRule(id);
+    const accountId = userId(request);
+    const existing = services.database.getRule(accountId, id);
     if (!existing) return missing(reply, "Rule");
     const body = ruleFields.partial().parse(request.body);
     if (
@@ -232,16 +304,16 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     ) {
       return reply.code(400).send({ error: "A rule can target a feed or a folder, not both" });
     }
-    return services.database.updateRule(id, body);
+    return services.database.updateRule(accountId, id, body);
   });
 
   app.delete("/api/rules/:id", async (request, reply) => {
     const { id } = idParams.parse(request.params);
-    if (!services.database.deleteRule(id)) return missing(reply, "Rule");
+    if (!services.database.deleteRule(userId(request), id)) return missing(reply, "Rule");
     return reply.code(204).send();
   });
 
-  app.get("/api/settings", async () => services.database.getSettings());
+  app.get("/api/settings", async (request) => services.database.getSettings(userId(request)));
 
   app.patch("/api/settings", async (request) => {
     const body = z
@@ -251,20 +323,21 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         markReadOnScroll: z.boolean().optional(),
       })
       .parse(request.body);
-    return services.database.updateSettings(body);
+    return services.database.updateSettings(userId(request), body);
   });
 
   app.post("/api/refresh", async (request) => {
     const body = z
       .object({ feedIds: z.array(z.number().int().positive()).max(1_000).optional() })
       .parse(request.body ?? {});
-    return services.refreshService.request(body.feedIds);
+    const feedIds = services.database.getUserRefreshFeedIds(userId(request), body.feedIds);
+    return services.refreshService.request(feedIds);
   });
 
   app.post("/api/opml/import", async (request, reply) => {
     const { opml: source } = z.object({ opml: z.string().min(1) }).parse(request.body);
     try {
-      const { feedIds, ...result } = importOpml(services.database, source);
+      const { feedIds, ...result } = importOpml(services.database, userId(request), source);
       services.refreshService.request(feedIds);
       return result;
     } catch (error) {
@@ -274,11 +347,11 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     }
   });
 
-  app.get("/api/opml/export", async (_request, reply) => {
+  app.get("/api/opml/export", async (request, reply) => {
     return reply
       .header("Content-Type", "text/x-opml; charset=utf-8")
       .header("Content-Disposition", 'attachment; filename="echovale-subscriptions.opml"')
-      .send(exportOpml(services.database));
+      .send(exportOpml(services.database, userId(request)));
   });
 
   if (services.staticDir && existsSync(join(services.staticDir, "index.html"))) {

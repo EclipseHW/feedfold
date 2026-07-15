@@ -1203,7 +1203,7 @@ export function SettingsPage({
     <div className="management-page settings-page">
       <PageHeader
         title="Settings"
-        description="Global reading preferences, polling, shortcuts, and portable subscriptions."
+        description="Reading preferences, polling, shortcuts, and portable subscriptions for this account."
         onMenu={onMenu}
         actions={
           saving ? (
@@ -1217,7 +1217,7 @@ export function SettingsPage({
       <section className="settings-section" aria-labelledby="appearance-heading">
         <div className="settings-heading">
           <h2 id="appearance-heading">Appearance</h2>
-          <p>Saved in this browser.</p>
+          <p>Saved for this account in this browser.</p>
         </div>
         <div className="setting-row">
           <div>
@@ -1237,7 +1237,7 @@ export function SettingsPage({
         </div>
         <div className="setting-row">
           <div>
-            <strong>Global article text size</strong>
+            <strong>Article text size</strong>
             <p>One saved size applies to every full article in reader and expanded views.</p>
           </div>
           <div className="font-stepper">

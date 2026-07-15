@@ -2,6 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createApp } from "./app.js";
+import { AuthService, parseAccountCredentials } from "./auth.js";
 import { AppDatabase } from "./db.js";
 import { ExtractionQueue } from "./extraction.js";
 import { FeedRefreshService } from "./refresh.js";
@@ -33,13 +34,16 @@ const articleFetchTimeoutMs = positiveInteger(
   "ARTICLE_FETCH_TIMEOUT_MS",
 );
 const staticDir = fileURLToPath(new URL("../client", import.meta.url));
+const accounts = parseAccountCredentials(process.env.ECHOVALE_ACCOUNTS);
 
 mkdirSync(dirname(databasePath), { recursive: true });
 const database = new AppDatabase(databasePath, pollIntervalMinutes);
+const authService = new AuthService(database, accounts, pollIntervalMinutes);
 const extractionQueue = new ExtractionQueue(database, 2, articleFetchTimeoutMs);
 const refreshService = new FeedRefreshService(database, extractionQueue, 3, feedFetchTimeoutMs);
 const app = await createApp({
   database,
+  authService,
   extractionQueue,
   refreshService,
   staticDir,

@@ -4,6 +4,11 @@ export type ExtractionStatus = "pending" | "processing" | "complete" | "failed" 
 export type RuleField = "title" | "author" | "summary" | "content" | "any";
 export type RuleAction = "hide" | "mark_read";
 
+export interface SessionUser {
+  id: number;
+  username: string;
+}
+
 export interface Folder {
   id: number;
   parentId: number | null;

@@ -24,41 +24,114 @@ describe("database migrations", () => {
       INSERT INTO migrations (version, applied_at) VALUES (1, '2026-07-13T00:00:00.000Z');
 
       CREATE TABLE settings (
-        id INTEGER PRIMARY KEY,
+        id INTEGER PRIMARY KEY CHECK(id = 1),
         poll_interval_minutes INTEGER NOT NULL,
         single_key_shortcuts INTEGER NOT NULL
       );
       INSERT INTO settings (id, poll_interval_minutes, single_key_shortcuts) VALUES (1, 20, 1);
 
-      CREATE TABLE feeds (id INTEGER PRIMARY KEY, refreshing INTEGER NOT NULL DEFAULT 0);
-      INSERT INTO feeds (id, refreshing) VALUES (1, 1);
+      CREATE TABLE folders (
+        id INTEGER PRIMARY KEY,
+        parent_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
+        name TEXT NOT NULL,
+        position INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE feeds (
+        id INTEGER PRIMARY KEY,
+        folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
+        title TEXT NOT NULL,
+        feed_url TEXT NOT NULL UNIQUE,
+        site_url TEXT,
+        paused INTEGER NOT NULL DEFAULT 0,
+        refreshing INTEGER NOT NULL DEFAULT 0,
+        etag TEXT,
+        last_modified TEXT,
+        last_attempt_at TEXT,
+        last_success_at TEXT,
+        last_http_status INTEGER,
+        last_error TEXT,
+        next_poll_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      INSERT INTO feeds (
+        id, title, feed_url, refreshing, created_at, updated_at
+      ) VALUES (
+        1, 'Migration feed', 'https://example.test/feed', 1,
+        '2026-07-13T00:00:00.000Z', '2026-07-13T00:00:00.000Z'
+      );
 
       CREATE TABLE articles (
         id INTEGER PRIMARY KEY,
+        feed_id INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
+        external_id TEXT NOT NULL,
+        title TEXT NOT NULL,
         url TEXT,
+        author TEXT,
+        published_at TEXT,
+        discovered_at TEXT NOT NULL,
+        summary TEXT NOT NULL DEFAULT '',
         feed_content_html TEXT,
         content_html TEXT,
         content_source TEXT,
         extraction_status TEXT NOT NULL,
-        extraction_error TEXT
+        extraction_error TEXT,
+        is_read INTEGER NOT NULL DEFAULT 0,
+        is_starred INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(feed_id, external_id)
       );
       INSERT INTO articles (
-        id, url, feed_content_html, content_html, content_source, extraction_status, extraction_error
+        id, feed_id, external_id, title, url, discovered_at, feed_content_html,
+        content_html, content_source, extraction_status, extraction_error
       ) VALUES
-        (1, 'https://media.example.test/video.mp4?tag=1',
+        (1, 1, 'one', 'Video', 'https://media.example.test/video.mp4?tag=1',
+         '2026-07-13T00:00:00.000Z',
          '<p>Feed fallback</p><img src="/fallback.jpg">',
          'video bytes incorrectly stored as article HTML', 'article', 'complete', NULL),
-        (2, 'https://example.test/story', NULL,
+        (2, 1, 'two', 'Story', 'https://example.test/story',
+         '2026-07-13T00:00:00.000Z', NULL,
          '<img src="https://img.shields.io/badge/build-passing"><img src="/hero.jpg">',
          'article', 'complete', NULL),
-        (3, 'https://example.test/feed-image', '<img src="/feed-hero.jpg">',
+        (3, 1, 'three', 'Feed image', 'https://example.test/feed-image',
+         '2026-07-13T00:00:00.000Z', '<img src="/feed-hero.jpg">',
          '<p>Extracted text without an image.</p>', 'article', 'complete', NULL);
+
+      CREATE TABLE rules (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL,
+        feed_id INTEGER REFERENCES feeds(id) ON DELETE CASCADE,
+        folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+        field TEXT NOT NULL,
+        pattern TEXT NOT NULL,
+        action TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        matched_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE article_rule_matches (
+        article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+        rule_id INTEGER NOT NULL REFERENCES rules(id) ON DELETE CASCADE,
+        PRIMARY KEY(article_id, rule_id)
+      );
+
+      CREATE INDEX articles_feed_id_idx ON articles(feed_id);
+      CREATE INDEX articles_read_idx ON articles(is_read);
+      CREATE INDEX articles_starred_idx ON articles(is_starred);
+      CREATE INDEX articles_published_idx ON articles(published_at DESC);
+      CREATE INDEX feeds_folder_id_idx ON feeds(folder_id);
+      CREATE INDEX rules_feed_id_idx ON rules(feed_id);
+      CREATE INDEX rules_folder_id_idx ON rules(folder_id);
     `);
     oldDatabase.close();
 
     const database = new AppDatabase(path);
     try {
-      expect(database.getSettings()).toMatchObject({ markReadOnScroll: true });
+      expect(database.getSettings(1)).toMatchObject({ markReadOnScroll: true });
       expect(
         database.sqlite
           .prepare(
@@ -95,14 +168,14 @@ describe("database migrations", () => {
           imageUrl: "https://example.test/feed-hero.jpg",
         },
       ]);
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(2);
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(3);
     } finally {
       database.close();
     }
 
     const reopened = new AppDatabase(path);
     try {
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(2);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(3);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");

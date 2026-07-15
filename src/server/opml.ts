@@ -17,10 +17,14 @@ function validateFeedUrl(value: string): string {
   return parsed.toString();
 }
 
-export function importOpml(database: AppDatabase, source: string): OpmlImportOutcome {
+export function importOpml(
+  database: AppDatabase,
+  userId: number,
+  source: string,
+): OpmlImportOutcome {
   const document = parseOpml(source);
   const result: OpmlImportOutcome = { imported: 0, duplicates: 0, failed: [], feedIds: [] };
-  const existingUrls = new Set(database.listOpmlFeeds().map((feed) => feed.feedUrl));
+  const existingUrls = new Set(database.listOpmlFeeds(userId).map((feed) => feed.feedUrl));
 
   const visit = (outlines: ParsedOutline[], parentId: number | null): void => {
     for (const outline of outlines) {
@@ -31,7 +35,7 @@ export function importOpml(database: AppDatabase, source: string): OpmlImportOut
           if (existingUrls.has(feedUrl)) {
             result.duplicates += 1;
           } else {
-            const feed = database.createFeed({
+            const feed = database.createFeed(userId, {
               title,
               feedUrl,
               siteUrl: outline.htmlUrl ?? null,
@@ -54,9 +58,9 @@ export function importOpml(database: AppDatabase, source: string): OpmlImportOut
 
       const name = outline.text.trim() || outline.title?.trim() || "Imported";
       let folder = database
-        .listOpmlFolders()
+        .listOpmlFolders(userId)
         .find((candidate) => candidate.name === name && candidate.parentId === parentId);
-      if (!folder) folder = database.createFolder({ name, parentId });
+      if (!folder) folder = database.createFolder(userId, { name, parentId });
       if (outline.outlines?.length) visit(outline.outlines, folder.id);
     }
   };
@@ -65,9 +69,9 @@ export function importOpml(database: AppDatabase, source: string): OpmlImportOut
   return result;
 }
 
-export function exportOpml(database: AppDatabase): string {
-  const folders = database.listOpmlFolders();
-  const feeds = database.listOpmlFeeds();
+export function exportOpml(database: AppDatabase, userId: number): string {
+  const folders = database.listOpmlFolders(userId);
+  const feeds = database.listOpmlFeeds(userId);
   const outlinesByFolder = new Map<number | null, Opml.Outline<Date>[]>();
   const children = (folderId: number | null): Opml.Outline<Date>[] => {
     const existing = outlinesByFolder.get(folderId);
