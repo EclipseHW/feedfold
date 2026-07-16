@@ -864,19 +864,22 @@ export function ReaderPane({
       key={article.id}
       aria-labelledby={`article-${article.id}-title`}
     >
-      <button className="mobile-reader-back" type="button" onClick={onBack}>
-        <ArrowLeft aria-hidden="true" size={16} />
-        Back to articles
-      </button>
       <div className="reader-action-bar">
-        <ArticleActions
-          article={article}
-          onPrevious={onPrevious}
-          onNext={onNext}
-          onMarkUnread={onMarkUnread}
-          onToggleStar={onToggleStar}
-          onCopy={onCopy}
-        />
+        <div className="reader-action-row">
+          <button className="reader-back-button" type="button" onClick={onBack}>
+            <ArrowLeft aria-hidden="true" size={16} />
+            Back to articles
+          </button>
+          <span className="reader-action-divider" aria-hidden="true" />
+          <ArticleActions
+            article={article}
+            onPrevious={onPrevious}
+            onNext={onNext}
+            onMarkUnread={onMarkUnread}
+            onToggleStar={onToggleStar}
+            onCopy={onCopy}
+          />
+        </div>
       </div>
       <ArticleDocument
         article={article}
