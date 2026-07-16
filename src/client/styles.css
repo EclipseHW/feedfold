@@ -1963,6 +1963,11 @@ kbd {
   white-space: nowrap;
 }
 
+.data-table td.row-actions {
+  display: table-cell;
+  text-align: right;
+}
+
 .row-actions button {
   display: inline-flex;
   width: 31px;
