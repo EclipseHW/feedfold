@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Circle,
   Copy,
+  ExternalLink,
   FileText,
   Inbox,
   LoaderCircle,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { Article, ArticleState, ReadingMode } from "../shared/types";
+import { extractHttpLinks, supplementalHttpLinks } from "./article-links";
 
 function formatRelativeDate(value: string | null): string {
   if (!value) return "Date unknown";
@@ -52,6 +54,50 @@ function mediaTypeLabel(article: Article): string | null {
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return <kbd>{children}</kbd>;
+}
+
+function LinkifiedText({ text }: { text: string }) {
+  const links = extractHttpLinks(text);
+  if (links.length === 0) return text;
+
+  const nodes: React.ReactNode[] = [];
+  let cursor = 0;
+  for (const link of links) {
+    if (link.start > cursor) nodes.push(text.slice(cursor, link.start));
+    nodes.push(
+      <a
+        key={`${link.href}-${link.start}`}
+        href={link.href}
+        target="_blank"
+        rel="noreferrer"
+        title={link.href}
+      >
+        {link.text}
+        <span className="sr-only"> (opens in a new tab)</span>
+      </a>,
+    );
+    cursor = link.end;
+  }
+  if (cursor < text.length) nodes.push(text.slice(cursor));
+  return <>{nodes}</>;
+}
+
+function ArticleFeedLinks({ article }: { article: Article }) {
+  const links = supplementalHttpLinks(article.summary, article.url);
+  if (links.length === 0) return null;
+
+  return (
+    <div className="article-feed-links">
+      <span>Feed links</span>
+      {links.map((link) => (
+        <a key={link.href} href={link.href} target="_blank" rel="noreferrer" title={link.href}>
+          <ExternalLink aria-hidden="true" size={13} />
+          {link.label}
+          <span className="sr-only"> (opens in a new tab)</span>
+        </a>
+      ))}
+    </div>
+  );
 }
 
 function useMarkReadOnScroll({
@@ -474,6 +520,9 @@ export function ArticleList({
               aria-current={article.id === activeId ? "true" : undefined}
               onClick={() => onOpen(article)}
             >
+              <span className="sr-only">Open {article.title}</span>
+            </button>
+            <div className="article-card-content">
               {article.imageUrl ? (
                 <img className="article-card-image" src={article.imageUrl} alt="" loading="lazy" />
               ) : (
@@ -505,10 +554,12 @@ export function ArticleList({
                   {article.title}
                 </span>
                 {article.summary ? (
-                  <span className="article-list-summary-text">{article.summary}</span>
+                  <span className="article-list-summary-text">
+                    <LinkifiedText text={article.summary} />
+                  </span>
                 ) : null}
               </span>
-            </button>
+            </div>
             <div className="article-card-state-actions">
               <button
                 className="list-read-button"
@@ -734,6 +785,7 @@ function ArticleHeader({ article, id }: { article: Article; id: string }) {
           article.title
         )}
       </h2>
+      <ArticleFeedLinks article={article} />
       {article.contentSource === "feed" ? (
         <div className="article-source-status">
           <span>
@@ -792,7 +844,11 @@ function ArticleText({
           <strong>Extracting full text</strong>
           <p>The feed summary is shown while the complete article is prepared.</p>
         </div>
-        {article.summary ? <p className="article-summary-fallback">{article.summary}</p> : null}
+        {article.summary ? (
+          <p className="article-summary-fallback">
+            <LinkifiedText text={article.summary} />
+          </p>
+        ) : null}
       </div>
     );
   }
@@ -820,13 +876,19 @@ function ArticleText({
             Retry full text
           </button>
         </div>
-        {article.summary ? <p className="article-summary-fallback">{article.summary}</p> : null}
+        {article.summary ? (
+          <p className="article-summary-fallback">
+            <LinkifiedText text={article.summary} />
+          </p>
+        ) : null}
       </div>
     );
   }
   return article.summary ? (
     <div className="article-content">
-      <p>{article.summary}</p>
+      <p>
+        <LinkifiedText text={article.summary} />
+      </p>
     </div>
   ) : (
     <div className="article-extraction-state">
