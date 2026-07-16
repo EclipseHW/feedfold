@@ -10,7 +10,8 @@ import type {
   RefreshResult,
   Rule,
   RuleAction,
-  RuleField,
+  RuleCondition,
+  RuleConditionOperator,
   SessionUser,
 } from "../shared/types";
 
@@ -86,8 +87,8 @@ export interface RuleInput {
   name: string;
   feedId: number | null;
   folderId: number | null;
-  field: RuleField;
-  pattern: string;
+  conditions: RuleCondition[];
+  conditionOperator: RuleConditionOperator;
   action: RuleAction;
   enabled: boolean;
 }

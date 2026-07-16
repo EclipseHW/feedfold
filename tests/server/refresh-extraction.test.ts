@@ -494,8 +494,8 @@ describe("feed refresh and full-text extraction", () => {
 
     const rule = database.createRule(TEST_USER_ID, {
       name: "Hide Shorts",
-      field: "media",
-      pattern: "short",
+      conditions: [{ field: "media", pattern: "short" }],
+      conditionOperator: "and",
       action: "hide",
     });
     expect(rule.matchedCount).toBe(1);

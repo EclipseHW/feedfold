@@ -2066,11 +2066,239 @@ kbd {
 .form-grid.three-columns {
   grid-template-columns: 2fr 1fr 1fr;
 }
-.rule-form-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
 .wide-field {
   grid-column: span 2;
+}
+
+.rule-form-sections {
+  display: grid;
+  gap: 17px;
+}
+
+.rule-form-section {
+  min-width: 0;
+  padding-top: 17px;
+  border-top: 1px solid var(--border);
+}
+
+.rule-form-section:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.rule-form-section-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 10px;
+}
+
+.rule-form-section-heading h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.rule-form-section-heading p {
+  max-width: 70ch;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.rule-basics-grid {
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr);
+}
+
+.rule-condition-group,
+.rule-action-options {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.rule-condition-columns,
+.rule-condition-row {
+  display: grid;
+  grid-template-columns: 76px minmax(130px, 0.85fr) 76px minmax(190px, 1.4fr) 36px;
+  gap: 8px;
+}
+
+.rule-condition-columns {
+  align-items: end;
+  padding: 7px 9px 5px;
+  border: 1px solid var(--border);
+  border-bottom: 0;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 650;
+}
+
+.rule-condition-list {
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
+  background: var(--bg);
+  list-style: none;
+}
+
+.rule-condition-row {
+  align-items: center;
+  padding: 8px;
+}
+
+.rule-condition-row + .rule-condition-row {
+  border-top: 1px solid var(--border);
+}
+
+.rule-condition-connector {
+  padding-left: 3px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.rule-condition-operator select,
+.rule-condition-control select,
+.rule-condition-control input {
+  width: 100%;
+  height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.rule-condition-control input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.rule-condition-comparator {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.rule-condition-remove,
+.rule-condition-remove-spacer {
+  width: 36px;
+  height: 36px;
+}
+
+.rule-condition-remove {
+  color: var(--muted);
+}
+
+.rule-condition-actions {
+  display: flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.rule-condition-actions small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.rule-action-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.rule-action-option {
+  display: grid;
+  min-width: 0;
+  min-height: 76px;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition:
+    transform 140ms var(--ease-out),
+    background-color 140ms ease,
+    border-color 140ms ease;
+}
+
+.rule-action-option.is-selected {
+  border-color: var(--accent-strong);
+  background: var(--accent-surface);
+}
+
+.rule-action-option input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+  accent-color: var(--accent-strong);
+}
+
+.rule-action-icon {
+  display: inline-flex;
+  margin-top: 1px;
+  color: var(--muted);
+}
+
+.rule-action-option.is-selected .rule-action-icon {
+  color: var(--accent);
+}
+
+.rule-action-option strong,
+.rule-action-option small {
+  display: block;
+}
+
+.rule-action-option strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.rule-action-option small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.rule-enabled-field {
+  padding-top: 12px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .rule-condition-remove:hover:not(:disabled) {
+    border-color: var(--border);
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .rule-action-option:hover {
+    border-color: var(--border-strong);
+    background: var(--surface-hover);
+  }
+
+  .rule-action-option.is-selected:hover {
+    border-color: var(--accent);
+    background: var(--accent-surface);
+  }
+
+  .rule-action-option:active {
+    transform: scale(0.99);
+  }
 }
 
 .field {
@@ -2213,10 +2441,20 @@ kbd {
   gap: 5px;
   padding: 3px 7px;
   border-radius: 999px;
-  background: var(--accent-surface);
-  color: var(--accent);
   font-size: 11px;
   font-weight: 650;
+}
+
+.rules-count,
+.action-badge.keep {
+  background: var(--accent-surface);
+  color: var(--accent);
+}
+
+.action-badge {
+  background: var(--surface-active);
+  color: var(--text-secondary);
+  white-space: nowrap;
 }
 
 .rule-name-cell {
@@ -2231,15 +2469,33 @@ kbd {
   text-transform: capitalize;
 }
 .rule-condition code {
-  max-width: 220px;
+  max-width: 240px;
   overflow: hidden;
   color: var(--text);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.action-badge.mark_read {
+
+.rule-condition-summary {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 6px;
+}
+
+.rule-condition-count {
+  display: inline-flex;
+  min-width: 22px;
+  height: 19px;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  padding-inline: 5px;
+  border-radius: 999px;
   background: var(--surface-active);
   color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: 650;
 }
 
 .switch {
@@ -2666,7 +2922,6 @@ kbd {
     margin-left: 0;
   }
   .form-grid.three-columns,
-  .rule-form-grid,
   .table-inline-form {
     grid-template-columns: 1fr 1fr;
   }
@@ -2685,6 +2940,48 @@ kbd {
     justify-content: flex-start;
   }
   .shortcut-reference {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .rule-condition-columns {
+    display: none;
+  }
+  .rule-condition-list {
+    border-radius: var(--radius-md);
+  }
+  .rule-condition-row {
+    grid-template-areas:
+      "logic field field remove"
+      ". comparator value .";
+    grid-template-columns: 70px 76px minmax(190px, 1fr) 36px;
+    gap: 7px 8px;
+    padding: 10px;
+  }
+  .rule-condition-connector,
+  .rule-condition-operator {
+    grid-area: logic;
+    justify-self: stretch;
+  }
+  .rule-condition-connector {
+    align-self: center;
+    padding-left: 2px;
+  }
+  .rule-condition-field-control {
+    grid-area: field;
+  }
+  .rule-condition-comparator {
+    grid-area: comparator;
+  }
+  .rule-condition-value-control {
+    grid-area: value;
+  }
+  .rule-condition-remove,
+  .rule-condition-remove-spacer {
+    grid-area: remove;
+  }
+  .rule-action-options {
     grid-template-columns: 1fr;
   }
 }
@@ -2764,7 +3061,6 @@ kbd {
   }
   .form-grid,
   .form-grid.three-columns,
-  .rule-form-grid,
   .table-inline-form,
   .compact-form {
     grid-template-columns: 1fr;
@@ -2776,6 +3072,58 @@ kbd {
   }
   .checkbox-field {
     padding-top: 4px;
+  }
+  .rule-form-section-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .rule-condition-row {
+    grid-template-areas:
+      "logic remove"
+      "field field"
+      "comparator comparator"
+      "value value";
+    grid-template-columns: minmax(0, 1fr) 36px;
+    gap: 7px 8px;
+    padding: 10px;
+  }
+  .rule-condition-connector,
+  .rule-condition-operator {
+    grid-area: logic;
+    justify-self: start;
+  }
+  .rule-condition-connector {
+    align-self: center;
+    padding-left: 0;
+  }
+  .rule-condition-operator {
+    width: 92px;
+  }
+  .rule-condition-field-control {
+    grid-area: field;
+  }
+  .rule-condition-comparator {
+    grid-area: comparator;
+    justify-self: start;
+    padding-left: 2px;
+    color: var(--muted);
+    font-size: 11px;
+  }
+  .rule-condition-value-control {
+    grid-area: value;
+  }
+  .rule-condition-remove,
+  .rule-condition-remove-spacer {
+    grid-area: remove;
+  }
+  .rule-condition-actions {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .rule-enabled-field {
+    padding-top: 12px;
   }
   .table-scroll {
     overflow: visible;
@@ -2864,6 +3212,7 @@ kbd {
 
   .nav-item kbd,
   .switch span,
+  .rule-action-option,
   .sidebar,
   .nav-scrim,
   .article-selection-menu,
@@ -2887,7 +3236,8 @@ kbd {
     border: 1px solid CanvasText;
   }
   .article-list-item.is-active,
-  .expanded-article.is-active {
+  .expanded-article.is-active,
+  .rule-action-option.is-selected {
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }

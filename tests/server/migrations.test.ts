@@ -115,12 +115,20 @@ describe("database migrations", () => {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       );
+      INSERT INTO rules (
+        id, name, feed_id, folder_id, field, pattern, action, enabled, matched_count,
+        created_at, updated_at
+      ) VALUES (
+        1, 'Hide video articles', NULL, NULL, 'title', 'Video', 'hide', 1, 1,
+        '2026-07-13T00:00:00.000Z', '2026-07-13T00:00:00.000Z'
+      );
 
       CREATE TABLE article_rule_matches (
         article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
         rule_id INTEGER NOT NULL REFERENCES rules(id) ON DELETE CASCADE,
         PRIMARY KEY(article_id, rule_id)
       );
+      INSERT INTO article_rule_matches (article_id, rule_id) VALUES (1, 1);
 
       CREATE INDEX articles_feed_id_idx ON articles(feed_id);
       CREATE INDEX articles_read_idx ON articles(is_read);
@@ -143,7 +151,20 @@ describe("database migrations", () => {
         username: "reader",
       });
       expect(database.listFeeds(1)).toMatchObject([{ title: "Migration feed" }]);
-      expect(database.listArticles(1, { state: "all" })).toHaveLength(4);
+      expect(database.listRules(1)).toMatchObject([
+        {
+          name: "Hide video articles",
+          conditions: [{ field: "title", pattern: "Video" }],
+          conditionOperator: "and",
+          action: "hide",
+          matchedCount: 1,
+        },
+      ]);
+      database.recomputeRulesForArticle(1);
+      expect(database.listArticles(1, { state: "all" })).toHaveLength(3);
+      expect(
+        database.listArticles(1, { state: "all" }).map((article) => article.title),
+      ).not.toContain("Video");
       const storedUser = database.sqlite
         .prepare("SELECT username, password_hash AS passwordHash FROM users WHERE id = 1")
         .get() as { username: string; passwordHash: string };
@@ -211,7 +232,7 @@ describe("database migrations", () => {
           embedUrl: "https://www.youtube.com/embed/short123",
         },
       });
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(4);
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(5);
     } finally {
       database.close();
     }
@@ -223,7 +244,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(4);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(5);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");

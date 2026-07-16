@@ -10,6 +10,8 @@ import type {
   Folder,
   Rule,
   RuleAction,
+  RuleCondition,
+  RuleConditionOperator,
   RuleField,
 } from "../shared/types.js";
 import { firstSafeImageUrl } from "./article-image.js";
@@ -433,6 +435,58 @@ const migrations: Migration[] = [
       }
     },
   },
+  {
+    foreignKeysOff: true,
+    sql: `
+      ALTER TABLE article_rule_matches RENAME TO article_rule_matches_v4;
+      ALTER TABLE rules RENAME TO rules_v4;
+
+      DROP INDEX IF EXISTS rules_user_id_idx;
+      DROP INDEX IF EXISTS rules_feed_id_idx;
+      DROP INDEX IF EXISTS rules_folder_id_idx;
+
+      CREATE TABLE rules (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        feed_id INTEGER REFERENCES feeds(id) ON DELETE CASCADE,
+        folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+        conditions_json TEXT NOT NULL
+          CHECK(json_valid(conditions_json) AND json_array_length(conditions_json) > 0),
+        condition_operator TEXT NOT NULL CHECK(condition_operator IN ('and', 'or')),
+        action TEXT NOT NULL CHECK(action IN ('hide', 'keep', 'mark_read')),
+        enabled INTEGER NOT NULL DEFAULT 1,
+        matched_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE article_rule_matches (
+        article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+        rule_id INTEGER NOT NULL REFERENCES rules(id) ON DELETE CASCADE,
+        PRIMARY KEY(article_id, rule_id)
+      );
+
+      INSERT INTO rules (
+        id, user_id, name, feed_id, folder_id, conditions_json, condition_operator, action,
+        enabled, matched_count, created_at, updated_at
+      )
+      SELECT id, user_id, name, feed_id, folder_id,
+             json_array(json_object('field', field, 'pattern', pattern)), 'and', action,
+             enabled, matched_count, created_at, updated_at
+      FROM rules_v4;
+
+      INSERT INTO article_rule_matches (article_id, rule_id)
+      SELECT article_id, rule_id FROM article_rule_matches_v4;
+
+      DROP TABLE article_rule_matches_v4;
+      DROP TABLE rules_v4;
+
+      CREATE INDEX rules_user_id_idx ON rules(user_id);
+      CREATE INDEX rules_feed_id_idx ON rules(feed_id);
+      CREATE INDEX rules_folder_id_idx ON rules(folder_id);
+    `,
+  },
 ];
 
 function now(): string {
@@ -542,8 +596,8 @@ function mapRule(row: Row): Rule {
     name: String(row.name),
     feedId: row.feedId === null ? null : Number(row.feedId),
     folderId: row.folderId === null ? null : Number(row.folderId),
-    field: row.field as RuleField,
-    pattern: String(row.pattern),
+    conditions: JSON.parse(String(row.conditionsJson)) as RuleCondition[],
+    conditionOperator: row.conditionOperator as RuleConditionOperator,
     action: row.action as RuleAction,
     enabled: toBoolean(row.enabled),
     matchedCount: Number(row.matchedCount),
@@ -552,13 +606,47 @@ function mapRule(row: Row): Rule {
   };
 }
 
-const hiddenClause = `NOT EXISTS (
+const visibleClause = `NOT EXISTS (
   SELECT 1
   FROM article_rule_matches arm
   JOIN rules hidden_rule ON hidden_rule.id = arm.rule_id
   WHERE arm.article_id = articles.id
     AND hidden_rule.enabled = 1
     AND hidden_rule.action = 'hide'
+)
+AND (
+  NOT EXISTS (
+    SELECT 1
+    FROM rules keep_rule
+    WHERE keep_rule.user_id = feeds.user_id
+      AND keep_rule.enabled = 1
+      AND keep_rule.action = 'keep'
+      AND (keep_rule.feed_id IS NULL OR keep_rule.feed_id = articles.feed_id)
+      AND (
+        keep_rule.folder_id IS NULL
+        OR EXISTS (
+          WITH RECURSIVE folder_tree(id) AS (
+            SELECT id
+            FROM folders
+            WHERE id = keep_rule.folder_id AND user_id = keep_rule.user_id
+            UNION ALL
+            SELECT folders.id
+            FROM folders
+            JOIN folder_tree ON folders.parent_id = folder_tree.id
+            WHERE folders.user_id = keep_rule.user_id
+          )
+          SELECT 1 FROM folder_tree WHERE id = feeds.folder_id
+        )
+      )
+  )
+  OR EXISTS (
+    SELECT 1
+    FROM article_rule_matches keep_match
+    JOIN rules matched_keep_rule ON matched_keep_rule.id = keep_match.rule_id
+    WHERE keep_match.article_id = articles.id
+      AND matched_keep_rule.enabled = 1
+      AND matched_keep_rule.action = 'keep'
+  )
 )`;
 
 export class AppDatabase {
@@ -672,7 +760,7 @@ export class AppDatabase {
                   JOIN articles ON articles.feed_id = feeds.id
                   WHERE descendants.root_id = folders.id
                     AND articles.is_read = 0
-                    AND ${hiddenClause}
+                    AND ${visibleClause}
                 ) AS unreadCount
          FROM folders
          WHERE folders.user_id = ?
@@ -796,8 +884,8 @@ export class AppDatabase {
                 feeds.last_http_status AS lastHttpStatus,
                 feeds.last_error AS lastError,
                 feeds.next_poll_at AS nextPollAt,
-                SUM(CASE WHEN articles.id IS NOT NULL AND articles.is_read = 0 AND ${hiddenClause} THEN 1 ELSE 0 END) AS unreadCount,
-                SUM(CASE WHEN articles.id IS NOT NULL AND ${hiddenClause} THEN 1 ELSE 0 END) AS totalCount
+                SUM(CASE WHEN articles.id IS NOT NULL AND articles.is_read = 0 AND ${visibleClause} THEN 1 ELSE 0 END) AS unreadCount,
+                SUM(CASE WHEN articles.id IS NOT NULL AND ${visibleClause} THEN 1 ELSE 0 END) AS totalCount
          FROM feeds
          LEFT JOIN articles ON articles.feed_id = feeds.id
          WHERE feeds.user_id = ?
@@ -1136,9 +1224,9 @@ export class AppDatabase {
     const counts = this.sqlite
       .prepare(
         `SELECT
-           SUM(CASE WHEN is_read = 0 AND ${hiddenClause} THEN 1 ELSE 0 END) AS unread,
-           SUM(CASE WHEN is_starred = 1 AND ${hiddenClause} THEN 1 ELSE 0 END) AS starred,
-           SUM(CASE WHEN ${hiddenClause} THEN 1 ELSE 0 END) AS allCount
+           SUM(CASE WHEN is_read = 0 AND ${visibleClause} THEN 1 ELSE 0 END) AS unread,
+           SUM(CASE WHEN is_starred = 1 AND ${visibleClause} THEN 1 ELSE 0 END) AS starred,
+           SUM(CASE WHEN ${visibleClause} THEN 1 ELSE 0 END) AS allCount
          FROM articles
          JOIN feeds ON feeds.id = articles.feed_id
          WHERE feeds.user_id = ?`,
@@ -1161,7 +1249,7 @@ export class AppDatabase {
   }
 
   listArticlePage(userId: number, query: ArticleQuery): ArticlePage {
-    const where = ["feeds.user_id = ?", hiddenClause];
+    const where = ["feeds.user_id = ?", visibleClause];
     const values: Array<string | number> = [userId];
     if (query.state === "unread") where.push("articles.is_read = 0");
     if (query.state === "read") where.push("articles.is_read = 1");
@@ -1337,7 +1425,8 @@ export class AppDatabase {
   listRules(userId: number): Rule[] {
     const rows = this.sqlite
       .prepare(
-        `SELECT id, name, feed_id AS feedId, folder_id AS folderId, field, pattern, action,
+        `SELECT id, name, feed_id AS feedId, folder_id AS folderId,
+                conditions_json AS conditionsJson, condition_operator AS conditionOperator, action,
                 enabled, matched_count AS matchedCount, created_at AS createdAt, updated_at AS updatedAt
          FROM rules WHERE user_id = ? ORDER BY created_at DESC, id DESC`,
       )
@@ -1355,8 +1444,8 @@ export class AppDatabase {
       name: string;
       feedId?: number | null;
       folderId?: number | null;
-      field: RuleField;
-      pattern: string;
+      conditions: RuleCondition[];
+      conditionOperator: RuleConditionOperator;
       action: RuleAction;
       enabled?: boolean;
     },
@@ -1366,7 +1455,7 @@ export class AppDatabase {
     const result = this.sqlite
       .prepare(
         `INSERT INTO rules (
-           user_id, name, feed_id, folder_id, field, pattern, action, enabled,
+           user_id, name, feed_id, folder_id, conditions_json, condition_operator, action, enabled,
            matched_count, created_at, updated_at
          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
       )
@@ -1375,8 +1464,8 @@ export class AppDatabase {
         input.name,
         input.feedId ?? null,
         input.folderId ?? null,
-        input.field,
-        input.pattern,
+        JSON.stringify(input.conditions),
+        input.conditionOperator,
         input.action,
         (input.enabled ?? true) ? 1 : 0,
         timestamp,
@@ -1394,8 +1483,8 @@ export class AppDatabase {
       name: string;
       feedId: number | null;
       folderId: number | null;
-      field: RuleField;
-      pattern: string;
+      conditions: RuleCondition[];
+      conditionOperator: RuleConditionOperator;
       action: RuleAction;
       enabled: boolean;
     }>,
@@ -1408,16 +1497,16 @@ export class AppDatabase {
     this.sqlite
       .prepare(
         `UPDATE rules
-         SET name = ?, feed_id = ?, folder_id = ?, field = ?, pattern = ?, action = ?,
-             enabled = ?, updated_at = ?
+         SET name = ?, feed_id = ?, folder_id = ?, conditions_json = ?, condition_operator = ?,
+             action = ?, enabled = ?, updated_at = ?
          WHERE id = ? AND user_id = ?`,
       )
       .run(
         input.name ?? existing.name,
         input.feedId === undefined ? existing.feedId : input.feedId,
         input.folderId === undefined ? existing.folderId : input.folderId,
-        input.field ?? existing.field,
-        input.pattern ?? existing.pattern,
+        JSON.stringify(input.conditions ?? existing.conditions),
+        input.conditionOperator ?? existing.conditionOperator,
         input.action ?? existing.action,
         (input.enabled ?? existing.enabled) ? 1 : 0,
         now(),
@@ -1540,10 +1629,13 @@ export class AppDatabase {
         article.content_html ?? "",
       )} ${mediaText}`,
     };
-    const field = rule.field as RuleField;
-    const matched = values[field]
-      .toLocaleLowerCase()
-      .includes(String(rule.pattern).toLocaleLowerCase());
+    const conditions = JSON.parse(String(rule.conditions_json)) as RuleCondition[];
+    const matchesCondition = (condition: RuleCondition) =>
+      values[condition.field].toLocaleLowerCase().includes(condition.pattern.toLocaleLowerCase());
+    const matched =
+      rule.condition_operator === "and"
+        ? conditions.every(matchesCondition)
+        : conditions.some(matchesCondition);
     if (!matched) return;
     const inserted = this.sqlite
       .prepare("INSERT OR IGNORE INTO article_rule_matches (article_id, rule_id) VALUES (?, ?)")

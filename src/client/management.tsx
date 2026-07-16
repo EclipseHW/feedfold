@@ -4,7 +4,6 @@ import {
   CheckCircle2,
   Download,
   Edit3,
-  Eye,
   EyeOff,
   FolderPlus,
   Keyboard,
@@ -31,6 +30,8 @@ import type {
   Folder,
   Rule,
   RuleAction,
+  RuleCondition,
+  RuleConditionOperator,
   RuleField,
 } from "../shared/types";
 import { api, appUrl, errorMessage, type RuleInput } from "./api";
@@ -45,6 +46,32 @@ const RULE_FIELD_LABELS: Record<RuleField, string> = {
   media: "Media type",
   any: "Any text",
 };
+
+const RULE_ACTION_COPY: Record<
+  RuleAction,
+  { label: string; shortLabel: string; description: string }
+> = {
+  hide: {
+    label: "Hide matching articles",
+    shortLabel: "Hide matches",
+    description: "Matching articles are hidden from article lists.",
+  },
+  keep: {
+    label: "Keep only matching articles",
+    shortLabel: "Keep only",
+    description:
+      "Articles stay visible when they match this or another enabled keep rule that applies here.",
+  },
+  mark_read: {
+    label: "Mark matching articles as read",
+    shortLabel: "Mark read",
+    description: "Matching articles stay available without appearing as unread.",
+  },
+};
+
+interface EditableRuleCondition extends RuleCondition {
+  id: number;
+}
 
 export interface RuleFormDraft {
   id: number;
@@ -815,8 +842,8 @@ export function RulesPage({
   return (
     <div className="management-page">
       <PageHeader
-        title="Noise rules"
-        description="Hide predictable noise or mark it read before it reaches your queue."
+        title="Rules"
+        description="Keep the articles you want, hide predictable noise, or mark matches read."
         onMenu={onMenu}
         actions={
           <button
@@ -882,10 +909,8 @@ export function RulesPage({
         ) : rules.length === 0 ? (
           <div className="section-empty">
             <ListFilter aria-hidden="true" size={22} />
-            <h3>No noise rules</h3>
-            <p>
-              Create a rule for recurring topics, authors, or phrases you do not want in the queue.
-            </p>
+            <h3>No rules yet</h3>
+            <p>Create a rule to keep, hide, or mark articles read.</p>
             <button
               className="secondary-button"
               type="button"
@@ -905,7 +930,7 @@ export function RulesPage({
                 <tr>
                   <th scope="col">Rule</th>
                   <th scope="col">Scope</th>
-                  <th scope="col">Match</th>
+                  <th scope="col">Conditions</th>
                   <th scope="col">Action</th>
                   <th scope="col">Matched</th>
                   <th scope="col">
@@ -938,6 +963,12 @@ export function RulesPage({
   );
 }
 
+function RuleActionIcon({ action, size }: { action: RuleAction; size: number }) {
+  if (action === "hide") return <EyeOff aria-hidden="true" size={size} />;
+  if (action === "keep") return <ListFilter aria-hidden="true" size={size} />;
+  return <CheckCircle2 aria-hidden="true" size={size} />;
+}
+
 function RuleForm({
   bootstrap,
   initial,
@@ -961,11 +992,46 @@ function RuleForm({
         ? `folder:${initial.folderId}`
         : "all",
   );
-  const [field, setField] = useState<RuleField>(initial?.field ?? preset?.field ?? "title");
-  const [pattern, setPattern] = useState(initial?.pattern ?? preset?.pattern ?? "");
+  const nextConditionId = useRef(initial?.conditions.length ?? 1);
+  const conditionInputRefs = useRef(new Map<number, HTMLInputElement>());
+  const addConditionButtonRef = useRef<HTMLButtonElement>(null);
+  const [conditions, setConditions] = useState<EditableRuleCondition[]>(() => {
+    const values = initial?.conditions ?? [
+      { field: preset?.field ?? "title", pattern: preset?.pattern ?? "" },
+    ];
+    return values.map((condition, id) => ({ ...condition, id }));
+  });
+  const [conditionOperator, setConditionOperator] = useState<RuleConditionOperator>(
+    initial?.conditionOperator ?? "or",
+  );
   const [action, setAction] = useState<RuleAction>(initial?.action ?? "hide");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [saving, setSaving] = useState(false);
+
+  const addCondition = () => {
+    const id = nextConditionId.current;
+    nextConditionId.current += 1;
+    setConditions((current) => [
+      ...current,
+      {
+        id,
+        field: current[current.length - 1]?.field ?? "title",
+        pattern: "",
+      },
+    ]);
+    window.requestAnimationFrame(() => conditionInputRefs.current.get(id)?.focus());
+  };
+
+  const removeCondition = (id: number) => {
+    const index = conditions.findIndex((condition) => condition.id === id);
+    const focusId = conditions[index - 1]?.id ?? conditions[index + 1]?.id;
+    setConditions((current) => current.filter((condition) => condition.id !== id));
+    window.requestAnimationFrame(() => {
+      if (focusId === undefined) addConditionButtonRef.current?.focus();
+      else conditionInputRefs.current.get(focusId)?.focus();
+      conditionInputRefs.current.delete(id);
+    });
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -974,8 +1040,8 @@ function RuleForm({
       name: name.trim(),
       feedId: scopeType === "feed" ? Number(rawId) : null,
       folderId: scopeType === "folder" ? Number(rawId) : null,
-      field,
-      pattern: pattern.trim(),
+      conditions: conditions.map(({ field, pattern }) => ({ field, pattern: pattern.trim() })),
+      conditionOperator,
       action,
       enabled,
     };
@@ -994,11 +1060,8 @@ function RuleForm({
     <form className="inline-editor rule-form" onSubmit={(event) => void submit(event)}>
       <div className="inline-editor-heading">
         <div>
-          <h2>{initial ? "Edit rule" : "Add a noise rule"}</h2>
-          <p>
-            Matches are case-insensitive. Existing articles are checked now and new articles on
-            refresh.
-          </p>
+          <h2>{initial ? "Edit rule" : "Add rule"}</h2>
+          <p>Saving checks existing articles now and new articles during future refreshes.</p>
         </div>
         <button
           className="icon-button"
@@ -1009,79 +1072,217 @@ function RuleForm({
           <X aria-hidden="true" size={18} />
         </button>
       </div>
-      <div className="form-grid rule-form-grid">
-        <label className="field">
-          <span>Rule name</span>
-          <input
-            required
-            value={name}
-            placeholder="Skip weekly sponsor posts"
-            onChange={(event) => setName(event.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>Apply to</span>
-          <select value={scope} onChange={(event) => setScope(event.target.value)}>
-            <option value="all">All feeds</option>
-            <optgroup label="Folders">
-              {bootstrap.folders.map((folder) => (
-                <option key={folder.id} value={`folder:${folder.id}`}>
-                  {folder.name}
-                </option>
-              ))}
-            </optgroup>
-            <optgroup label="Feeds">
-              {bootstrap.feeds.map((feed) => (
-                <option key={feed.id} value={`feed:${feed.id}`}>
-                  {feed.title}
-                </option>
-              ))}
-            </optgroup>
-          </select>
-        </label>
-        <label className="field">
-          <span>Look in</span>
-          <select value={field} onChange={(event) => setField(event.target.value as RuleField)}>
-            <option value="title">Title</option>
-            <option value="author">Author</option>
-            <option value="summary">Summary</option>
-            <option value="content">Full content</option>
-            <option value="media">Media type</option>
-            <option value="any">Any text</option>
-          </select>
-        </label>
-        <label className="field wide-field">
-          <span>{field === "media" ? "Media value" : "Text to match"}</span>
-          <input
-            required
-            value={pattern}
-            placeholder={field === "media" ? "short" : "sponsored"}
-            onChange={(event) => setPattern(event.target.value)}
-          />
-          <small>
-            {field === "media"
-              ? "Use short, video, article, or youtube."
-              : "Enter a word or phrase exactly as it appears."}
-          </small>
-        </label>
-        <label className="field">
-          <span>Then</span>
-          <select value={action} onChange={(event) => setAction(event.target.value as RuleAction)}>
-            <option value="hide">Hide article</option>
-            <option value="mark_read">Mark as read</option>
-          </select>
-        </label>
-        <label className="checkbox-field">
-          <input
-            type="checkbox"
-            checked={enabled}
-            onChange={(event) => setEnabled(event.target.checked)}
-          />
-          <span>
-            <strong>Enable rule</strong>
-            <small>Disabled rules stay saved but do not run.</small>
-          </span>
-        </label>
+      <div className="rule-form-sections">
+        <section className="rule-form-section" aria-labelledby="rule-basics-heading">
+          <div className="rule-form-section-heading">
+            <h3 id="rule-basics-heading">Basics</h3>
+          </div>
+          <div className="form-grid rule-basics-grid">
+            <label className="field">
+              <span>Rule name</span>
+              <input
+                required
+                value={name}
+                placeholder="Skip weekly sponsor posts"
+                onChange={(event) => setName(event.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Apply to</span>
+              <select value={scope} onChange={(event) => setScope(event.target.value)}>
+                <option value="all">All feeds</option>
+                <optgroup label="Folders">
+                  {bootstrap.folders.map((folder) => (
+                    <option key={folder.id} value={`folder:${folder.id}`}>
+                      {folder.name}
+                    </option>
+                  ))}
+                </optgroup>
+                <optgroup label="Feeds">
+                  {bootstrap.feeds.map((feed) => (
+                    <option key={feed.id} value={`feed:${feed.id}`}>
+                      {feed.title}
+                    </option>
+                  ))}
+                </optgroup>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section className="rule-form-section" aria-labelledby="rule-conditions-heading">
+          <div className="rule-form-section-heading">
+            <h3 id="rule-conditions-heading">Conditions</h3>
+            <p id="rule-conditions-description">
+              Text matching ignores case. Choose whether every condition or any condition must
+              match.
+            </p>
+          </div>
+          <fieldset className="rule-condition-group" aria-describedby="rule-conditions-description">
+            <legend className="sr-only">Article matching conditions</legend>
+            <div className="rule-condition-columns" aria-hidden="true">
+              <span>Logic</span>
+              <span>Look in</span>
+              <span>Match</span>
+              <span>Value</span>
+              <span />
+            </div>
+            <ol className="rule-condition-list">
+              {conditions.map((condition, index) => {
+                const fieldId = `rule-condition-field-${condition.id}`;
+                const valueId = `rule-condition-value-${condition.id}`;
+                const connector = conditionOperator === "and" ? "And" : "Or";
+                return (
+                  <li className="rule-condition-row" key={condition.id}>
+                    {index === 0 ? (
+                      <span className="rule-condition-connector">If</span>
+                    ) : index === 1 ? (
+                      <label className="rule-condition-operator">
+                        <span className="sr-only">Join all conditions with</span>
+                        <select
+                          value={conditionOperator}
+                          onChange={(event) =>
+                            setConditionOperator(event.target.value as RuleConditionOperator)
+                          }
+                        >
+                          <option value="and">And</option>
+                          <option value="or">Or</option>
+                        </select>
+                      </label>
+                    ) : (
+                      <span className="rule-condition-connector">{connector}</span>
+                    )}
+
+                    <div className="rule-condition-control rule-condition-field-control">
+                      <label className="sr-only" htmlFor={fieldId}>
+                        Look in for condition {index + 1}
+                      </label>
+                      <select
+                        id={fieldId}
+                        value={condition.field}
+                        onChange={(event) =>
+                          setConditions((current) =>
+                            current.map((item) =>
+                              item.id === condition.id
+                                ? { ...item, field: event.target.value as RuleField }
+                                : item,
+                            ),
+                          )
+                        }
+                      >
+                        <option value="title">Title</option>
+                        <option value="author">Author</option>
+                        <option value="summary">Summary</option>
+                        <option value="content">Full content</option>
+                        <option value="media">Media type</option>
+                        <option value="any">Any text</option>
+                      </select>
+                    </div>
+
+                    <span className="rule-condition-comparator">contains</span>
+
+                    <div className="rule-condition-control rule-condition-value-control">
+                      <label className="sr-only" htmlFor={valueId}>
+                        {condition.field === "media" ? "Media value" : "Text to match"} for
+                        condition {index + 1}
+                      </label>
+                      <input
+                        id={valueId}
+                        ref={(element) => {
+                          if (element) conditionInputRefs.current.set(condition.id, element);
+                          else conditionInputRefs.current.delete(condition.id);
+                        }}
+                        required
+                        value={condition.pattern}
+                        placeholder={condition.field === "media" ? "short" : "sponsored"}
+                        onChange={(event) =>
+                          setConditions((current) =>
+                            current.map((item) =>
+                              item.id === condition.id
+                                ? { ...item, pattern: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </div>
+
+                    {conditions.length > 1 ? (
+                      <button
+                        className="icon-button rule-condition-remove"
+                        type="button"
+                        onClick={() => removeCondition(condition.id)}
+                        aria-label={`Remove condition ${index + 1}${
+                          condition.pattern ? `: ${condition.pattern}` : ""
+                        }`}
+                      >
+                        <X aria-hidden="true" size={16} />
+                      </button>
+                    ) : (
+                      <span className="rule-condition-remove-spacer" aria-hidden="true" />
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          </fieldset>
+          <div className="rule-condition-actions">
+            <button
+              ref={addConditionButtonRef}
+              className="quiet-button"
+              type="button"
+              onClick={addCondition}
+            >
+              <Plus aria-hidden="true" size={15} />
+              Add condition
+            </button>
+            {conditions.some((condition) => condition.field === "media") ? (
+              <small>Media type accepts short, video, article, or youtube.</small>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="rule-form-section" aria-labelledby="rule-action-heading">
+          <div className="rule-form-section-heading">
+            <h3 id="rule-action-heading">Action</h3>
+            <p>Choose what happens after the conditions match.</p>
+          </div>
+          <fieldset className="rule-action-options">
+            <legend className="sr-only">Rule action</legend>
+            {(["hide", "keep", "mark_read"] as const).map((value) => (
+              <label
+                className={`rule-action-option${action === value ? " is-selected" : ""}`}
+                key={value}
+              >
+                <input
+                  type="radio"
+                  name="rule-action"
+                  value={value}
+                  checked={action === value}
+                  onChange={() => setAction(value)}
+                />
+                <span className="rule-action-icon">
+                  <RuleActionIcon action={value} size={17} />
+                </span>
+                <span>
+                  <strong>{RULE_ACTION_COPY[value].label}</strong>
+                  <small>{RULE_ACTION_COPY[value].description}</small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
+          <label className="checkbox-field rule-enabled-field">
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={(event) => setEnabled(event.target.checked)}
+            />
+            <span>
+              <strong>Enable rule</strong>
+              <small>Disabled rules stay saved but do not run.</small>
+            </span>
+          </label>
+        </section>
       </div>
       <div className="form-actions">
         <button className="secondary-button" type="button" onClick={onCancel}>
@@ -1090,7 +1291,9 @@ function RuleForm({
         <button
           className="primary-button"
           type="submit"
-          disabled={saving || !name.trim() || !pattern.trim()}
+          disabled={
+            saving || !name.trim() || conditions.some((condition) => !condition.pattern.trim())
+          }
         >
           {saving ? (
             <LoaderCircle className="spin" aria-hidden="true" size={16} />
@@ -1123,6 +1326,11 @@ function RuleRow({
     : rule.folderId
       ? (bootstrap.folders.find((folder) => folder.id === rule.folderId)?.name ?? "Deleted folder")
       : "All feeds";
+  const [firstCondition] = rule.conditions as [RuleCondition, ...RuleCondition[]];
+  const conditionJoin = rule.conditionOperator === "and" ? " AND " : " OR ";
+  const conditionDescription = rule.conditions
+    .map((condition) => `${RULE_FIELD_LABELS[condition.field]} contains “${condition.pattern}”`)
+    .join(conditionJoin);
 
   const toggle = async () => {
     setBusy(true);
@@ -1168,20 +1376,26 @@ function RuleRow({
         </div>
       </td>
       <td data-label="Scope">{scope}</td>
-      <td data-label="Match">
-        <span className="rule-condition">
-          <small>{RULE_FIELD_LABELS[rule.field]}</small>
-          <code>{rule.pattern}</code>
+      <td data-label="Conditions">
+        <span className="rule-condition" title={conditionDescription}>
+          <span className="sr-only">{conditionDescription}</span>
+          <small aria-hidden="true">
+            {rule.conditionOperator === "and" ? "Match all" : "Match any"}
+          </small>
+          <span className="rule-condition-summary" aria-hidden="true">
+            <code>
+              {RULE_FIELD_LABELS[firstCondition.field]}: {firstCondition.pattern}
+            </code>
+            {rule.conditions.length > 1 ? (
+              <span className="rule-condition-count">+{rule.conditions.length - 1}</span>
+            ) : null}
+          </span>
         </span>
       </td>
       <td data-label="Action">
         <span className={`action-badge ${rule.action}`}>
-          {rule.action === "hide" ? (
-            <EyeOff aria-hidden="true" size={13} />
-          ) : (
-            <Eye aria-hidden="true" size={13} />
-          )}
-          {rule.action === "hide" ? "Hide" : "Mark read"}
+          <RuleActionIcon action={rule.action} size={13} />
+          {RULE_ACTION_COPY[rule.action].shortLabel}
         </span>
       </td>
       <td data-label="Matched">
