@@ -9,12 +9,14 @@ import {
   ExternalLink,
   FileText,
   Inbox,
+  ListFilter,
   LoaderCircle,
   RefreshCw,
   Rss,
   Star,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Article, ArticleState, ReadingMode } from "../shared/types";
 import { extractHttpLinks, supplementalHttpLinks } from "./article-links";
 
@@ -692,6 +694,141 @@ function ArticleActions({
   );
 }
 
+interface SelectionMenuState {
+  text: string;
+  left: number;
+  top: number;
+  placement: "above" | "below";
+}
+
+function ArticleDocument({
+  article,
+  titleId,
+  onRetryExtraction,
+  onFilterSelection,
+}: {
+  article: Article;
+  titleId: string;
+  onRetryExtraction: (article: Article) => void;
+  onFilterSelection: (text: string) => void;
+}) {
+  const documentRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
+
+  const showSelectionMenu = useCallback(() => {
+    const root = documentRef.current;
+    const selection = window.getSelection();
+    if (
+      !root ||
+      !selection ||
+      selection.isCollapsed ||
+      selection.rangeCount === 0 ||
+      !root.contains(selection.anchorNode) ||
+      !root.contains(selection.focusNode)
+    ) {
+      setSelectionMenu(null);
+      return;
+    }
+
+    const text = selection.toString().replace(/\s+/g, " ").trim();
+    const bounds = selection.getRangeAt(0).getBoundingClientRect();
+    if (!text || (bounds.width === 0 && bounds.height === 0)) {
+      setSelectionMenu(null);
+      return;
+    }
+
+    const placement = bounds.top < 56 ? "below" : "above";
+    setSelectionMenu({
+      text,
+      left: Math.min(window.innerWidth - 52, Math.max(52, bounds.left + bounds.width / 2)),
+      top: placement === "above" ? bounds.top : bounds.bottom,
+      placement,
+    });
+  }, []);
+
+  useEffect(() => {
+    const root = documentRef.current;
+    if (!root) return;
+
+    const dismiss = () => setSelectionMenu(null);
+    root.addEventListener("pointerdown", dismiss);
+    root.addEventListener("pointerup", showSelectionMenu);
+    root.addEventListener("keyup", showSelectionMenu);
+    return () => {
+      root.removeEventListener("pointerdown", dismiss);
+      root.removeEventListener("pointerup", showSelectionMenu);
+      root.removeEventListener("keyup", showSelectionMenu);
+    };
+  }, [showSelectionMenu]);
+
+  useEffect(() => {
+    if (!selectionMenu) return;
+
+    const dismiss = () => setSelectionMenu(null);
+    const dismissOnPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && menuRef.current?.contains(event.target)) return;
+      dismiss();
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      window.getSelection()?.removeAllRanges();
+      dismiss();
+    };
+
+    document.addEventListener("pointerdown", dismissOnPointerDown, true);
+    document.addEventListener("keydown", dismissOnEscape);
+    window.addEventListener("resize", dismiss);
+    window.addEventListener("scroll", dismiss, true);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOnPointerDown, true);
+      document.removeEventListener("keydown", dismissOnEscape);
+      window.removeEventListener("resize", dismiss);
+      window.removeEventListener("scroll", dismiss, true);
+    };
+  }, [selectionMenu]);
+
+  return (
+    <>
+      <div ref={documentRef} className="article-document">
+        <ArticleHeader article={article} id={titleId} />
+        <ArticleBody article={article} onRetryExtraction={onRetryExtraction} />
+      </div>
+      {selectionMenu
+        ? createPortal(
+            <div
+              ref={menuRef}
+              className="article-selection-menu"
+              role="menu"
+              aria-label="Selected text actions"
+              data-placement={selectionMenu.placement}
+              style={{ left: selectionMenu.left, top: selectionMenu.top }}
+            >
+              <button
+                type="button"
+                role="menuitem"
+                aria-label="Filter selected text"
+                onPointerDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  const { text } = selectionMenu;
+                  window.getSelection()?.removeAllRanges();
+                  setSelectionMenu(null);
+                  onFilterSelection(text);
+                }}
+              >
+                <ListFilter aria-hidden="true" size={15} />
+                Filter
+              </button>
+            </div>,
+            document.body,
+          )
+        : null}
+    </>
+  );
+}
+
 export function ReaderPane({
   article,
   onBack,
@@ -701,6 +838,7 @@ export function ReaderPane({
   onToggleStar,
   onCopy,
   onRetryExtraction,
+  onFilterSelection,
 }: {
   article: Article | null;
   onBack: () => void;
@@ -710,6 +848,7 @@ export function ReaderPane({
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onRetryExtraction: (article: Article) => void;
+  onFilterSelection: (text: string) => void;
 }) {
   if (!article) {
     return (
@@ -739,10 +878,12 @@ export function ReaderPane({
           onCopy={onCopy}
         />
       </div>
-      <div className="article-document">
-        <ArticleHeader article={article} id={`article-${article.id}-title`} />
-        <ArticleBody article={article} onRetryExtraction={onRetryExtraction} />
-      </div>
+      <ArticleDocument
+        article={article}
+        titleId={`article-${article.id}-title`}
+        onRetryExtraction={onRetryExtraction}
+        onFilterSelection={onFilterSelection}
+      />
     </article>
   );
 }
@@ -912,6 +1053,7 @@ export function ExpandedStream({
   onToggleStar,
   onCopy,
   onRetryExtraction,
+  onFilterSelection,
 }: {
   articles: Article[];
   activeId: number | null;
@@ -926,6 +1068,7 @@ export function ExpandedStream({
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onRetryExtraction: (article: Article) => void;
+  onFilterSelection: (text: string) => void;
 }) {
   const streamRef = useRef<HTMLElement>(null);
   const registerItem = useMarkReadOnScroll({
@@ -956,10 +1099,12 @@ export function ExpandedStream({
               onCopy={onCopy}
             />
           </div>
-          <div className="article-document">
-            <ArticleHeader article={article} id={`expanded-${article.id}-title`} />
-            <ArticleBody article={article} onRetryExtraction={onRetryExtraction} />
-          </div>
+          <ArticleDocument
+            article={article}
+            titleId={`expanded-${article.id}-title`}
+            onRetryExtraction={onRetryExtraction}
+            onFilterSelection={onFilterSelection}
+          />
         </article>
       ))}
       <ArticleLoadSentinel
