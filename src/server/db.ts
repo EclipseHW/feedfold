@@ -2,6 +2,7 @@ import Sqlite from "better-sqlite3";
 import type {
   AppSettings,
   Article,
+  ArticleMedia,
   ArticlePage,
   ArticleQuery,
   BootstrapData,
@@ -12,6 +13,7 @@ import type {
   RuleField,
 } from "../shared/types.js";
 import { firstSafeImageUrl } from "./article-image.js";
+import { articleMediaRuleText, youtubeMediaFromUrl } from "./article-media.js";
 
 export interface FeedRecord {
   id: number;
@@ -33,6 +35,7 @@ export interface ParsedArticle {
   publishedAt: string | null;
   summary: string;
   imageUrl: string | null;
+  media?: ArticleMedia | null;
   feedContentHtml: string | null;
 }
 
@@ -362,6 +365,74 @@ const migrations: Migration[] = [
       CREATE INDEX rules_folder_id_idx ON rules(folder_id);
     `,
   },
+  {
+    foreignKeysOff: true,
+    sql: `
+      ALTER TABLE article_rule_matches RENAME TO article_rule_matches_v3;
+      ALTER TABLE rules RENAME TO rules_v3;
+
+      DROP INDEX IF EXISTS rules_user_id_idx;
+      DROP INDEX IF EXISTS rules_feed_id_idx;
+      DROP INDEX IF EXISTS rules_folder_id_idx;
+
+      CREATE TABLE rules (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        feed_id INTEGER REFERENCES feeds(id) ON DELETE CASCADE,
+        folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
+        field TEXT NOT NULL
+          CHECK(field IN ('title', 'author', 'summary', 'content', 'media', 'any')),
+        pattern TEXT NOT NULL,
+        action TEXT NOT NULL CHECK(action IN ('hide', 'mark_read')),
+        enabled INTEGER NOT NULL DEFAULT 1,
+        matched_count INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE article_rule_matches (
+        article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+        rule_id INTEGER NOT NULL REFERENCES rules(id) ON DELETE CASCADE,
+        PRIMARY KEY(article_id, rule_id)
+      );
+
+      INSERT INTO rules (
+        id, user_id, name, feed_id, folder_id, field, pattern, action, enabled,
+        matched_count, created_at, updated_at
+      )
+      SELECT id, user_id, name, feed_id, folder_id, field, pattern, action, enabled,
+             matched_count, created_at, updated_at
+      FROM rules_v3;
+
+      INSERT INTO article_rule_matches (article_id, rule_id)
+      SELECT article_id, rule_id FROM article_rule_matches_v3;
+
+      DROP TABLE article_rule_matches_v3;
+      DROP TABLE rules_v3;
+
+      CREATE INDEX rules_user_id_idx ON rules(user_id);
+      CREATE INDEX rules_feed_id_idx ON rules(feed_id);
+      CREATE INDEX rules_folder_id_idx ON rules(folder_id);
+
+      ALTER TABLE articles ADD COLUMN media_json TEXT;
+    `,
+    after: (database) => {
+      const rows = database
+        .prepare("SELECT id, url FROM articles WHERE url IS NOT NULL")
+        .all() as Array<{ id: number; url: string }>;
+      const update = database.prepare(
+        `UPDATE articles
+         SET media_json = ?, image_url = COALESCE(image_url, ?), content_html = NULL,
+             content_source = NULL, extraction_status = 'feed', extraction_error = NULL
+         WHERE id = ?`,
+      );
+      for (const row of rows) {
+        const media = youtubeMediaFromUrl(row.url);
+        if (media) update.run(JSON.stringify(media), media.thumbnailUrl, row.id);
+      }
+    },
+  },
 ];
 
 function now(): string {
@@ -392,6 +463,10 @@ function encodeArticleCursor(sortAt: string, id: number): string {
 
 function toBoolean(value: unknown): boolean {
   return value === 1;
+}
+
+function parseArticleMedia(value: unknown): ArticleMedia | null {
+  return value === null ? null : (JSON.parse(String(value)) as ArticleMedia);
 }
 
 function mapFolder(row: Row): Folder {
@@ -450,6 +525,7 @@ function mapArticle(row: Row): Article {
     discoveredAt: String(row.discoveredAt),
     summary: String(row.summary),
     imageUrl: row.imageUrl === null ? null : String(row.imageUrl),
+    media: parseArticleMedia(row.mediaJson),
     contentHtml: row.contentHtml === null ? null : String(row.contentHtml),
     contentSource:
       row.contentSource === "article" || row.contentSource === "feed" ? row.contentSource : null,
@@ -935,19 +1011,21 @@ export class AppDatabase {
           .run(input.parsed.title, input.parsed.siteUrl, now(), id);
         const findExisting = this.sqlite.prepare(
           `SELECT id, title, url, author, published_at AS publishedAt, summary,
-                  image_url AS imageUrl, feed_content_html AS feedContentHtml
+                  image_url AS imageUrl, media_json AS mediaJson,
+                  feed_content_html AS feedContentHtml, extraction_status AS extractionStatus
            FROM articles WHERE feed_id = ? AND external_id = ?`,
         );
         const insert = this.sqlite.prepare(
           `INSERT INTO articles (
              feed_id, external_id, title, url, author, published_at, discovered_at,
-             summary, image_url, feed_content_html, extraction_status
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             summary, image_url, media_json, feed_content_html, extraction_status
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         );
         const update = this.sqlite.prepare(
           `UPDATE articles
            SET title = ?, url = ?, author = ?, published_at = ?, summary = ?,
                image_url = CASE WHEN ? = 1 THEN ? ELSE image_url END,
+               media_json = ?,
                feed_content_html = ?,
                content_html = CASE WHEN ? = 1 THEN NULL ELSE content_html END,
                content_source = CASE WHEN ? = 1 THEN NULL ELSE content_source END,
@@ -956,17 +1034,29 @@ export class AppDatabase {
            WHERE id = ?`,
         );
         for (const article of input.parsed.articles) {
-          const extractionStatus = article.url || article.feedContentHtml ? "pending" : "failed";
+          const media = article.media ?? null;
+          const mediaJson = media ? JSON.stringify(media) : null;
+          const extractionStatus = media
+            ? "feed"
+            : article.url || article.feedContentHtml
+              ? "pending"
+              : "failed";
           const existing = findExisting.get(id, article.externalId) as Row | undefined;
           if (existing) {
             const sourceChanged =
               existing.url !== article.url || existing.feedContentHtml !== article.feedContentHtml;
+            const statusChanged = media !== null && existing.extractionStatus !== "feed";
+            const replaceImage = sourceChanged || media !== null;
+            const resetExtraction = sourceChanged || statusChanged;
             const changed =
               sourceChanged ||
+              statusChanged ||
               existing.title !== article.title ||
               existing.author !== article.author ||
               existing.publishedAt !== article.publishedAt ||
-              existing.summary !== article.summary;
+              existing.summary !== article.summary ||
+              existing.mediaJson !== mediaJson ||
+              (media !== null && existing.imageUrl !== article.imageUrl);
             if (!changed) continue;
             const articleId = Number(existing.id);
             update.run(
@@ -975,18 +1065,19 @@ export class AppDatabase {
               article.author,
               article.publishedAt,
               article.summary,
-              sourceChanged ? 1 : 0,
+              replaceImage ? 1 : 0,
               article.imageUrl,
+              mediaJson,
               article.feedContentHtml,
-              sourceChanged ? 1 : 0,
-              sourceChanged ? 1 : 0,
-              sourceChanged ? 1 : 0,
+              resetExtraction ? 1 : 0,
+              resetExtraction ? 1 : 0,
+              resetExtraction ? 1 : 0,
               extractionStatus,
-              sourceChanged ? 1 : 0,
+              resetExtraction ? 1 : 0,
               articleId,
             );
             ruleArticleIds.add(articleId);
-            if (sourceChanged && extractionStatus === "pending") extractionIds.push(articleId);
+            if (resetExtraction && extractionStatus === "pending") extractionIds.push(articleId);
             continue;
           }
           const result = insert.run(
@@ -999,6 +1090,7 @@ export class AppDatabase {
             now(),
             article.summary,
             article.imageUrl,
+            mediaJson,
             article.feedContentHtml,
             extractionStatus,
           );
@@ -1123,6 +1215,7 @@ export class AppDatabase {
                 articles.discovered_at AS discoveredAt,
                 articles.summary,
                 articles.image_url AS imageUrl,
+                articles.media_json AS mediaJson,
                 ${query.includeContent ? "articles.content_html" : "NULL"} AS contentHtml,
                 articles.content_source AS contentSource,
                 articles.extraction_status AS extractionStatus,
@@ -1162,6 +1255,7 @@ export class AppDatabase {
                 articles.discovered_at AS discoveredAt,
                 articles.summary,
                 articles.image_url AS imageUrl,
+                articles.media_json AS mediaJson,
                 articles.content_html AS contentHtml,
                 articles.content_source AS contentSource,
                 articles.extraction_status AS extractionStatus,
@@ -1433,14 +1527,18 @@ export class AppDatabase {
         .get(rule.folder_id, rule.user_id, rule.user_id, article.folder_id);
       if (!inScope) return;
     }
+    const mediaText = articleMediaRuleText(parseArticleMedia(article.media_json));
     const values: Record<RuleField, string> = {
       title: String(article.title ?? ""),
       author: String(article.author ?? ""),
       summary: String(article.summary ?? ""),
       content: `${String(article.feed_content_html ?? "")} ${String(article.content_html ?? "")}`,
+      media: mediaText,
       any: `${String(article.title ?? "")} ${String(article.author ?? "")} ${String(
         article.summary ?? "",
-      )} ${String(article.feed_content_html ?? "")} ${String(article.content_html ?? "")}`,
+      )} ${String(article.feed_content_html ?? "")} ${String(
+        article.content_html ?? "",
+      )} ${mediaText}`,
     };
     const field = rule.field as RuleField;
     const matched = values[field]

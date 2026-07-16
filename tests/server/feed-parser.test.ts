@@ -85,6 +85,75 @@ describe("feed normalization", () => {
     expect(json.articles[0].feedContentHtml).toContain("Second &lt;unsafe&gt; line");
   });
 
+  it("normalizes playable YouTube videos, thumbnails, and Shorts metadata", () => {
+    const youtube = parseAndNormalizeFeed(
+      `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"
+        xmlns:yt="http://www.youtube.com/xml/schemas/2015"
+        xmlns:media="http://search.yahoo.com/mrss/">
+        <title>Example channel</title>
+        <link rel="alternate" href="https://www.youtube.com/channel/UCexample"/>
+        <author><name>Example channel</name></author>
+        <entry>
+          <id>yt:video:regular123</id><yt:videoId>regular123</yt:videoId>
+          <yt:channelId>UCexample</yt:channelId><title>Regular upload</title>
+          <link rel="alternate" href="https://www.youtube.com/watch?v=regular123"/>
+          <published>2026-07-16T13:00:20+00:00</published>
+          <media:group>
+            <media:title>Regular upload</media:title>
+            <media:thumbnail url="https://i2.ytimg.com/vi/regular123/hqdefault.jpg"
+              width="480" height="360"/>
+            <media:description>Useful video description.</media:description>
+            <media:community>
+              <media:starRating count="8" average="4.75" min="1" max="5"/>
+              <media:statistics views="269"/>
+            </media:community>
+          </media:group>
+        </entry>
+        <entry>
+          <id>yt:video:short123</id><yt:videoId>short123</yt:videoId>
+          <yt:channelId>UCexample</yt:channelId><title>Short upload</title>
+          <link rel="alternate" href="https://www.youtube.com/shorts/short123"/>
+          <published>2026-07-15T14:09:22+00:00</published>
+          <media:group>
+            <media:title>Short upload</media:title>
+            <media:thumbnail url="https://i3.ytimg.com/vi/short123/hqdefault.jpg"
+              width="480" height="360"/>
+            <media:description></media:description>
+            <media:community><media:statistics views="10566"/></media:community>
+          </media:group>
+        </entry>
+      </feed>`,
+      "https://www.youtube.com/feeds/videos.xml?channel_id=UCexample",
+    );
+
+    expect(youtube.articles[0]).toMatchObject({
+      title: "Regular upload",
+      summary: "Useful video description.",
+      imageUrl: "https://i2.ytimg.com/vi/regular123/hqdefault.jpg",
+      media: {
+        provider: "youtube",
+        type: "video",
+        videoId: "regular123",
+        channelId: "UCexample",
+        embedUrl: "https://www.youtube.com/embed/regular123",
+        thumbnailUrl: "https://i2.ytimg.com/vi/regular123/hqdefault.jpg",
+        viewCount: 269,
+        rating: { average: 4.75, count: 8 },
+      },
+    });
+    expect(youtube.articles[1]).toMatchObject({
+      title: "Short upload",
+      url: "https://www.youtube.com/shorts/short123",
+      imageUrl: "https://i3.ytimg.com/vi/short123/hqdefault.jpg",
+      media: {
+        type: "short",
+        videoId: "short123",
+        viewCount: 10566,
+        rating: null,
+      },
+    });
+  });
+
   it("normalizes WordPress REST posts while preserving the stable post GUID", () => {
     const wordpress = parseAndNormalizeWordPressPosts(
       JSON.stringify([

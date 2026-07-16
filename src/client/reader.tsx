@@ -39,6 +39,17 @@ function articleDate(article: Article): string {
   return formatRelativeDate(article.publishedAt ?? article.discoveredAt);
 }
 
+function formatViewCount(value: number): string {
+  return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(
+    value,
+  );
+}
+
+function mediaTypeLabel(article: Article): string | null {
+  if (!article.media) return null;
+  return article.media.type === "short" ? "Short" : "Video";
+}
+
 function Kbd({ children }: { children: React.ReactNode }) {
   return <kbd>{children}</kbd>;
 }
@@ -476,6 +487,11 @@ export function ArticleList({
               <span className="article-list-copy">
                 <span className="article-list-meta">
                   <span className="feed-name truncate">{article.feedTitle}</span>
+                  {article.media ? (
+                    <span className={`article-media-badge ${article.media.type}`}>
+                      {mediaTypeLabel(article)}
+                    </span>
+                  ) : null}
                   <time dateTime={article.publishedAt ?? article.discoveredAt}>
                     {articleDate(article)}
                   </time>
@@ -687,6 +703,20 @@ function ArticleHeader({ article, id }: { article: Article; id: string }) {
         <span>{article.feedTitle}</span>
         <span aria-hidden="true">·</span>
         <time dateTime={article.publishedAt ?? article.discoveredAt}>{articleDate(article)}</time>
+        {article.media ? (
+          <>
+            <span aria-hidden="true">·</span>
+            <span className={`article-media-badge ${article.media.type}`}>
+              {mediaTypeLabel(article)}
+            </span>
+            {article.media.viewCount !== null ? (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>{formatViewCount(article.media.viewCount)} views</span>
+              </>
+            ) : null}
+          </>
+        ) : null}
         {article.author ? (
           <>
             <span aria-hidden="true">·</span>
@@ -716,6 +746,38 @@ function ArticleHeader({ article, id }: { article: Article; id: string }) {
 }
 
 function ArticleBody({
+  article,
+  onRetryExtraction,
+}: {
+  article: Article;
+  onRetryExtraction: (article: Article) => void;
+}) {
+  return (
+    <>
+      {article.media ? <ArticleMediaPlayer article={article} /> : null}
+      <ArticleText article={article} onRetryExtraction={onRetryExtraction} />
+    </>
+  );
+}
+
+function ArticleMediaPlayer({ article }: { article: Article }) {
+  const media = article.media;
+  if (!media) return null;
+  return (
+    <div className={`article-media-player ${media.type}`}>
+      <iframe
+        src={media.embedUrl}
+        title={`Play ${article.title}`}
+        loading="lazy"
+        referrerPolicy="strict-origin-when-cross-origin"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+      />
+    </div>
+  );
+}
+
+function ArticleText({
   article,
   onRetryExtraction,
 }: {

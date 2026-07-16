@@ -292,7 +292,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     name: z.string().trim().min(1).max(200),
     feedId: nullableId.optional(),
     folderId: nullableId.optional(),
-    field: z.enum(["title", "author", "summary", "content", "any"]),
+    field: z.enum(["title", "author", "summary", "content", "media", "any"]),
     pattern: z.string().trim().min(1).max(500),
     action: z.enum(["hide", "mark_read"]),
     enabled: z.boolean().optional(),
