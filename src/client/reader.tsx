@@ -535,6 +535,11 @@ export function ArticleList({
         loadingMore={loadingMore}
         onLoadMore={onLoadMore}
       />
+      {!hasMore ? (
+        <div className="article-list-end" role="status">
+          No more articles here
+        </div>
+      ) : null}
     </section>
   );
 }
