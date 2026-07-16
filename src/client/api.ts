@@ -5,6 +5,7 @@ import type {
   ArticleQuery,
   BootstrapData,
   Feed,
+  FeedPreview,
   Folder,
   ImportResult,
   RefreshResult,
@@ -75,6 +76,7 @@ function queryString(query: ArticleQuery): string {
 export interface FeedInput {
   title?: string;
   feedUrl: string;
+  siteUrl?: string | null;
   folderId: number | null;
 }
 
@@ -142,6 +144,12 @@ export const api = {
     request<RefreshResult>("/api/refresh", {
       method: "POST",
       body: JSON.stringify(feedIds ? { feedIds } : {}),
+    }),
+
+  discoverFeed: (url: string) =>
+    request<FeedPreview>("/api/feeds/discover", {
+      method: "POST",
+      body: JSON.stringify({ url }),
     }),
 
   createFeed: (input: FeedInput) =>

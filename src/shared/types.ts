@@ -54,6 +54,23 @@ export interface Feed {
   nextPollAt: string | null;
 }
 
+export interface FeedPreviewArticle {
+  title: string;
+  url: string | null;
+  author: string | null;
+  publishedAt: string | null;
+  summary: string;
+  imageUrl: string | null;
+}
+
+export interface FeedPreview {
+  feedUrl: string;
+  title: string;
+  siteUrl: string | null;
+  totalArticles: number;
+  articles: FeedPreviewArticle[];
+}
+
 export interface Article {
   id: number;
   feedId: number;
