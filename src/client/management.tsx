@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Download,
   Edit3,
+  ExternalLink,
   EyeOff,
   FolderPlus,
   Keyboard,
@@ -17,6 +18,7 @@ import {
   Plus,
   RefreshCw,
   Rss,
+  Search,
   Sun,
   Trash2,
   Upload,
@@ -27,6 +29,7 @@ import type {
   AppSettings,
   BootstrapData,
   Feed,
+  FeedPreview,
   Folder,
   Rule,
   RuleAction,
@@ -86,6 +89,14 @@ function formatDate(value: string | null): string {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function formatPreviewDate(value: string): string {
+  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
+}
+
+function feedHost(value: string): string {
+  return new URL(value).hostname.replace(/^www\./, "");
 }
 
 function Kbd({ children }: { children: React.ReactNode }) {
@@ -223,6 +234,7 @@ export function FeedsPage({
 
       {addFeedOpen ? (
         <AddFeedForm
+          feeds={bootstrap.feeds}
           folders={bootstrap.folders}
           onCancel={() => setAddFeedOpen(false)}
           onSaved={async (feed) => {
@@ -230,7 +242,6 @@ export function FeedsPage({
             setAddFeedOpen(false);
             await onReload();
           }}
-          showToast={showToast}
         />
       ) : null}
 
@@ -348,106 +359,283 @@ export function FeedsPage({
 }
 
 function AddFeedForm({
+  feeds,
   folders,
   onCancel,
   onSaved,
-  showToast,
 }: {
+  feeds: Feed[];
   folders: Folder[];
   onCancel: () => void;
   onSaved: (feed: Feed) => Promise<void> | void;
-  showToast: (message: string) => void;
 }) {
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [preview, setPreview] = useState<FeedPreview | null>(null);
   const [title, setTitle] = useState("");
-  const [feedUrl, setFeedUrl] = useState("");
   const [folderId, setFolderId] = useState<number | null>(null);
+  const [discovering, setDiscovering] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const previewHeadingRef = useRef<HTMLHeadingElement>(null);
+  const existingFeed = preview ? feeds.find((feed) => feed.feedUrl === preview.feedUrl) : undefined;
 
-  const submit = async (event: FormEvent) => {
+  const discover = async (event: FormEvent) => {
     event.preventDefault();
+    setDiscovering(true);
+    setError(null);
+    setPreview(null);
+    try {
+      const result = await api.discoverFeed(sourceUrl.trim());
+      setPreview(result);
+      setTitle(result.title);
+      requestAnimationFrame(() => previewHeadingRef.current?.focus());
+    } catch (error) {
+      setError(errorMessage(error));
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!preview || existingFeed) return;
     setSaving(true);
+    setError(null);
     try {
       const feed = await api.createFeed({
-        ...(title.trim() ? { title: title.trim() } : {}),
-        feedUrl: feedUrl.trim(),
+        title: title.trim() || preview.title,
+        feedUrl: preview.feedUrl,
+        siteUrl: preview.siteUrl,
         folderId,
       });
       await onSaved(feed);
     } catch (error) {
-      showToast(`Could not add feed: ${errorMessage(error)}`);
+      setError(`Could not add feed: ${errorMessage(error)}`);
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <form className="inline-editor add-feed-form" onSubmit={(event) => void submit(event)}>
+    <div className="inline-editor add-feed-panel" aria-busy={discovering || saving}>
       <div className="inline-editor-heading">
         <div>
           <h2>Add a feed</h2>
-          <p>Paste an RSS, Atom, or site URL. Echovale will inspect it immediately.</p>
+          <p>Start with any page on the site. You can review the source before subscribing.</p>
         </div>
         <button
           className="icon-button"
           type="button"
           onClick={onCancel}
+          disabled={saving}
           aria-label="Close add feed form"
         >
           <X aria-hidden="true" size={18} />
         </button>
       </div>
-      <div className="form-grid three-columns">
-        <label className="field wide-field">
-          <span>Feed or site URL</span>
+
+      <form className="feed-discovery-form" onSubmit={(event) => void discover(event)}>
+        <label className="field feed-url-field">
+          <span>Website or feed URL</span>
           <input
             type="url"
             required
-            value={feedUrl}
-            placeholder="https://example.com/feed.xml"
-            onChange={(event) => setFeedUrl(event.target.value)}
+            value={sourceUrl}
+            placeholder="https://example.com/articles"
+            disabled={discovering || saving}
+            aria-describedby="feed-url-help"
+            onChange={(event) => {
+              setSourceUrl(event.target.value);
+              setPreview(null);
+              setTitle("");
+              setError(null);
+            }}
           />
+          <small id="feed-url-help">
+            RSS, Atom, and JSON Feed links are detected automatically.
+          </small>
         </label>
-        <label className="field">
-          <span>
-            Name <small>optional</small>
-          </span>
-          <input
-            value={title}
-            placeholder="Use feed title"
-            onChange={(event) => setTitle(event.target.value)}
-          />
-        </label>
-        <label className="field">
-          <span>Folder</span>
-          <select
-            value={folderId ?? ""}
-            onChange={(event) =>
-              setFolderId(event.target.value ? Number(event.target.value) : null)
-            }
-          >
-            <option value="">No folder</option>
-            {folders.map((folder) => (
-              <option key={folder.id} value={folder.id}>
-                {folder.name}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <div className="form-actions">
-        <button className="secondary-button" type="button" onClick={onCancel}>
-          Cancel
-        </button>
-        <button className="primary-button" type="submit" disabled={saving || !feedUrl.trim()}>
-          {saving ? (
+        <button
+          className={preview ? "secondary-button" : "primary-button"}
+          type="submit"
+          disabled={discovering || saving || !sourceUrl.trim()}
+        >
+          {discovering ? (
             <LoaderCircle className="spin" aria-hidden="true" size={16} />
           ) : (
-            <Plus aria-hidden="true" size={16} />
+            <Search aria-hidden="true" size={16} />
           )}
-          {saving ? "Adding feed" : "Add feed"}
+          {discovering ? "Finding feed" : preview ? "Refresh preview" : "Find feed"}
         </button>
-      </div>
-    </form>
+      </form>
+
+      {error ? (
+        <div className="feed-discovery-error" role="alert">
+          <AlertTriangle aria-hidden="true" size={17} />
+          <span>{error}</span>
+        </div>
+      ) : null}
+
+      {discovering ? (
+        <div className="feed-preview-loading" role="status">
+          <span>Looking for a published feed and loading recent entries…</span>
+          <div className="feed-preview-loading-lines" aria-hidden="true">
+            <div className="skeleton-line wide" />
+            <div className="skeleton-line" />
+            <div className="skeleton-line short" />
+          </div>
+        </div>
+      ) : null}
+
+      {preview ? (
+        <form className="feed-confirmation-form" onSubmit={(event) => void save(event)}>
+          <section className="feed-preview" aria-labelledby="feed-preview-heading">
+            <div className="feed-preview-header">
+              <div className="feed-preview-mark" aria-hidden="true">
+                <Rss size={20} />
+              </div>
+              <div className="feed-preview-title-copy">
+                <h3 id="feed-preview-heading" ref={previewHeadingRef} tabIndex={-1}>
+                  {preview.title}
+                </h3>
+                <div className="feed-preview-links">
+                  {preview.siteUrl ? (
+                    <a href={preview.siteUrl} target="_blank" rel="noreferrer">
+                      {feedHost(preview.siteUrl)}
+                      <ExternalLink aria-hidden="true" size={12} />
+                    </a>
+                  ) : (
+                    <span>{feedHost(preview.feedUrl)}</span>
+                  )}
+                  <span aria-hidden="true">·</span>
+                  <a href={preview.feedUrl} target="_blank" rel="noreferrer">
+                    Feed source
+                    <ExternalLink aria-hidden="true" size={12} />
+                  </a>
+                </div>
+              </div>
+              <span className="feed-found-badge">
+                <CheckCircle2 aria-hidden="true" size={14} />
+                Ready to add
+              </span>
+            </div>
+
+            <div className="feed-preview-list-heading">
+              <h4>Recent entries</h4>
+              <span>
+                {preview.totalArticles} {preview.totalArticles === 1 ? "entry" : "entries"} in this
+                feed
+              </span>
+            </div>
+            {preview.articles.length > 0 ? (
+              <ol className="feed-preview-articles">
+                {preview.articles.map((article) => (
+                  <li
+                    className={
+                      article.imageUrl ? "feed-preview-article has-image" : "feed-preview-article"
+                    }
+                    key={`${article.url ?? ""}\u0000${article.publishedAt ?? ""}\u0000${article.title}`}
+                  >
+                    {article.imageUrl ? <img src={article.imageUrl} alt="" loading="lazy" /> : null}
+                    <div>
+                      {article.url ? (
+                        <a
+                          className="feed-preview-article-title"
+                          href={article.url}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {article.title}
+                          <ExternalLink aria-hidden="true" size={12} />
+                        </a>
+                      ) : (
+                        <strong className="feed-preview-article-title">{article.title}</strong>
+                      )}
+                      {article.author || article.publishedAt ? (
+                        <div className="feed-preview-article-meta">
+                          {article.author ? <span>{article.author}</span> : null}
+                          {article.author && article.publishedAt ? (
+                            <span aria-hidden="true">·</span>
+                          ) : null}
+                          {article.publishedAt ? (
+                            <time dateTime={article.publishedAt}>
+                              {formatPreviewDate(article.publishedAt)}
+                            </time>
+                          ) : null}
+                        </div>
+                      ) : null}
+                      {article.summary ? <p>{article.summary}</p> : null}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            ) : (
+              <p className="feed-preview-empty">
+                This feed does not currently publish any entries.
+              </p>
+            )}
+          </section>
+
+          <div className="feed-confirmation-settings">
+            <label className="field">
+              <span>Name</span>
+              <input
+                value={title}
+                disabled={saving}
+                onChange={(event) => setTitle(event.target.value)}
+              />
+              <small>Keep the published title or choose your own.</small>
+            </label>
+            <label className="field">
+              <span>Folder</span>
+              <select
+                value={folderId ?? ""}
+                disabled={saving}
+                onChange={(event) =>
+                  setFolderId(event.target.value ? Number(event.target.value) : null)
+                }
+              >
+                <option value="">No folder</option>
+                {folders.map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          {existingFeed ? (
+            <p className="feed-existing-notice" role="status">
+              <CheckCircle2 aria-hidden="true" size={16} />
+              Already subscribed as <strong>{existingFeed.title}</strong>.
+            </p>
+          ) : null}
+
+          <div className="form-actions">
+            <button className="secondary-button" type="button" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+            <button className="primary-button" type="submit" disabled={saving || !!existingFeed}>
+              {saving ? (
+                <LoaderCircle className="spin" aria-hidden="true" size={16} />
+              ) : existingFeed ? (
+                <Check aria-hidden="true" size={16} />
+              ) : (
+                <Plus aria-hidden="true" size={16} />
+              )}
+              {saving ? "Adding feed" : existingFeed ? "Already added" : "Add feed"}
+            </button>
+          </div>
+        </form>
+      ) : (
+        <div className="form-actions add-feed-initial-actions">
+          <button className="secondary-button" type="button" onClick={onCancel}>
+            Cancel
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 

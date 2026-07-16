@@ -45,6 +45,7 @@ const app = await createApp({
   authService,
   extractionQueue,
   refreshService,
+  feedDiscoveryTimeoutMs: feedFetchTimeoutMs,
   staticDir,
   logger: process.env.NODE_ENV === "production",
 });

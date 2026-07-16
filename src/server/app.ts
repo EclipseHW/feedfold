@@ -7,6 +7,7 @@ import type { ArticleQuery } from "../shared/types.js";
 import { type AuthService, type LoginSession, sessionToken } from "./auth.js";
 import type { AppDatabase } from "./db.js";
 import type { ExtractionQueue } from "./extraction.js";
+import { discoverFeed, FeedDiscoveryError } from "./feed-discovery.js";
 import { exportOpml, importOpml } from "./opml.js";
 import type { FeedRefreshService } from "./refresh.js";
 
@@ -15,6 +16,7 @@ export interface AppServices {
   authService: AuthService;
   extractionQueue: ExtractionQueue;
   refreshService: FeedRefreshService;
+  feedDiscoveryTimeoutMs?: number;
   staticDir?: string;
   logger?: boolean;
 }
@@ -206,6 +208,18 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
   app.get("/api/feeds", async (request) => ({
     feeds: services.database.listFeeds(userId(request)),
   }));
+
+  app.post("/api/feeds/discover", async (request, reply) => {
+    const { url } = z.object({ url: httpUrl }).parse(request.body);
+    try {
+      return await discoverFeed(url, services.feedDiscoveryTimeoutMs);
+    } catch (error) {
+      if (error instanceof FeedDiscoveryError) {
+        return reply.code(422).send({ error: error.message });
+      }
+      throw error;
+    }
+  });
 
   app.post("/api/feeds", async (request) => {
     const body = z
