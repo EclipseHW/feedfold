@@ -897,6 +897,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               mode={readingMode}
               refreshing={bootstrap.feeds.some((feed) => feed.refreshing)}
               navOpen={navOpen}
+              readingArticle={readerOpen && readingMode === "magazine"}
               onToggleNav={() => setNavOpen((current) => !current)}
               onStateChange={(state) => {
                 setReaderOpen(false);

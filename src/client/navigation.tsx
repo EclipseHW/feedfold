@@ -463,6 +463,7 @@ interface ReaderToolbarProps {
   mode: ReadingMode;
   refreshing: boolean;
   navOpen: boolean;
+  readingArticle: boolean;
   onToggleNav: () => void;
   onStateChange: (state: ArticleState) => void;
   onSearchInput: (value: string) => void;
@@ -486,6 +487,7 @@ export function ReaderToolbar({
   mode,
   refreshing,
   navOpen,
+  readingArticle,
   onToggleNav,
   onStateChange,
   onSearchInput,
@@ -500,7 +502,7 @@ export function ReaderToolbar({
   onHelp,
 }: ReaderToolbarProps) {
   return (
-    <header className="reader-toolbar">
+    <header className={`reader-toolbar${readingArticle ? " is-reading-article" : ""}`}>
       <div className="reader-title-row">
         <IconButton
           label={navOpen ? "Close navigation" : "Open navigation"}
