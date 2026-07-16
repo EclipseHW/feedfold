@@ -11,7 +11,7 @@ import type {
 } from "../shared/types";
 import { AUTH_REQUIRED_EVENT, api, errorMessage } from "./api";
 import { LoginPage, SessionLoading } from "./auth";
-import { FeedsPage, RulesPage, SettingsPage, ShortcutHelp } from "./management";
+import { FeedsPage, type RuleFormDraft, RulesPage, SettingsPage, ShortcutHelp } from "./management";
 import { type AppView, ReaderToolbar, Sidebar } from "./navigation";
 import {
   AppSkeleton,
@@ -30,6 +30,15 @@ const ARTICLE_FONT_MIN = 15;
 const ARTICLE_FONT_MAX = 23;
 const ARTICLE_FONT_DEFAULT = 18;
 const TOAST_EXIT_MS = 140;
+const FILTER_RULE_NAME_TEXT_LIMIT = 72;
+
+function filterRuleName(text: string): string {
+  const label =
+    text.length > FILTER_RULE_NAME_TEXT_LIMIT
+      ? `${text.slice(0, FILTER_RULE_NAME_TEXT_LIMIT - 1).trimEnd()}…`
+      : text;
+  return `Filter: ${label}`;
+}
 
 function storedValue<T extends string>(key: string, fallback: T): T {
   const value = window.localStorage.getItem(key);
@@ -190,6 +199,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const [rules, setRules] = useState<Rule[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
   const [rulesError, setRulesError] = useState<string | null>(null);
+  const [ruleDraft, setRuleDraft] = useState<RuleFormDraft | null>(null);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
@@ -198,6 +208,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const toastTimer = useRef<number | null>(null);
   const toastExitTimer = useRef<number | null>(null);
   const sequence = useRef<{ startedAt: number } | null>(null);
+  const ruleDraftId = useRef(0);
   const fullContentLoadedIds = useRef(new Set<number>());
   const fullContentLoadingIds = useRef(new Set<number>());
   const prioritizedExtractionIds = useRef(new Set<number>());
@@ -576,6 +587,24 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     setNavOpen(false);
   }, []);
 
+  const filterSelectedText = useCallback(
+    (text: string) => {
+      const pattern = text.replace(/\s+/g, " ").trim();
+      if (!pattern) return;
+      ruleDraftId.current += 1;
+      setRuleDraft({
+        id: ruleDraftId.current,
+        name: filterRuleName(pattern),
+        field: "any",
+        pattern,
+      });
+      navigateTo("rules");
+    },
+    [navigateTo],
+  );
+
+  const clearRuleDraft = useCallback(() => setRuleDraft(null), []);
+
   const moveScope = useCallback(
     (direction: 1 | -1) => {
       if (!bootstrap) return;
@@ -949,6 +978,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     }
                     onCopy={(article) => void copyArticleUrl(article)}
                     onRetryExtraction={(article) => void retryExtraction(article)}
+                    onFilterSelection={filterSelectedText}
                   />
                 </>
               ) : (
@@ -973,6 +1003,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   }
                   onCopy={(article) => void copyArticleUrl(article)}
                   onRetryExtraction={(article) => void retryExtraction(article)}
+                  onFilterSelection={filterSelectedText}
                 />
               )}
             </div>
@@ -991,7 +1022,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
             rules={rules}
             loading={rulesLoading}
             error={rulesError}
+            draft={ruleDraft}
             onMenu={() => setNavOpen(true)}
+            onClearDraft={clearRuleDraft}
             onReload={async () => {
               await Promise.all([loadRules(), loadBootstrap(), loadArticles()]);
             }}

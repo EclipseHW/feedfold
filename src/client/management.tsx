@@ -46,6 +46,13 @@ const RULE_FIELD_LABELS: Record<RuleField, string> = {
   any: "Any text",
 };
 
+export interface RuleFormDraft {
+  id: number;
+  name: string;
+  field: RuleField;
+  pattern: string;
+}
+
 function formatDate(value: string | null): string {
   if (!value) return "Never";
   return new Intl.DateTimeFormat(undefined, {
@@ -786,7 +793,9 @@ export function RulesPage({
   rules,
   loading,
   error,
+  draft,
   onMenu,
+  onClearDraft,
   onReload,
   showToast,
 }: {
@@ -794,11 +803,13 @@ export function RulesPage({
   rules: Rule[];
   loading: boolean;
   error: string | null;
+  draft: RuleFormDraft | null;
   onMenu: () => void;
+  onClearDraft: () => void;
   onReload: () => Promise<void> | void;
   showToast: (message: string) => void;
 }) {
-  const [formOpen, setFormOpen] = useState(false);
+  const [formOpen, setFormOpen] = useState(draft !== null);
   const [editing, setEditing] = useState<Rule | null>(null);
 
   return (
@@ -812,6 +823,7 @@ export function RulesPage({
             className="primary-button"
             type="button"
             onClick={() => {
+              onClearDraft();
               setEditing(null);
               setFormOpen(true);
             }}
@@ -824,14 +836,18 @@ export function RulesPage({
 
       {formOpen ? (
         <RuleForm
+          key={editing ? `rule-${editing.id}` : draft ? `draft-${draft.id}` : "new-rule"}
           bootstrap={bootstrap}
           initial={editing ?? undefined}
+          preset={editing ? undefined : (draft ?? undefined)}
           onCancel={() => {
+            onClearDraft();
             setFormOpen(false);
             setEditing(null);
           }}
           onSaved={async (rule) => {
             showToast(editing ? `Saved ${rule.name}` : `Added ${rule.name}`);
+            onClearDraft();
             setFormOpen(false);
             setEditing(null);
             await onReload();
@@ -870,7 +886,15 @@ export function RulesPage({
             <p>
               Create a rule for recurring topics, authors, or phrases you do not want in the queue.
             </p>
-            <button className="secondary-button" type="button" onClick={() => setFormOpen(true)}>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => {
+                onClearDraft();
+                setEditing(null);
+                setFormOpen(true);
+              }}
+            >
               Create your first rule
             </button>
           </div>
@@ -896,6 +920,7 @@ export function RulesPage({
                     rule={rule}
                     bootstrap={bootstrap}
                     onEdit={() => {
+                      onClearDraft();
                       setEditing(rule);
                       setFormOpen(true);
                       window.scrollTo({ top: 0 });
@@ -916,17 +941,19 @@ export function RulesPage({
 function RuleForm({
   bootstrap,
   initial,
+  preset,
   onCancel,
   onSaved,
   showToast,
 }: {
   bootstrap: BootstrapData;
   initial?: Rule;
+  preset?: RuleFormDraft;
   onCancel: () => void;
   onSaved: (rule: Rule) => Promise<void> | void;
   showToast: (message: string) => void;
 }) {
-  const [name, setName] = useState(initial?.name ?? "");
+  const [name, setName] = useState(initial?.name ?? preset?.name ?? "");
   const [scope, setScope] = useState(
     initial?.feedId
       ? `feed:${initial.feedId}`
@@ -934,8 +961,8 @@ function RuleForm({
         ? `folder:${initial.folderId}`
         : "all",
   );
-  const [field, setField] = useState<RuleField>(initial?.field ?? "title");
-  const [pattern, setPattern] = useState(initial?.pattern ?? "");
+  const [field, setField] = useState<RuleField>(initial?.field ?? preset?.field ?? "title");
+  const [pattern, setPattern] = useState(initial?.pattern ?? preset?.pattern ?? "");
   const [action, setAction] = useState<RuleAction>(initial?.action ?? "hide");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [saving, setSaving] = useState(false);
