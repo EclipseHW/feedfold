@@ -236,6 +236,52 @@ describe("live API, OPML, and filtering rules", () => {
       ).json(),
     ).toMatchObject({ markReadOnScroll: true });
 
+    const rejectedLegacyRule = await app.inject({
+      method: "POST",
+      url: "/api/rules",
+      headers: { cookie: readerCookie },
+      payload: {
+        name: "Legacy keep rule",
+        feedId: readerFeed.id,
+        folderId: null,
+        field: "title",
+        pattern: "reader",
+        action: "keep",
+        enabled: false,
+      },
+    });
+    expect(rejectedLegacyRule.statusCode).toBe(400);
+
+    const keepRuleResponse = await app.inject({
+      method: "POST",
+      url: "/api/rules",
+      headers: { cookie: readerCookie },
+      payload: {
+        name: "Keep reader stories",
+        feedId: readerFeed.id,
+        folderId: null,
+        conditions: [
+          { field: "title", pattern: "reader" },
+          { field: "summary", pattern: "private" },
+        ],
+        conditionOperator: "or",
+        action: "keep",
+        enabled: false,
+      },
+    });
+    expect(keepRuleResponse.statusCode).toBe(200);
+    expect(keepRuleResponse.json()).toMatchObject({
+      name: "Keep reader stories",
+      conditions: [
+        { field: "title", pattern: "reader" },
+        { field: "summary", pattern: "private" },
+      ],
+      conditionOperator: "or",
+      action: "keep",
+      enabled: false,
+      matchedCount: 1,
+    });
+
     expect(
       (
         await app.inject({
@@ -359,8 +405,8 @@ describe("live API, OPML, and filtering rules", () => {
         name: "Remove roundups",
         feedId: null,
         folderId: parent?.id,
-        field: "title",
-        pattern: "weekly roundup",
+        conditions: [{ field: "title", pattern: "weekly roundup" }],
+        conditionOperator: "and",
         action: "hide",
         enabled: true,
       }),

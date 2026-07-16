@@ -288,15 +288,21 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     rules: services.database.listRules(userId(request)),
   }));
 
-  const ruleFields = z.object({
-    name: z.string().trim().min(1).max(200),
-    feedId: nullableId.optional(),
-    folderId: nullableId.optional(),
+  const ruleCondition = z.object({
     field: z.enum(["title", "author", "summary", "content", "media", "any"]),
     pattern: z.string().trim().min(1).max(500),
-    action: z.enum(["hide", "mark_read"]),
-    enabled: z.boolean().optional(),
   });
+  const ruleFields = z
+    .object({
+      name: z.string().trim().min(1).max(200),
+      feedId: nullableId.optional(),
+      folderId: nullableId.optional(),
+      conditions: z.array(ruleCondition).min(1),
+      conditionOperator: z.enum(["and", "or"]),
+      action: z.enum(["hide", "keep", "mark_read"]),
+      enabled: z.boolean().optional(),
+    })
+    .strict();
   const ruleBody = ruleFields.refine((value) => !(value.feedId && value.folderId), {
     message: "A rule can target a feed or a folder, not both",
   });

@@ -2,7 +2,13 @@ export type ArticleState = "all" | "unread" | "read" | "starred";
 export type ReadingMode = "magazine" | "expanded";
 export type ExtractionStatus = "pending" | "processing" | "complete" | "failed" | "feed";
 export type RuleField = "title" | "author" | "summary" | "content" | "media" | "any";
-export type RuleAction = "hide" | "mark_read";
+export type RuleAction = "hide" | "keep" | "mark_read";
+export type RuleConditionOperator = "and" | "or";
+
+export interface RuleCondition {
+  field: RuleField;
+  pattern: string;
+}
 
 export interface ArticleMedia {
   provider: "youtube";
@@ -74,8 +80,8 @@ export interface Rule {
   name: string;
   feedId: number | null;
   folderId: number | null;
-  field: RuleField;
-  pattern: string;
+  conditions: RuleCondition[];
+  conditionOperator: RuleConditionOperator;
   action: RuleAction;
   enabled: boolean;
   matchedCount: number;

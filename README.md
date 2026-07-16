@@ -10,7 +10,7 @@ It deliberately has no social, discovery, recommendation, or public account-mana
 - Magazine and expanded article lists.
 - Unread, read, and starred states.
 - Keyboard navigation for the complete reading loop.
-- Rules that hide noise or mark matching articles as read.
+- Rules that keep wanted articles, hide noise, or mark matches as read.
 - Full-text extraction with feed content as a visible fallback.
 - Manual refresh and server-side background polling.
 - Per-feed last attempt, last success, HTTP status, and error details.
@@ -156,11 +156,11 @@ docker compose start echovale
 
 Replace the timestamp placeholder with the backup directory to restore. Confirm readiness with the health command after restoration. Keep backups outside the Docker volume and include them in the homeserver's normal off-host backup routine.
 
-## OPML and noisy feeds
+## OPML and article rules
 
 Open **Feeds** to import or export an OPML file. Import recreates folders and subscriptions; duplicate feed URLs are skipped and import failures are reported. OPML contains subscriptions and folder organization, not article read/starred state or rules, so retain the SQLite backup as the complete recovery source.
 
-Open **Rules** to manage noisy-feed rules. A rule can inspect the title, author, summary, content, or all fields, then hide a match or mark it as read. Rules can apply globally or to a feed or folder.
+Open **Rules** to build filters from one or more case-insensitive conditions. Conditions can inspect the title, author, summary, content, media type, or all text and can require every condition (AND) or any condition (OR). A rule can hide matches, keep only wanted matches, or mark matches as read, and can apply globally or to a feed or folder.
 
 ## Keyboard shortcuts
 
