@@ -220,6 +220,97 @@ describe("live API, OPML, and filtering rules", () => {
     });
     expect(crossAccountRefresh.json()).toEqual({ requested: 0, refreshingFeedIds: [] });
 
+    database.markFeedSuccess(readerFeed.id, {
+      httpStatus: 200,
+      etag: null,
+      lastModified: null,
+      pollIntervalMinutes: 20,
+      parsed: {
+        title: "Reader copy",
+        siteUrl: null,
+        articles: [
+          {
+            externalId: "stale-update",
+            title: "Stale update",
+            url: null,
+            author: null,
+            publishedAt: "2000-01-01T00:00:00.000Z",
+            summary: "Old enough to clear",
+            imageUrl: null,
+            feedContentHtml: null,
+          },
+          {
+            externalId: "fresh-update",
+            title: "Fresh update",
+            url: null,
+            author: null,
+            publishedAt: "2999-01-01T00:00:00.000Z",
+            summary: "Too new to clear",
+            imageUrl: null,
+            feedContentHtml: null,
+          },
+        ],
+      },
+    });
+    const markOlder = await app.inject({
+      method: "POST",
+      url: "/api/articles/mark-read",
+      headers: { cookie: readerCookie },
+      payload: { folderId: folder.id, olderThanDays: 1 },
+    });
+    expect(markOlder.statusCode).toBe(200);
+    expect(markOlder.json()).toEqual({ updated: 1 });
+    const readerUnread = await app.inject({
+      method: "GET",
+      url: "/api/articles?state=unread",
+      headers: { cookie: readerCookie },
+    });
+    expect(
+      (readerUnread.json() as { articles: Article[] }).articles.map((article) => article.title),
+    ).toEqual(["Fresh update", "Reader-only story"]);
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/articles/mark-read",
+          headers: { cookie: readerCookie },
+          payload: { articleIds: [articleId] },
+        })
+      ).json(),
+    ).toEqual({ updated: 1 });
+    expect(database.getArticle(1, articleId)).toMatchObject({ isRead: true });
+    database.updateArticleState(1, articleId, { isRead: false });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/articles/mark-read",
+          headers: { cookie: readerCookie },
+          payload: { folderId: folder.id, olderThanDays: 1 },
+        })
+      ).json(),
+    ).toEqual({ updated: 0 });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/articles/mark-read",
+          headers: { cookie: partnerCookie },
+          payload: { folderId: folder.id, olderThanDays: 1 },
+        })
+      ).json(),
+    ).toEqual({ updated: 0 });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/api/articles/mark-read",
+          headers: { cookie: readerCookie },
+          payload: { olderThanDays: 4 },
+        })
+      ).statusCode,
+    ).toBe(400);
+
     await app.inject({
       method: "PATCH",
       url: "/api/settings",

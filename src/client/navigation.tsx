@@ -25,15 +25,26 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useState } from "react";
+import {
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import type {
   ArticleState,
   BootstrapData,
   Feed,
   Folder as FolderType,
+  MarkReadAgeDays,
   ReadingMode,
   SessionUser,
 } from "../shared/types";
+import { MARK_READ_AGE_DAYS } from "../shared/types";
 
 export type AppView = "reader" | "feeds" | "rules" | "settings";
 
@@ -462,6 +473,7 @@ interface ReaderToolbarProps {
   searchActive: boolean;
   mode: ReadingMode;
   refreshing: boolean;
+  markReadPending: boolean;
   navOpen: boolean;
   readingArticle: boolean;
   onToggleNav: () => void;
@@ -473,6 +485,7 @@ interface ReaderToolbarProps {
   onRefresh: () => void;
   onRefreshAll: () => void;
   onMarkRead: () => void;
+  onMarkReadByAge: (days: MarkReadAgeDays) => void;
   onPreviousScope: () => void;
   onNextScope: () => void;
   onHelp: () => void;
@@ -486,6 +499,7 @@ export function ReaderToolbar({
   searchActive,
   mode,
   refreshing,
+  markReadPending,
   navOpen,
   readingArticle,
   onToggleNav,
@@ -497,6 +511,7 @@ export function ReaderToolbar({
   onRefresh,
   onRefreshAll,
   onMarkRead,
+  onMarkReadByAge,
   onPreviousScope,
   onNextScope,
   onHelp,
@@ -554,14 +569,17 @@ export function ReaderToolbar({
             label="Refresh every feed (Shift+R)"
             onClick={onRefreshAll}
             disabled={refreshing}
+            className="refresh-all-action"
           >
             <Rss aria-hidden="true" size={17} />
             <Kbd>⇧R</Kbd>
           </IconButton>
-          <IconButton label="Mark loaded articles read" onClick={onMarkRead}>
-            <CheckCheckIcon />
-          </IconButton>
-          <IconButton label="Show keyboard shortcuts (?)" onClick={onHelp}>
+          <MarkReadSplitButton
+            disabled={markReadPending}
+            onMarkRead={onMarkRead}
+            onMarkReadByAge={onMarkReadByAge}
+          />
+          <IconButton label="Show keyboard shortcuts (?)" onClick={onHelp} className="help-action">
             <CircleHelp aria-hidden="true" size={18} />
           </IconButton>
         </div>
@@ -601,6 +619,175 @@ export function ReaderToolbar({
         </fieldset>
       </div>
     </header>
+  );
+}
+
+const MARK_READ_AGE_LABELS: Record<MarkReadAgeDays, string> = {
+  1: "Older than a day",
+  2: "Older than two days",
+  3: "Older than three days",
+  7: "Older than a week",
+  14: "Older than two weeks",
+};
+
+const MARK_READ_MENU_ID = "mark-read-age-menu";
+const MARK_READ_MENU_HEADING_ID = "mark-read-age-menu-heading";
+
+function MarkReadSplitButton({
+  disabled,
+  onMarkRead,
+  onMarkReadByAge,
+}: {
+  disabled: boolean;
+  onMarkRead: () => void;
+  onMarkReadByAge: (days: MarkReadAgeDays) => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState<{
+    top: number;
+    right: number;
+    maxHeight: number;
+  } | null>(null);
+  const controlRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const closeMenu = useCallback((restoreFocus = false) => {
+    setMenuOpen(false);
+    setMenuPosition(null);
+    if (restoreFocus) triggerRef.current?.focus();
+  }, []);
+
+  const positionMenu = useCallback(() => {
+    const control = controlRef.current;
+    if (!control) return;
+    const bounds = control.getBoundingClientRect();
+    setMenuPosition({
+      top: bounds.bottom + 6,
+      right: Math.max(8, window.innerWidth - bounds.right),
+      maxHeight: Math.max(120, window.innerHeight - bounds.bottom - 14),
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    positionMenu();
+
+    const dismissOnPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (controlRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      closeMenu();
+    };
+    const dismissOnFocus = (event: FocusEvent) => {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (controlRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      closeMenu();
+    };
+    const dismissOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closeMenu(true);
+    };
+
+    document.addEventListener("pointerdown", dismissOnPointerDown, true);
+    document.addEventListener("focusin", dismissOnFocus, true);
+    document.addEventListener("keydown", dismissOnEscape);
+    window.addEventListener("resize", positionMenu);
+    return () => {
+      document.removeEventListener("pointerdown", dismissOnPointerDown, true);
+      document.removeEventListener("focusin", dismissOnFocus, true);
+      document.removeEventListener("keydown", dismissOnEscape);
+      window.removeEventListener("resize", positionMenu);
+    };
+  }, [closeMenu, menuOpen, positionMenu]);
+
+  useEffect(() => {
+    if (!menuOpen || !menuPosition) return;
+    const frame = window.requestAnimationFrame(() => {
+      menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [menuOpen, menuPosition]);
+
+  useEffect(() => {
+    if (disabled && menuOpen) closeMenu();
+  }, [closeMenu, disabled, menuOpen]);
+
+  const moveMenuFocus = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!menuRef.current) return;
+    const items = [...menuRef.current.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
+    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    let nextIndex: number | null = null;
+    if (event.key === "ArrowDown") nextIndex = (currentIndex + 1) % items.length;
+    if (event.key === "ArrowUp") nextIndex = (currentIndex - 1 + items.length) % items.length;
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = items.length - 1;
+    if (nextIndex === null) return;
+    event.preventDefault();
+    items[nextIndex]?.focus();
+  };
+
+  return (
+    <div className="mark-read-split-button" ref={controlRef}>
+      <IconButton
+        label="Mark loaded articles read"
+        onClick={onMarkRead}
+        disabled={disabled}
+        className="mark-read-primary"
+      >
+        <CheckCheckIcon />
+      </IconButton>
+      <button
+        ref={triggerRef}
+        className="icon-button mark-read-menu-trigger"
+        type="button"
+        aria-label="Mark articles read by age"
+        title="Mark articles read by age"
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        aria-controls={MARK_READ_MENU_ID}
+        disabled={disabled}
+        onClick={() => (menuOpen ? closeMenu() : setMenuOpen(true))}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowDown") return;
+          event.preventDefault();
+          setMenuOpen(true);
+        }}
+      >
+        <ChevronDown aria-hidden="true" size={16} />
+      </button>
+      {menuOpen && menuPosition
+        ? createPortal(
+            <div
+              ref={menuRef}
+              id={MARK_READ_MENU_ID}
+              className="mark-read-menu"
+              role="menu"
+              aria-labelledby={MARK_READ_MENU_HEADING_ID}
+              style={menuPosition}
+              onKeyDown={moveMenuFocus}
+            >
+              <p id={MARK_READ_MENU_HEADING_ID}>Mark as read articles</p>
+              {MARK_READ_AGE_DAYS.map((days) => (
+                <button
+                  key={days}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    closeMenu(true);
+                    onMarkReadByAge(days);
+                  }}
+                >
+                  {MARK_READ_AGE_LABELS[days]}
+                </button>
+              ))}
+            </div>,
+            document.body,
+          )
+        : null}
+    </div>
   );
 }
 

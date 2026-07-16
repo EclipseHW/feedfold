@@ -811,6 +811,95 @@ kbd {
   width: 20px;
 }
 
+.mark-read-split-button {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg);
+  transition: border-color 140ms ease;
+}
+
+.mark-read-split-button:focus-within {
+  border-color: var(--border-strong);
+}
+
+.mark-read-split-button .icon-button {
+  min-width: 34px;
+  min-height: 34px;
+  border: 0;
+  border-radius: 0;
+}
+
+.mark-read-split-button .mark-read-primary {
+  border-radius: 6px 0 0 6px;
+}
+
+.mark-read-split-button .mark-read-menu-trigger {
+  min-width: 28px;
+  padding-inline: 4px;
+  border-left: 1px solid var(--border);
+  border-radius: 0 6px 6px 0;
+}
+
+.mark-read-menu {
+  position: fixed;
+  z-index: var(--z-context-menu);
+  width: min(260px, calc(100vw - 16px));
+  padding: 6px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: 0 4px 8px oklch(0 0 0 / 0.3);
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transform-origin: top right;
+  transition:
+    opacity 140ms var(--ease-out),
+    transform 140ms var(--ease-out);
+}
+
+.mark-read-menu > p {
+  margin: 0;
+  padding: 7px 9px 5px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.mark-read-menu > button {
+  display: flex;
+  width: 100%;
+  min-height: 38px;
+  align-items: center;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 550;
+  text-align: left;
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mark-read-menu > button:hover {
+    background: var(--surface-hover);
+  }
+}
+
+@starting-style {
+  .mark-read-menu {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
+}
+
 .filter-row {
   display: flex;
   min-height: 49px;
@@ -3207,8 +3296,8 @@ kbd {
     order: 4;
     margin-left: auto;
   }
-  .toolbar-actions .icon-button:nth-child(2),
-  .toolbar-actions .icon-button:nth-child(3) {
+  .toolbar-actions .refresh-all-action,
+  .toolbar-actions .help-action {
     display: none;
   }
   .filter-row {
@@ -3346,6 +3435,9 @@ kbd {
 }
 
 @media (max-width: 620px) {
+  .mark-read-menu {
+    width: calc(100vw - 18px);
+  }
   .reader-title-row {
     gap: 6px;
     padding-inline: 9px;
@@ -3578,6 +3670,7 @@ kbd {
   .sidebar,
   .nav-scrim,
   .article-selection-menu,
+  .mark-read-menu,
   .toast > span,
   .shortcut-dialog,
   .shortcut-dialog::backdrop {

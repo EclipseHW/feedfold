@@ -8,6 +8,7 @@ import type {
   FeedPreview,
   Folder,
   ImportResult,
+  MarkReadRequest,
   RefreshResult,
   Rule,
   RuleAction,
@@ -134,7 +135,7 @@ export const api = {
       body: JSON.stringify(state),
     }),
 
-  markRead: (body: { articleIds?: number[]; feedId?: number; folderId?: number }) =>
+  markRead: (body: MarkReadRequest) =>
     request<{ updated: number }>("/api/articles/mark-read", {
       method: "POST",
       body: JSON.stringify(body),

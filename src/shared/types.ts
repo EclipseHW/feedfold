@@ -4,6 +4,8 @@ export type ExtractionStatus = "pending" | "processing" | "complete" | "failed" 
 export type RuleField = "title" | "author" | "summary" | "content" | "media" | "any";
 export type RuleAction = "hide" | "keep" | "mark_read";
 export type RuleConditionOperator = "and" | "or";
+export const MARK_READ_AGE_DAYS = [1, 2, 3, 7, 14] as const;
+export type MarkReadAgeDays = (typeof MARK_READ_AGE_DAYS)[number];
 
 export interface RuleCondition {
   field: RuleField;
@@ -131,6 +133,13 @@ export interface ArticleQuery {
   limit?: number;
   cursor?: string;
   includeContent?: boolean;
+}
+
+export interface MarkReadRequest {
+  articleIds?: number[];
+  feedId?: number;
+  folderId?: number;
+  olderThanDays?: MarkReadAgeDays;
 }
 
 export interface ArticlePage {
