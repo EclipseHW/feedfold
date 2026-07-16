@@ -98,7 +98,9 @@ describe("database migrations", () => {
          'article', 'complete', NULL),
         (3, 1, 'three', 'Feed image', 'https://example.test/feed-image',
          '2026-07-13T00:00:00.000Z', '<img src="/feed-hero.jpg">',
-         '<p>Extracted text without an image.</p>', 'article', 'complete', NULL);
+         '<p>Extracted text without an image.</p>', 'article', 'complete', NULL),
+        (4, 1, 'four', 'YouTube Short', 'https://www.youtube.com/shorts/short123',
+         '2026-07-13T00:00:00.000Z', NULL, NULL, NULL, 'failed', 'Extraction failed');
 
       CREATE TABLE rules (
         id INTEGER PRIMARY KEY,
@@ -141,7 +143,7 @@ describe("database migrations", () => {
         username: "reader",
       });
       expect(database.listFeeds(1)).toMatchObject([{ title: "Migration feed" }]);
-      expect(database.listArticles(1, { state: "all" })).toHaveLength(3);
+      expect(database.listArticles(1, { state: "all" })).toHaveLength(4);
       const storedUser = database.sqlite
         .prepare("SELECT username, password_hash AS passwordHash FROM users WHERE id = 1")
         .get() as { username: string; passwordHash: string };
@@ -168,7 +170,8 @@ describe("database migrations", () => {
                     image_url AS imageUrl
              FROM articles ORDER BY id`,
           )
-          .all(),
+          .all()
+          .slice(0, 3),
       ).toEqual([
         {
           id: 1,
@@ -196,7 +199,19 @@ describe("database migrations", () => {
           imageUrl: "https://example.test/feed-hero.jpg",
         },
       ]);
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(3);
+      expect(database.getArticle(1, 4)).toMatchObject({
+        title: "YouTube Short",
+        imageUrl: "https://i.ytimg.com/vi/short123/hqdefault.jpg",
+        extractionStatus: "feed",
+        extractionError: null,
+        media: {
+          provider: "youtube",
+          type: "short",
+          videoId: "short123",
+          embedUrl: "https://www.youtube.com/embed/short123",
+        },
+      });
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(4);
     } finally {
       database.close();
     }
@@ -208,10 +223,11 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(3);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(4);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");
+      expect(reopened.getArticle(1, 4)?.media?.type).toBe("short");
     } finally {
       reopened.close();
     }

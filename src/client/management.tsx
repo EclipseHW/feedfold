@@ -37,6 +37,15 @@ import { api, appUrl, errorMessage, type RuleInput } from "./api";
 
 type Theme = "dark" | "light";
 
+const RULE_FIELD_LABELS: Record<RuleField, string> = {
+  title: "Title",
+  author: "Author",
+  summary: "Summary",
+  content: "Full content",
+  media: "Media type",
+  any: "Any text",
+};
+
 function formatDate(value: string | null): string {
   if (!value) return "Never";
   return new Intl.DateTimeFormat(undefined, {
@@ -1010,18 +1019,23 @@ function RuleForm({
             <option value="author">Author</option>
             <option value="summary">Summary</option>
             <option value="content">Full content</option>
+            <option value="media">Media type</option>
             <option value="any">Any text</option>
           </select>
         </label>
         <label className="field wide-field">
-          <span>Text to match</span>
+          <span>{field === "media" ? "Media value" : "Text to match"}</span>
           <input
             required
             value={pattern}
-            placeholder="sponsored"
+            placeholder={field === "media" ? "short" : "sponsored"}
             onChange={(event) => setPattern(event.target.value)}
           />
-          <small>Enter a word or phrase exactly as it appears.</small>
+          <small>
+            {field === "media"
+              ? "Use short, video, article, or youtube."
+              : "Enter a word or phrase exactly as it appears."}
+          </small>
         </label>
         <label className="field">
           <span>Then</span>
@@ -1129,7 +1143,7 @@ function RuleRow({
       <td data-label="Scope">{scope}</td>
       <td data-label="Match">
         <span className="rule-condition">
-          <small>{rule.field === "any" ? "Any text" : rule.field}</small>
+          <small>{RULE_FIELD_LABELS[rule.field]}</small>
           <code>{rule.pattern}</code>
         </span>
       </td>

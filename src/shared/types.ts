@@ -1,8 +1,22 @@
 export type ArticleState = "all" | "unread" | "read" | "starred";
 export type ReadingMode = "magazine" | "expanded";
 export type ExtractionStatus = "pending" | "processing" | "complete" | "failed" | "feed";
-export type RuleField = "title" | "author" | "summary" | "content" | "any";
+export type RuleField = "title" | "author" | "summary" | "content" | "media" | "any";
 export type RuleAction = "hide" | "mark_read";
+
+export interface ArticleMedia {
+  provider: "youtube";
+  type: "video" | "short";
+  videoId: string;
+  channelId: string | null;
+  embedUrl: string;
+  thumbnailUrl: string;
+  viewCount: number | null;
+  rating: {
+    average: number;
+    count: number;
+  } | null;
+}
 
 export interface SessionUser {
   id: number;
@@ -46,6 +60,7 @@ export interface Article {
   discoveredAt: string;
   summary: string;
   imageUrl: string | null;
+  media: ArticleMedia | null;
   contentHtml: string | null;
   contentSource: "article" | "feed" | null;
   extractionStatus: ExtractionStatus;

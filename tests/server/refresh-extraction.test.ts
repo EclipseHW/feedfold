@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/server/app.js";
+import { youtubeMediaFromUrl } from "../../src/server/article-media.js";
 import { AuthService } from "../../src/server/auth.js";
 import { AppDatabase, type ParsedFeed } from "../../src/server/db.js";
 import { ExtractionQueue, extractArticle } from "../../src/server/extraction.js";
@@ -437,6 +438,70 @@ describe("feed refresh and full-text extraction", () => {
       imageUrl: "https://cdn.example.test/hero.jpg",
       extractionStatus: "complete",
     });
+  });
+
+  it("stores playable media without text extraction and filters Shorts by media type", async () => {
+    const database = await temporaryDatabase();
+    cleanups.push(() => database.close());
+    const feed = database.createFeed(TEST_USER_ID, {
+      feedUrl: "https://www.youtube.com/feeds/videos.xml?channel_id=UCexample",
+      title: "Video feed",
+    });
+    const video = youtubeMediaFromUrl("https://www.youtube.com/watch?v=regular123");
+    const short = youtubeMediaFromUrl("https://www.youtube.com/shorts/short123");
+    if (!video || !short) throw new Error("Expected YouTube media metadata");
+
+    const extractionIds = database.markFeedSuccess(feed.id, {
+      httpStatus: 200,
+      etag: null,
+      lastModified: null,
+      pollIntervalMinutes: 20,
+      parsed: {
+        title: "Video feed",
+        siteUrl: "https://www.youtube.com/channel/UCexample",
+        articles: [
+          {
+            externalId: "regular123",
+            title: "Regular upload",
+            url: "https://www.youtube.com/watch?v=regular123",
+            author: "Example channel",
+            publishedAt: "2026-07-16T13:00:20.000Z",
+            summary: "Regular description",
+            imageUrl: video.thumbnailUrl,
+            media: video,
+            feedContentHtml: null,
+          },
+          {
+            externalId: "short123",
+            title: "Short upload",
+            url: "https://www.youtube.com/shorts/short123",
+            author: "Example channel",
+            publishedAt: "2026-07-15T14:09:22.000Z",
+            summary: "",
+            imageUrl: short.thumbnailUrl,
+            media: short,
+            feedContentHtml: null,
+          },
+        ],
+      },
+    });
+
+    expect(extractionIds).toEqual([]);
+    expect(database.listArticles(TEST_USER_ID, { state: "all" })).toMatchObject([
+      { title: "Regular upload", extractionStatus: "feed", media: { type: "video" } },
+      { title: "Short upload", extractionStatus: "feed", media: { type: "short" } },
+    ]);
+
+    const rule = database.createRule(TEST_USER_ID, {
+      name: "Hide Shorts",
+      field: "media",
+      pattern: "short",
+      action: "hide",
+    });
+    expect(rule.matchedCount).toBe(1);
+    expect(
+      database.listArticles(TEST_USER_ID, { state: "all" }).map((article) => article.title),
+    ).toEqual(["Regular upload"]);
   });
 
   it("promotes an opened pending article ahead of the extraction backlog", async () => {

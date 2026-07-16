@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { parseFeed } from "feedsmith";
 import sanitizeHtml from "sanitize-html";
 import { firstSafeImageUrl } from "./article-image.js";
+import { youtubeMediaFromUrl } from "./article-media.js";
 import type { ParsedArticle, ParsedFeed } from "./db.js";
 
 type UnknownRecord = Record<string, unknown>;
@@ -46,6 +47,10 @@ function date(value: unknown): string | null {
   if (!candidate) return null;
   const timestamp = Date.parse(candidate);
   return Number.isNaN(timestamp) ? null : new Date(timestamp).toISOString();
+}
+
+function number(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 function plainText(value: string | null): string {
@@ -141,10 +146,25 @@ function normalizeAtom(feed: UnknownRecord, feedUrl: string): ParsedFeed {
   const articles = records(feed.entries).map((entry): ParsedArticle => {
     const itemUrl = preferredAtomLink(entry.links, siteUrl ?? feedUrl);
     const publishedAt = date(entry.published) ?? date(entry.updated);
+    const mediaGroup = record(record(entry.media).group);
+    const mediaDescription = nestedString(mediaGroup.description, "value");
     const feedContentHtml = string(entry.content) ?? string(entry.summary);
-    const summaryHtml = string(entry.summary) ?? feedContentHtml;
+    const summaryHtml = string(entry.summary) ?? mediaDescription ?? feedContentHtml;
     const itemTitle =
-      string(entry.title) ?? (plainText(summaryHtml).slice(0, 160) || "Untitled article");
+      string(entry.title) ??
+      nestedString(mediaGroup.title, "value") ??
+      (plainText(summaryHtml).slice(0, 160) || "Untitled article");
+    const thumbnail = records(mediaGroup.thumbnails)[0];
+    const community = record(mediaGroup.community);
+    const rating = record(community.starRating);
+    const media = youtubeMediaFromUrl(itemUrl, {
+      videoId: nestedString(entry.yt, "videoId"),
+      channelId: nestedString(entry.yt, "channelId"),
+      thumbnailUrl: thumbnail ? url(thumbnail.url, itemUrl ?? siteUrl ?? feedUrl) : null,
+      viewCount: number(record(community.statistics).views),
+      ratingAverage: number(rating.average),
+      ratingCount: number(rating.count),
+    });
     return {
       externalId: string(entry.id) ?? itemUrl ?? fallbackId([itemTitle, publishedAt, summaryHtml]),
       title: itemTitle,
@@ -152,7 +172,9 @@ function normalizeAtom(feed: UnknownRecord, feedUrl: string): ParsedFeed {
       author: authorNames(entry.authors) ?? feedAuthors,
       publishedAt,
       summary: plainText(summaryHtml).slice(0, 1_000),
-      imageUrl: firstSafeImageUrl(feedContentHtml, itemUrl ?? siteUrl ?? feedUrl),
+      imageUrl:
+        media?.thumbnailUrl ?? firstSafeImageUrl(feedContentHtml, itemUrl ?? siteUrl ?? feedUrl),
+      media,
       feedContentHtml,
     };
   });
