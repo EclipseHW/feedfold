@@ -3,7 +3,12 @@ import { join } from "node:path";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { ZodError, z } from "zod";
-import type { ArticleQuery } from "../shared/types.js";
+import {
+  type ArticleQuery,
+  MARK_READ_AGE_DAYS,
+  type MarkReadAgeDays,
+  type MarkReadRequest,
+} from "../shared/types.js";
 import { type AuthService, type LoginSession, sessionToken } from "./auth.js";
 import type { AppDatabase } from "./db.js";
 import type { ExtractionQueue } from "./extraction.js";
@@ -23,6 +28,13 @@ export interface AppServices {
 
 const idParams = z.object({ id: z.coerce.number().int().positive() });
 const nullableId = z.number().int().positive().nullable();
+const markReadAgeDays = z
+  .number()
+  .int()
+  .refine(
+    (value) => MARK_READ_AGE_DAYS.includes(value as MarkReadAgeDays),
+    "Choose one of the available age thresholds",
+  );
 const credentials = z.object({
   username: z.string().trim().min(1).max(80),
   password: z.string().min(1).max(1_024),
@@ -192,8 +204,9 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         articleIds: z.array(z.number().int().positive()).max(1_000).optional(),
         feedId: z.number().int().positive().optional(),
         folderId: z.number().int().positive().optional(),
+        olderThanDays: markReadAgeDays.optional(),
       })
-      .parse(request.body ?? {});
+      .parse(request.body ?? {}) as MarkReadRequest;
     return { updated: services.database.markArticlesRead(userId(request), body) };
   });
 

@@ -8,6 +8,7 @@ import type {
   BootstrapData,
   Feed,
   Folder,
+  MarkReadRequest,
   Rule,
   RuleAction,
   RuleCondition,
@@ -1374,52 +1375,51 @@ export class AppDatabase {
     return this.getArticle(userId, id);
   }
 
-  markArticlesRead(
-    userId: number,
-    input: { articleIds?: number[]; feedId?: number; folderId?: number },
-  ): number {
+  markArticlesRead(userId: number, input: MarkReadRequest): number {
+    if (input.articleIds?.length === 0) return 0;
+
+    const articleWhere = ["articles.is_read = 0"];
+    const feedWhere = ["feeds.id = articles.feed_id", "feeds.user_id = ?"];
+    const articleValues: Array<number | string> = [];
+    const feedValues: Array<number | string> = [userId];
+
     if (input.articleIds) {
-      if (input.articleIds.length === 0) return 0;
-      const placeholders = input.articleIds.map(() => "?").join(", ");
-      return this.sqlite
-        .prepare(
-          `UPDATE articles SET is_read = 1
-           WHERE id IN (${placeholders})
-             AND feed_id IN (SELECT id FROM feeds WHERE user_id = ?)`,
-        )
-        .run(...input.articleIds, userId).changes;
+      articleWhere.push(`articles.id IN (${input.articleIds.map(() => "?").join(", ")})`);
+      articleValues.push(...input.articleIds);
     }
     if (input.feedId !== undefined) {
-      return this.sqlite
-        .prepare(
-          `UPDATE articles SET is_read = 1
-           WHERE feed_id = ? AND feed_id IN (SELECT id FROM feeds WHERE user_id = ?)`,
-        )
-        .run(input.feedId, userId).changes;
+      feedWhere.push("feeds.id = ?");
+      feedValues.push(input.feedId);
     }
     if (input.folderId !== undefined) {
-      return this.sqlite
-        .prepare(
-          `WITH RECURSIVE folder_tree(id) AS (
+      feedWhere.push(
+        `feeds.folder_id IN (
+           WITH RECURSIVE folder_tree(id) AS (
              SELECT id FROM folders WHERE id = ? AND user_id = ?
              UNION ALL
              SELECT folders.id FROM folders JOIN folder_tree ON folders.parent_id = folder_tree.id
              WHERE folders.user_id = ?
-           )
-           UPDATE articles SET is_read = 1
-           WHERE feed_id IN (
-             SELECT id FROM feeds
-             WHERE user_id = ? AND folder_id IN (SELECT id FROM folder_tree)
-           )`,
-        )
-        .run(input.folderId, userId, userId, userId).changes;
+           ) SELECT id FROM folder_tree
+         )`,
+      );
+      feedValues.push(input.folderId, userId, userId);
     }
+    if (input.olderThanDays !== undefined) {
+      const cutoff = new Date(Date.now() - input.olderThanDays * 86_400_000).toISOString();
+      articleWhere.push("COALESCE(articles.published_at, articles.discovered_at) < ?");
+      articleValues.push(cutoff);
+    }
+
     return this.sqlite
       .prepare(
         `UPDATE articles SET is_read = 1
-         WHERE feed_id IN (SELECT id FROM feeds WHERE user_id = ?)`,
+         WHERE ${articleWhere.join(" AND ")}
+           AND EXISTS (
+             SELECT 1 FROM feeds
+             WHERE ${feedWhere.join(" AND ")}
+           )`,
       )
-      .run(userId).changes;
+      .run(...articleValues, ...feedValues).changes;
   }
 
   listRules(userId: number): Rule[] {

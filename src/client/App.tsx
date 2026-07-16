@@ -5,6 +5,7 @@ import type {
   ArticleState,
   BootstrapData,
   Folder as FolderType,
+  MarkReadAgeDays,
   ReadingMode,
   Rule,
   SessionUser,
@@ -204,6 +205,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const [navOpen, setNavOpen] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
   const [expandedKeyboardTargetId, setExpandedKeyboardTargetId] = useState<number | null>(null);
+  const [markReadPending, setMarkReadPending] = useState(false);
   const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null);
   const toastTimer = useRef<number | null>(null);
   const toastExitTimer = useRef<number | null>(null);
@@ -733,6 +735,30 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     }
   }, [articles, markArticleBatchRead, showToast]);
 
+  const markOlderArticlesRead = useCallback(
+    async (days: MarkReadAgeDays) => {
+      setMarkReadPending(true);
+      try {
+        const result = await api.markRead({
+          olderThanDays: days,
+          ...(selectedFeedId !== null ? { feedId: selectedFeedId } : {}),
+          ...(selectedFolderId !== null ? { folderId: selectedFolderId } : {}),
+        });
+        await Promise.all([loadBootstrap(), loadArticles()]);
+        showToast(
+          result.updated === 0
+            ? "No unread articles matched that age"
+            : `Marked ${result.updated} ${result.updated === 1 ? "article" : "articles"} read`,
+        );
+      } catch (error) {
+        showToast(`Could not mark older articles read: ${errorMessage(error)}`);
+      } finally {
+        setMarkReadPending(false);
+      }
+    },
+    [loadArticles, loadBootstrap, selectedFeedId, selectedFolderId, showToast],
+  );
+
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
     setReaderOpen(false);
@@ -896,6 +922,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               searchActive={Boolean(search)}
               mode={readingMode}
               refreshing={bootstrap.feeds.some((feed) => feed.refreshing)}
+              markReadPending={markReadPending}
               navOpen={navOpen}
               readingArticle={readerOpen && readingMode === "magazine"}
               onToggleNav={() => setNavOpen((current) => !current)}
@@ -918,6 +945,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               onRefresh={() => void refresh()}
               onRefreshAll={() => void refresh(undefined, true)}
               onMarkRead={() => void markVisibleRead()}
+              onMarkReadByAge={(days) => void markOlderArticlesRead(days)}
               onPreviousScope={() => moveScope(-1)}
               onNextScope={() => moveScope(1)}
               onHelp={() => setShortcutHelpOpen(true)}
