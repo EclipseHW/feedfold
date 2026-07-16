@@ -201,6 +201,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const fullContentLoadedIds = useRef(new Set<number>());
   const fullContentLoadingIds = useRef(new Set<number>());
   const prioritizedExtractionIds = useRef(new Set<number>());
+  const manuallyUnreadArticleIds = useRef(new Set<number>());
   const bootstrapReady = bootstrap !== null;
 
   const showToast = useCallback((message: string) => {
@@ -439,6 +440,10 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       const nextStarred = change.isStarred ?? article.isStarred;
       const unreadDelta = nextRead === article.isRead ? 0 : nextRead ? -1 : 1;
       const starredDelta = nextStarred === article.isStarred ? 0 : nextStarred ? 1 : -1;
+      const wasManuallyUnread = manuallyUnreadArticleIds.current.has(article.id);
+
+      if (change.isRead === false) manuallyUnreadArticleIds.current.add(article.id);
+      if (change.isRead === true) manuallyUnreadArticleIds.current.delete(article.id);
 
       setArticles((current) =>
         current.map((item) =>
@@ -452,6 +457,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       try {
         await api.updateArticleState(article.id, change);
       } catch (error) {
+        if (wasManuallyUnread) manuallyUnreadArticleIds.current.add(article.id);
+        else manuallyUnreadArticleIds.current.delete(article.id);
         showToast(`Could not update article: ${errorMessage(error)}`);
         await Promise.all([loadBootstrap(), loadArticles()]);
       }
@@ -647,6 +654,10 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       if (unreadArticles.length === 0) return true;
 
       const ids = new Set(unreadArticles.map((article) => article.id));
+      const protectedIds = unreadArticles
+        .filter((article) => manuallyUnreadArticleIds.current.has(article.id))
+        .map((article) => article.id);
+      for (const id of ids) manuallyUnreadArticleIds.current.delete(id);
       setArticles((current) =>
         current.map((article) => (ids.has(article.id) ? { ...article, isRead: true } : article)),
       );
@@ -662,12 +673,21 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         await api.markRead({ articleIds: [...ids] });
         return true;
       } catch (error) {
+        for (const id of protectedIds) manuallyUnreadArticleIds.current.add(id);
         showToast(`Could not mark articles read: ${errorMessage(error)}`);
         await Promise.all([loadBootstrap(), loadArticles()]);
         return false;
       }
     },
     [loadArticles, loadBootstrap, showToast],
+  );
+
+  const markPassedArticlesRead = useCallback(
+    (candidates: Article[]) =>
+      markArticleBatchRead(
+        candidates.filter((article) => !manuallyUnreadArticleIds.current.has(article.id)),
+      ),
+    [markArticleBatchRead],
   );
 
   const markVisibleRead = useCallback(async () => {
@@ -908,7 +928,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     loadingMore={articlesLoadingMore}
                     onLoadMore={() => void loadOlderArticles()}
                     onOpen={openArticle}
-                    onMarkPassedRead={markArticleBatchRead}
+                    onMarkPassedRead={markPassedArticlesRead}
                     onToggleRead={(article) =>
                       void changeArticleState(article, { isRead: !article.isRead })
                     }
@@ -944,7 +964,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     setExpandedKeyboardTargetId(null);
                     setActiveArticleId(article.id);
                   }}
-                  onMarkPassedRead={markArticleBatchRead}
+                  onMarkPassedRead={markPassedArticlesRead}
                   onMarkUnread={(article) =>
                     article.isRead && void changeArticleState(article, { isRead: false })
                   }
