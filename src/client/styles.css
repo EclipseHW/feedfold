@@ -968,6 +968,17 @@ kbd {
   min-height: 48px;
 }
 
+.article-list-end {
+  display: flex;
+  min-height: 100%;
+  align-items: center;
+  justify-content: center;
+  padding: 36px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
 .article-list-item {
   position: relative;
   display: flex;
