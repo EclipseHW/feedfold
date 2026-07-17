@@ -930,13 +930,6 @@ function ArticleHeader({ article, id }: { article: Article; id: string }) {
         )}
       </h2>
       <ArticleFeedLinks article={article} />
-      {article.contentSource === "feed" ? (
-        <div className="article-source-status">
-          <span>
-            <Rss aria-hidden="true" size={14} /> Feed content
-          </span>
-        </div>
-      ) : null}
     </header>
   );
 }
