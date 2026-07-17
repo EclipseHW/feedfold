@@ -2,6 +2,7 @@ import type { RefreshResult } from "../shared/types.js";
 import type { AppDatabase, FeedRecord, ParsedFeed } from "./db.js";
 import type { ExtractionQueue } from "./extraction.js";
 import { parseAndNormalizeFeed, parseAndNormalizeWordPressPosts } from "./feed-parser.js";
+import { parseAndNormalizeTelegramFeed, telegramChannelUrls } from "./telegram-feed.js";
 
 const USER_AGENT = "Echovale/0.1 (+self-hosted RSS reader)";
 
@@ -100,6 +101,7 @@ export class FeedRefreshService {
   private async refresh(feed: FeedRecord): Promise<void> {
     let httpStatus: number | null = null;
     try {
+      const telegram = telegramChannelUrls(feed.feedUrl);
       const headers = new Headers({
         Accept:
           "application/atom+xml,application/rss+xml,application/feed+json,application/json;q=0.9,application/xml;q=0.8,text/xml;q=0.8,*/*;q=0.5",
@@ -107,7 +109,7 @@ export class FeedRefreshService {
       });
       if (feed.etag) headers.set("If-None-Match", feed.etag);
       if (feed.lastModified) headers.set("If-Modified-Since", feed.lastModified);
-      let response = await fetch(feed.feedUrl, {
+      let response = await fetch(telegram?.previewUrl ?? feed.feedUrl, {
         headers,
         redirect: "follow",
         signal: AbortSignal.timeout(this.timeoutMs),
@@ -141,10 +143,10 @@ export class FeedRefreshService {
       }
       if (!parsed) {
         if (!response.ok) throw new FeedHttpError(response.status);
-        parsed = parseAndNormalizeFeed(
-          source ?? (await response.text()),
-          response.url || feed.feedUrl,
-        );
+        const feedSource = source ?? (await response.text());
+        parsed = telegram
+          ? parseAndNormalizeTelegramFeed(feedSource, telegram.channelUrl)
+          : parseAndNormalizeFeed(feedSource, response.url || feed.feedUrl);
       }
       const articleIds = this.database.markFeedSuccess(feed.id, {
         httpStatus: response.status,

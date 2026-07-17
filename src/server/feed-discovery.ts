@@ -2,6 +2,7 @@ import { JSDOM } from "jsdom";
 import type { FeedPreview } from "../shared/types.js";
 import type { ParsedFeed } from "./db.js";
 import { parseAndNormalizeFeed } from "./feed-parser.js";
+import { parseAndNormalizeTelegramFeed, telegramChannelUrls } from "./telegram-feed.js";
 
 const USER_AGENT = "Echovale/0.1 (+self-hosted RSS reader)";
 const FEED_ACCEPT =
@@ -125,9 +126,20 @@ async function fetchSource(
 
 export async function discoverFeed(inputUrl: string, timeoutMs = 15_000): Promise<FeedPreview> {
   const url = new URL(inputUrl).toString();
+  const telegram = telegramChannelUrls(url);
   const signal = AbortSignal.timeout(timeoutMs);
-  const page = await fetchSource(url, signal, true);
+  const page = await fetchSource(telegram?.previewUrl ?? url, signal, true);
   if (!page) throw new FeedDiscoveryError("Could not load this URL.");
+  if (telegram) {
+    try {
+      return preview(
+        parseAndNormalizeTelegramFeed(page.source, telegram.channelUrl),
+        telegram.channelUrl,
+      );
+    } catch {
+      throw new FeedDiscoveryError("Could not read a public Telegram channel at this URL.");
+    }
+  }
   const direct = parsePreview(page.source, page.url);
   if (direct) return direct;
 

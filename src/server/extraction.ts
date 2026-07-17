@@ -3,6 +3,7 @@ import { JSDOM, VirtualConsole } from "jsdom";
 import sanitizeHtml from "sanitize-html";
 import { firstSafeImageUrl } from "./article-image.js";
 import type { AppDatabase, ExtractionRecord } from "./db.js";
+import { isTelegramPostUrl } from "./telegram-feed.js";
 
 const MAX_ARTICLE_BYTES = 5 * 1024 * 1024;
 const articleVirtualConsole = new VirtualConsole().forwardTo(console, {
@@ -177,6 +178,15 @@ export async function extractArticle(
   const feedContent = record.feedContentHtml
     ? cleanArticleHtml(record.feedContentHtml, record.url ?? undefined)
     : null;
+  if (feedContent && record.url && isTelegramPostUrl(record.url)) {
+    return {
+      contentHtml: feedContent,
+      imageUrl: firstSafeImageUrl(feedContent, record.url),
+      contentSource: "feed",
+      status: "feed",
+      error: null,
+    };
+  }
   if (feedContent && !containsText(feedContent) && containsArticleMedia(feedContent)) {
     return {
       contentHtml: feedContent,

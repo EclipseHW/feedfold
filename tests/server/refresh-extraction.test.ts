@@ -33,6 +33,22 @@ async function listen(server: Server): Promise<string> {
 }
 
 describe("feed refresh and full-text extraction", () => {
+  it("uses Telegram feed content instead of the post page chrome", async () => {
+    const outcome = await extractArticle({
+      id: 1,
+      url: "https://t.me/Example_Channel/42",
+      feedContentHtml: "<p>The actual Telegram post.</p>",
+    });
+
+    expect(outcome).toEqual({
+      contentHtml: "<p>The actual Telegram post.</p>",
+      imageUrl: null,
+      contentSource: "feed",
+      status: "feed",
+      error: null,
+    });
+  });
+
   it("keeps an image-only feed article instead of unrelated page text", async () => {
     let requests = 0;
     const server = createServer((_request, response) => {
