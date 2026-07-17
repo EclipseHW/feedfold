@@ -710,7 +710,7 @@ function ArticleDocument({
   article: Article;
   titleId: string;
   onRetryExtraction: (article: Article) => void;
-  onFilterSelection: (text: string) => void;
+  onFilterSelection: (article: Article, text: string) => void;
 }) {
   const documentRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -815,7 +815,7 @@ function ArticleDocument({
                   const { text } = selectionMenu;
                   window.getSelection()?.removeAllRanges();
                   setSelectionMenu(null);
-                  onFilterSelection(text);
+                  onFilterSelection(article, text);
                 }}
               >
                 <ListFilter aria-hidden="true" size={15} />
@@ -848,7 +848,7 @@ export function ReaderPane({
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onRetryExtraction: (article: Article) => void;
-  onFilterSelection: (text: string) => void;
+  onFilterSelection: (article: Article, text: string) => void;
 }) {
   if (!article) {
     return (
@@ -1064,7 +1064,7 @@ export function ExpandedStream({
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onRetryExtraction: (article: Article) => void;
-  onFilterSelection: (text: string) => void;
+  onFilterSelection: (article: Article, text: string) => void;
 }) {
   const streamRef = useRef<HTMLElement>(null);
   const registerItem = useMarkReadOnScroll({

@@ -79,6 +79,7 @@ interface EditableRuleCondition extends RuleCondition {
 export interface RuleFormDraft {
   id: number;
   name: string;
+  feedId: number;
   field: RuleField;
   pattern: string;
 }
@@ -1178,7 +1179,9 @@ function RuleForm({
       ? `feed:${initial.feedId}`
       : initial?.folderId
         ? `folder:${initial.folderId}`
-        : "all",
+        : preset
+          ? `feed:${preset.feedId}`
+          : "all",
   );
   const nextConditionId = useRef(initial?.conditions.length ?? 1);
   const conditionInputRefs = useRef(new Map<number, HTMLInputElement>());

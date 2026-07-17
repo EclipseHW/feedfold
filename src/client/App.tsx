@@ -590,13 +590,14 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   }, []);
 
   const filterSelectedText = useCallback(
-    (text: string) => {
+    (article: Article, text: string) => {
       const pattern = text.replace(/\s+/g, " ").trim();
       if (!pattern) return;
       ruleDraftId.current += 1;
       setRuleDraft({
         id: ruleDraftId.current,
         name: filterRuleName(pattern),
+        feedId: article.feedId,
         field: "any",
         pattern,
       });
