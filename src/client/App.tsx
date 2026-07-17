@@ -26,6 +26,14 @@ import {
   ReaderPane,
   StartupError,
 } from "./reader";
+import {
+  type AppRoute,
+  appRoutePath,
+  appRouteUrl,
+  DEFAULT_READER_ROUTE,
+  parseAppRoute,
+  type ReaderRoute,
+} from "./routes";
 
 type Theme = "dark" | "light";
 
@@ -34,6 +42,28 @@ const ARTICLE_FONT_MAX = 23;
 const ARTICLE_FONT_DEFAULT = 18;
 const TOAST_EXIT_MS = 140;
 const FILTER_RULE_NAME_TEXT_LIMIT = 72;
+const APP_BASE_PATH = import.meta.env.BASE_URL;
+
+interface AppHistoryState {
+  echovale?: true;
+  returnTo?: string;
+  returnsWithBack?: boolean;
+}
+
+function selectedReaderRoute(
+  state: ArticleState,
+  feedId: number | null,
+  folderId: number | null,
+  search: string,
+): ReaderRoute {
+  if (feedId !== null) {
+    return { kind: "reader", scope: "feed", scopeId: feedId, state, search };
+  }
+  if (folderId !== null) {
+    return { kind: "reader", scope: "folder", scopeId: folderId, state, search };
+  }
+  return { kind: "reader", scope: "all", scopeId: null, state, search };
+}
 
 function filterRuleName(text: string): string {
   const label =
@@ -170,6 +200,16 @@ export function App() {
 }
 
 function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Promise<void> }) {
+  const initialRoute = useRef(
+    parseAppRoute(window.location.pathname, window.location.search, APP_BASE_PATH),
+  ).current;
+  const initialReaderRoute = useRef<ReaderRoute>(
+    initialRoute.kind === "reader"
+      ? initialRoute
+      : initialRoute.kind === "article"
+        ? { ...DEFAULT_READER_ROUTE, state: "all" }
+        : DEFAULT_READER_ROUTE,
+  ).current;
   const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
   const [bootstrapError, setBootstrapError] = useState<string | null>(null);
   const [articles, setArticles] = useState<Article[]>([]);
@@ -177,12 +217,24 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const [articlesLoadingMore, setArticlesLoadingMore] = useState(false);
   const [articlesError, setArticlesError] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [activeArticleId, setActiveArticleId] = useState<number | null>(null);
-  const [articleStateFilter, setArticleStateFilter] = useState<ArticleState>("unread");
-  const [selectedFeedId, setSelectedFeedId] = useState<number | null>(null);
-  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(null);
-  const [searchInput, setSearchInput] = useState("");
-  const [search, setSearch] = useState("");
+  const [activeArticleId, setActiveArticleId] = useState<number | null>(
+    initialRoute.kind === "article" ? initialRoute.articleId : null,
+  );
+  const [routedArticleId, setRoutedArticleId] = useState<number | null>(
+    initialRoute.kind === "article" ? initialRoute.articleId : null,
+  );
+  const [routedArticleRetry, setRoutedArticleRetry] = useState(0);
+  const [articleStateFilter, setArticleStateFilter] = useState<ArticleState>(
+    initialReaderRoute.state,
+  );
+  const [selectedFeedId, setSelectedFeedId] = useState<number | null>(
+    initialReaderRoute.scope === "feed" ? initialReaderRoute.scopeId : null,
+  );
+  const [selectedFolderId, setSelectedFolderId] = useState<number | null>(
+    initialReaderRoute.scope === "folder" ? initialReaderRoute.scopeId : null,
+  );
+  const [searchInput, setSearchInput] = useState(initialReaderRoute.search);
+  const [search, setSearch] = useState(initialReaderRoute.search);
   const [readingMode, setReadingMode] = useState<ReadingMode>(() =>
     storedValue<ReadingMode>(accountStorageKey(user.id, "reading-mode"), "magazine"),
   );
@@ -198,15 +250,21 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       ),
     ),
   );
-  const [view, setView] = useState<AppView>("reader");
+  const [view, setView] = useState<AppView>(
+    initialRoute.kind === "reader" || initialRoute.kind === "article"
+      ? "reader"
+      : initialRoute.kind,
+  );
   const [rules, setRules] = useState<Rule[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
   const [rulesError, setRulesError] = useState<string | null>(null);
   const [ruleDraft, setRuleDraft] = useState<RuleFormDraft | null>(null);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
-  const [readerOpen, setReaderOpen] = useState(false);
-  const [expandedKeyboardTargetId, setExpandedKeyboardTargetId] = useState<number | null>(null);
+  const [readerOpen, setReaderOpen] = useState(initialRoute.kind === "article");
+  const [expandedKeyboardTargetId, setExpandedKeyboardTargetId] = useState<number | null>(
+    initialRoute.kind === "article" ? initialRoute.articleId : null,
+  );
   const [fullContentVisibleIds, setFullContentVisibleIds] = useState<Set<number>>(() => new Set());
   const [markReadPending, setMarkReadPending] = useState(false);
   const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null);
@@ -215,11 +273,96 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const sequence = useRef<{ startedAt: number } | null>(null);
   const ruleDraftId = useRef(0);
   const contextArticleReturn = useRef<ContextArticleReturn | null>(null);
+  const contextArticleReturnRoute = useRef<ReaderRoute | null>(null);
+  const articlesRef = useRef(articles);
   const fullContentVisibleIdsRef = useRef(new Set<number>());
   const fullContentLoadedIds = useRef(new Set<number>());
   const fullContentLoadingIds = useRef(new Set<number>());
   const manuallyUnreadArticleIds = useRef(new Set<number>());
+  const lastReaderRoute = useRef<ReaderRoute>(initialReaderRoute);
+  const currentRoute = useRef<AppRoute>(initialRoute);
+  const articleListRequestId = useRef(0);
+  const loadedReaderRequestKey = useRef<string | null>(null);
   const bootstrapReady = bootstrap !== null;
+  articlesRef.current = articles;
+
+  const applyAppRoute = useCallback((route: AppRoute) => {
+    currentRoute.current = route;
+    articleListRequestId.current += 1;
+    setArticlesLoadingMore(false);
+    setNavOpen(false);
+    if (route.kind === "reader") {
+      lastReaderRoute.current = route;
+      setView("reader");
+      setRoutedArticleId(null);
+      setArticleStateFilter(route.state);
+      setSelectedFeedId(route.scope === "feed" ? route.scopeId : null);
+      setSelectedFolderId(route.scope === "folder" ? route.scopeId : null);
+      setSearchInput(route.search);
+      setSearch(route.search);
+      setReaderOpen(false);
+      setExpandedKeyboardTargetId(null);
+      return;
+    }
+    if (route.kind === "article") {
+      setView("reader");
+      setRoutedArticleId(route.articleId);
+      setActiveArticleId(route.articleId);
+      setArticlesLoading(false);
+      setArticlesError(null);
+      setReaderOpen(true);
+      setExpandedKeyboardTargetId(route.articleId);
+      return;
+    }
+    loadedReaderRequestKey.current = null;
+    setView(route.kind);
+    setRoutedArticleId(null);
+    setReaderOpen(false);
+    setExpandedKeyboardTargetId(null);
+  }, []);
+
+  const navigateToRoute = useCallback(
+    (route: AppRoute, historyMode: "push" | "replace" = "push") => {
+      const url = appRouteUrl(route, APP_BASE_PATH);
+      const currentUrl = `${window.location.pathname}${window.location.search}`;
+      const previousState = (window.history.state ?? {}) as AppHistoryState;
+      if (currentUrl === url) {
+        window.history.replaceState({ ...previousState, echovale: true }, "", url);
+        setNavOpen(false);
+        return;
+      }
+      const state: AppHistoryState = { echovale: true };
+      if (route.kind === "article") {
+        state.returnTo = appRoutePath(lastReaderRoute.current);
+        state.returnsWithBack =
+          (historyMode === "push" && currentRoute.current.kind === "reader") ||
+          (historyMode === "replace" &&
+            currentRoute.current.kind === "article" &&
+            previousState.returnsWithBack === true);
+      }
+      if (historyMode === "replace") window.history.replaceState(state, "", url);
+      else window.history.pushState(state, "", url);
+      applyAppRoute(route);
+    },
+    [applyAppRoute],
+  );
+
+  useEffect(() => {
+    const currentRoute = parseAppRoute(
+      window.location.pathname,
+      window.location.search,
+      APP_BASE_PATH,
+    );
+    const currentState = (window.history.state ?? {}) as AppHistoryState;
+    const state: AppHistoryState = { ...currentState, echovale: true };
+    window.history.replaceState(state, "", appRouteUrl(currentRoute, APP_BASE_PATH));
+
+    const restoreRoute = () => {
+      applyAppRoute(parseAppRoute(window.location.pathname, window.location.search, APP_BASE_PATH));
+    };
+    window.addEventListener("popstate", restoreRoute);
+    return () => window.removeEventListener("popstate", restoreRoute);
+  }, [applyAppRoute]);
 
   const showToast = useCallback((message: string) => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -249,8 +392,21 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   }, []);
 
   const loadArticles = useCallback(async () => {
-    if (!bootstrapReady) return;
-    const returnTarget = contextArticleReturn.current;
+    if (!bootstrapReady || currentRoute.current.kind !== "reader") return;
+    const requestKey = `${appRoutePath(currentRoute.current)}:${readingMode}`;
+    const requestId = articleListRequestId.current + 1;
+    articleListRequestId.current = requestId;
+    setArticlesLoadingMore(false);
+    const returnTarget =
+      contextArticleReturn.current &&
+      contextArticleReturnRoute.current &&
+      appRoutePath(contextArticleReturnRoute.current) === appRoutePath(currentRoute.current)
+        ? contextArticleReturn.current
+        : null;
+    if (contextArticleReturn.current && !returnTarget) {
+      contextArticleReturn.current = null;
+      contextArticleReturnRoute.current = null;
+    }
     if (!returnTarget) setArticlesLoading(true);
     setArticlesError(null);
     try {
@@ -262,7 +418,11 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         limit: readingMode === "expanded" ? 20 : 100,
         includeContent: readingMode === "expanded",
       });
+      if (articleListRequestId.current !== requestId || currentRoute.current.kind !== "reader") {
+        return;
+      }
       const nextArticles = articlesWithContextReturn(page.articles, returnTarget);
+      loadedReaderRequestKey.current = requestKey;
       setArticles(nextArticles);
       fullContentVisibleIdsRef.current = new Set();
       setFullContentVisibleIds(new Set());
@@ -281,11 +441,14 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           return current;
         return nextArticles[0]?.id ?? null;
       });
-      if (contextArticleReturn.current === returnTarget) contextArticleReturn.current = null;
+      if (contextArticleReturn.current === returnTarget) {
+        contextArticleReturn.current = null;
+        contextArticleReturnRoute.current = null;
+      }
     } catch (error) {
-      setArticlesError(errorMessage(error));
+      if (articleListRequestId.current === requestId) setArticlesError(errorMessage(error));
     } finally {
-      setArticlesLoading(false);
+      if (articleListRequestId.current === requestId) setArticlesLoading(false);
     }
   }, [articleStateFilter, bootstrapReady, readingMode, search, selectedFeedId, selectedFolderId]);
 
@@ -302,7 +465,15 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   }, []);
 
   const loadOlderArticles = useCallback(async (): Promise<Article[]> => {
-    if (!bootstrapReady || !nextCursor || articlesLoadingMore) return [];
+    if (
+      !bootstrapReady ||
+      !nextCursor ||
+      articlesLoadingMore ||
+      currentRoute.current.kind !== "reader"
+    ) {
+      return [];
+    }
+    const requestId = articleListRequestId.current;
     setArticlesLoadingMore(true);
     try {
       const page = await api.articles({
@@ -314,6 +485,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         includeContent: readingMode === "expanded",
         cursor: nextCursor,
       });
+      if (articleListRequestId.current !== requestId || currentRoute.current.kind !== "reader") {
+        return [];
+      }
       const existingIds = new Set(articles.map((article) => article.id));
       const appended = page.articles.filter((article) => !existingIds.has(article.id));
       setArticles((current) => {
@@ -326,10 +500,12 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       }
       return appended;
     } catch (error) {
-      showToast(`Could not load older articles: ${errorMessage(error)}`);
+      if (articleListRequestId.current === requestId) {
+        showToast(`Could not load older articles: ${errorMessage(error)}`);
+      }
       return [];
     } finally {
-      setArticlesLoadingMore(false);
+      if (articleListRequestId.current === requestId) setArticlesLoadingMore(false);
     }
   }, [
     articleStateFilter,
@@ -349,8 +525,14 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   }, [loadBootstrap]);
 
   useEffect(() => {
-    if (view === "reader") void loadArticles();
-  }, [loadArticles, view]);
+    if (view !== "reader" || routedArticleId !== null || currentRoute.current.kind !== "reader") {
+      return;
+    }
+    const requestKey = `${appRoutePath(currentRoute.current)}:${readingMode}`;
+    if (contextArticleReturn.current || loadedReaderRequestKey.current !== requestKey) {
+      void loadArticles();
+    }
+  }, [loadArticles, readingMode, routedArticleId, view]);
 
   useEffect(() => {
     if (view === "rules") void loadRules();
@@ -457,13 +639,19 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         if (wasManuallyUnread) manuallyUnreadArticleIds.current.add(article.id);
         else manuallyUnreadArticleIds.current.delete(article.id);
         showToast(`Could not update article: ${errorMessage(error)}`);
-        await Promise.all([loadBootstrap(), loadArticles()]);
+        await loadBootstrap();
+        if (currentRoute.current.kind === "article") {
+          setArticles((current) => current.filter((item) => item.id !== article.id));
+          setRoutedArticleRetry((current) => current + 1);
+        } else {
+          await loadArticles();
+        }
       }
     },
     [loadArticles, loadBootstrap, showToast],
   );
 
-  const openArticle = useCallback(
+  const activateArticle = useCallback(
     (article: Article, openReader = true) => {
       setActiveArticleId(article.id);
       if (openReader) setReaderOpen(true);
@@ -473,10 +661,72 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     [changeArticleState, loadFullArticle],
   );
 
+  const openArticle = useCallback(
+    (article: Article, openReader = true, historyMode: "push" | "replace" = "push") => {
+      activateArticle(article, openReader);
+      if (openReader) {
+        navigateToRoute({ kind: "article", articleId: article.id }, historyMode);
+      }
+    },
+    [activateArticle, navigateToRoute],
+  );
+
+  useEffect(() => {
+    if (!bootstrapReady || view !== "reader" || routedArticleId === null) return;
+    void routedArticleRetry;
+    let active = true;
+    const existing = articlesRef.current.find((article) => article.id === routedArticleId);
+
+    const showArticle = (article: Article) => {
+      if (!active) return;
+      if (!existing) loadedReaderRequestKey.current = null;
+      setArticles((current) =>
+        current.some((item) => item.id === article.id)
+          ? current.map((item) =>
+              item.id === article.id
+                ? { ...article, isRead: item.isRead, isStarred: item.isStarred }
+                : item,
+            )
+          : [article, ...current],
+      );
+      setArticlesError(null);
+      activateArticle(article, true);
+    };
+
+    if (existing) {
+      showArticle(existing);
+      return () => {
+        active = false;
+      };
+    }
+
+    setArticlesLoading(true);
+    setArticlesError(null);
+    void api
+      .article(routedArticleId)
+      .then((article) => {
+        const state = (window.history.state ?? {}) as AppHistoryState;
+        if (!state.returnTo) {
+          lastReaderRoute.current = selectedReaderRoute("all", article.feedId, null, "");
+        }
+        showArticle(article);
+      })
+      .catch((error) => {
+        if (active) setArticlesError(errorMessage(error));
+      })
+      .finally(() => {
+        if (active) setArticlesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [activateArticle, bootstrapReady, routedArticleId, routedArticleRetry, view]);
+
   const moveArticle = useCallback(
     (direction: 1 | -1) => {
       if (articles.length === 0) return;
-      const openReader = readingMode === "magazine";
+      const openReader = readingMode === "magazine" || routedArticleId !== null;
       if (openReader && !readerOpen && activeArticle) {
         openArticle(activeArticle, true);
         return;
@@ -492,7 +742,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           const next = appended[0];
           if (!next) return;
           if (!openReader) setExpandedKeyboardTargetId(next.id);
-          openArticle(next, openReader);
+          openArticle(next, openReader, readerOpen ? "replace" : "push");
         });
         return;
       }
@@ -503,7 +753,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       const next = articles[nextIndex];
       if (next) {
         if (!openReader && next.id !== activeArticleId) setExpandedKeyboardTargetId(next.id);
-        openArticle(next, openReader);
+        openArticle(next, openReader, readerOpen ? "replace" : "push");
       }
     },
     [
@@ -516,6 +766,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       openArticle,
       readingMode,
       readerOpen,
+      routedArticleId,
     ],
   );
 
@@ -582,18 +833,19 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     [loadFullArticle, mergeFullArticle, showToast],
   );
 
-  const selectScope = useCallback((feedId: number | null, folderId: number | null) => {
-    setSelectedFeedId(feedId);
-    setSelectedFolderId(folderId);
-    setView("reader");
-    setNavOpen(false);
-    setReaderOpen(false);
-  }, []);
+  const selectScope = useCallback(
+    (feedId: number | null, folderId: number | null, state: ArticleState = articleStateFilter) => {
+      navigateToRoute(selectedReaderRoute(state, feedId, folderId, search));
+    },
+    [articleStateFilter, navigateToRoute, search],
+  );
 
-  const navigateTo = useCallback((nextView: AppView) => {
-    setView(nextView);
-    setNavOpen(false);
-  }, []);
+  const navigateTo = useCallback(
+    (nextView: AppView) => {
+      navigateToRoute(nextView === "reader" ? lastReaderRoute.current : { kind: nextView });
+    },
+    [navigateToRoute],
+  );
 
   const filterSelectedText = useCallback(
     (article: Article, text: string) => {
@@ -612,9 +864,24 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         field: "any",
         pattern,
       });
-      navigateTo("rules");
+      contextArticleReturnRoute.current = lastReaderRoute.current;
+      const state = (window.history.state ?? {}) as AppHistoryState;
+      const fromReaderRoute = currentRoute.current.kind === "reader";
+      const returnsWithBack =
+        fromReaderRoute ||
+        (currentRoute.current.kind === "article" && state.returnsWithBack === true);
+      navigateToRoute({ kind: "rules" }, fromReaderRoute ? "push" : "replace");
+      const rulesState = (window.history.state ?? {}) as AppHistoryState;
+      window.history.replaceState(
+        {
+          ...rulesState,
+          returnTo: appRoutePath(lastReaderRoute.current),
+          returnsWithBack,
+        },
+        "",
+      );
     },
-    [articles, navigateTo],
+    [articles, navigateToRoute],
   );
 
   const clearRuleDraft = useCallback(() => setRuleDraft(null), []);
@@ -625,9 +892,15 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       setActiveArticleId(draft.article.id);
       setReaderOpen(readingMode === "magazine");
       setExpandedKeyboardTargetId(readingMode === "expanded" ? draft.article.id : null);
-      navigateTo("reader");
+      const rulesState = (window.history.state ?? {}) as AppHistoryState;
+      const returnTo = appRoutePath(contextArticleReturnRoute.current ?? lastReaderRoute.current);
+      const returnsWithBack =
+        rulesState.returnTo === returnTo && rulesState.returnsWithBack === true;
+      navigateToRoute({ kind: "article", articleId: draft.article.id }, "replace");
+      const articleState = (window.history.state ?? {}) as AppHistoryState;
+      window.history.replaceState({ ...articleState, returnTo, returnsWithBack }, "");
     },
-    [navigateTo, readingMode],
+    [navigateToRoute, readingMode],
   );
 
   const moveScope = useCallback(
@@ -647,6 +920,24 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     },
     [bootstrap, selectScope, selectedFeedId, selectedFolderId],
   );
+
+  const returnToArticleList = useCallback(() => {
+    const state = (window.history.state ?? {}) as AppHistoryState;
+    if (state.echovale && state.returnTo && state.returnsWithBack) {
+      window.history.back();
+      return;
+    }
+    if (state.echovale && state.returnTo) {
+      const base = APP_BASE_PATH.replace(/\/$/, "");
+      const returnUrl = new URL(`${base}${state.returnTo}`, window.location.origin);
+      navigateToRoute(
+        parseAppRoute(returnUrl.pathname, returnUrl.search, APP_BASE_PATH),
+        "replace",
+      );
+      return;
+    }
+    navigateToRoute(lastReaderRoute.current, "replace");
+  }, [navigateToRoute]);
 
   const refresh = useCallback(
     async (feedId?: number, forceAll = false) => {
@@ -688,7 +979,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           latest = await api.bootstrap();
           setBootstrap(latest);
         }
-        await loadArticles();
+        if (currentRoute.current.kind === "reader") await loadArticles();
+        else loadedReaderRequestKey.current = null;
         showToast("Refresh complete");
       } catch (error) {
         showToast(`Refresh failed: ${errorMessage(error)}`);
@@ -784,8 +1076,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
 
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
-    setReaderOpen(false);
-    setSearch(searchInput.trim());
+    navigateToRoute(
+      selectedReaderRoute(articleStateFilter, selectedFeedId, selectedFolderId, searchInput.trim()),
+    );
   };
 
   useEffect(() => {
@@ -793,7 +1086,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       if (event.key === "Escape") {
         setShortcutHelpOpen(false);
         setNavOpen(false);
-        if (readerOpen) setReaderOpen(false);
+        if (readerOpen) returnToArticleList();
         return;
       }
       if (isEditable(event.target) || !bootstrap?.settings.singleKeyShortcuts) return;
@@ -803,18 +1096,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       if (sequence.current && Date.now() - sequence.current.startedAt < 1200) {
         sequence.current = null;
         const destinations: Record<string, () => void> = {
-          u: () => {
-            setArticleStateFilter("unread");
-            selectScope(null, null);
-          },
-          s: () => {
-            setArticleStateFilter("starred");
-            selectScope(null, null);
-          },
-          a: () => {
-            setArticleStateFilter("all");
-            selectScope(null, null);
-          },
+          u: () => selectScope(null, null, "unread"),
+          s: () => selectScope(null, null, "starred"),
+          a: () => selectScope(null, null, "all"),
           f: () => navigateTo("feeds"),
           r: () => navigateTo("rules"),
           ",": () => navigateTo("settings"),
@@ -872,12 +1156,12 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
             return next;
           }),
         "1": () => {
-          setReaderOpen(false);
+          setReaderOpen(routedArticleId !== null);
           setExpandedKeyboardTargetId(null);
           setReadingMode("magazine");
         },
         "2": () => {
-          setReaderOpen(false);
+          setReaderOpen(routedArticleId !== null);
           setExpandedKeyboardTargetId(null);
           setReadingMode("expanded");
         },
@@ -902,6 +1186,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     moveArticle,
     navigateTo,
     refresh,
+    returnToArticleList,
+    routedArticleId,
     selectScope,
     showToast,
     view,
@@ -931,10 +1217,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         currentView={view}
         open={navOpen}
         onClose={() => setNavOpen(false)}
-        onSelectState={(state) => {
-          setArticleStateFilter(state);
-          selectScope(null, null);
-        }}
+        onSelectState={(state) => selectScope(null, null, state)}
         onSelectScope={selectScope}
         onNavigate={navigateTo}
         onRefresh={() => void refresh()}
@@ -957,18 +1240,19 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               readingArticle={readerOpen && readingMode === "magazine"}
               onToggleNav={() => setNavOpen((current) => !current)}
               onStateChange={(state) => {
-                setReaderOpen(false);
-                setArticleStateFilter(state);
+                navigateToRoute(
+                  selectedReaderRoute(state, selectedFeedId, selectedFolderId, search),
+                );
               }}
               onSearchInput={setSearchInput}
               onSearch={submitSearch}
               onClearSearch={() => {
-                setReaderOpen(false);
-                setSearchInput("");
-                setSearch("");
+                navigateToRoute(
+                  selectedReaderRoute(articleStateFilter, selectedFeedId, selectedFolderId, ""),
+                );
               }}
               onModeChange={(mode) => {
-                setReaderOpen(false);
+                setReaderOpen(routedArticleId !== null);
                 setExpandedKeyboardTargetId(null);
                 setReadingMode(mode);
               }}
@@ -988,9 +1272,17 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                 <ArticleListSkeleton mode={readingMode} />
               ) : articlesError ? (
                 <InlineError
-                  title="Articles could not be loaded"
+                  title={
+                    routedArticleId === null
+                      ? "Articles could not be loaded"
+                      : "Article could not be loaded"
+                  }
                   detail={articlesError}
-                  retry={() => void loadArticles()}
+                  retry={() =>
+                    routedArticleId === null
+                      ? void loadArticles()
+                      : setRoutedArticleRetry((current) => current + 1)
+                  }
                 />
               ) : articles.length === 0 ? (
                 <EmptyArticles
@@ -998,11 +1290,15 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   search={search}
                   state={articleStateFilter}
                   onAddFeed={() => navigateTo("feeds")}
-                  onShowAll={() => setArticleStateFilter("all")}
+                  onShowAll={() =>
+                    navigateToRoute(
+                      selectedReaderRoute("all", selectedFeedId, selectedFolderId, search),
+                    )
+                  }
                   onClearSearch={() => {
-                    setReaderOpen(false);
-                    setSearchInput("");
-                    setSearch("");
+                    navigateToRoute(
+                      selectedReaderRoute(articleStateFilter, selectedFeedId, selectedFolderId, ""),
+                    );
                   }}
                 />
               ) : readingMode === "magazine" ? (
@@ -1029,7 +1325,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     fullContentVisible={
                       activeArticle ? fullContentVisibleIds.has(activeArticle.id) : false
                     }
-                    onBack={() => setReaderOpen(false)}
+                    onBack={returnToArticleList}
                     onPrevious={() => moveArticle(-1)}
                     onNext={() => moveArticle(1)}
                     onMarkUnread={(article) =>
@@ -1045,12 +1341,12 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                 </>
               ) : (
                 <ExpandedStream
-                  articles={articles}
+                  articles={routedArticleId !== null && activeArticle ? [activeArticle] : articles}
                   activeId={activeArticleId}
                   topAlignedId={expandedKeyboardTargetId}
                   fullContentVisibleIds={fullContentVisibleIds}
                   markReadOnScroll={bootstrap.settings.markReadOnScroll}
-                  hasMore={nextCursor !== null}
+                  hasMore={routedArticleId === null && nextCursor !== null}
                   loadingMore={articlesLoadingMore}
                   onLoadMore={() => void loadOlderArticles()}
                   onActivate={(article) => {
