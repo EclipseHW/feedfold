@@ -19,6 +19,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Article, ArticleState, ReadingMode } from "../shared/types";
 import { extractHttpLinks, supplementalHttpLinks } from "./article-links";
+import {
+  captureTextSelection,
+  restoreTextSelection,
+  type TextSelectionSnapshot,
+} from "./text-selection";
 
 function formatRelativeDate(value: string | null): string {
   if (!value) return "Date unknown";
@@ -696,9 +701,15 @@ function ArticleActions({
 
 interface SelectionMenuState {
   text: string;
+  selection: TextSelectionSnapshot;
   left: number;
   top: number;
   placement: "above" | "below";
+}
+
+interface ArticleSelectionRestore {
+  articleId: number;
+  selection: TextSelectionSnapshot;
 }
 
 function ArticleDocument({
@@ -706,11 +717,15 @@ function ArticleDocument({
   titleId,
   onRetryExtraction,
   onFilterSelection,
+  selectionToRestore,
+  onSelectionRestored,
 }: {
   article: Article;
   titleId: string;
   onRetryExtraction: (article: Article) => void;
-  onFilterSelection: (article: Article, text: string) => void;
+  onFilterSelection: (article: Article, text: string, selection: TextSelectionSnapshot) => void;
+  selectionToRestore: TextSelectionSnapshot | null;
+  onSelectionRestored: () => void;
 }) {
   const documentRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -731,9 +746,10 @@ function ArticleDocument({
       return;
     }
 
-    const text = selection.toString().replace(/\s+/g, " ").trim();
+    const selectionSnapshot = captureTextSelection(root, selection);
+    const text = selectionSnapshot?.text.replace(/\s+/g, " ").trim() ?? "";
     const bounds = selection.getRangeAt(0).getBoundingClientRect();
-    if (!text || (bounds.width === 0 && bounds.height === 0)) {
+    if (!selectionSnapshot || !text || (bounds.width === 0 && bounds.height === 0)) {
       setSelectionMenu(null);
       return;
     }
@@ -741,6 +757,7 @@ function ArticleDocument({
     const placement = bounds.top < 56 ? "below" : "above";
     setSelectionMenu({
       text,
+      selection: selectionSnapshot,
       left: Math.min(window.innerWidth - 52, Math.max(52, bounds.left + bounds.width / 2)),
       top: placement === "above" ? bounds.top : bounds.bottom,
       placement,
@@ -761,6 +778,13 @@ function ArticleDocument({
       root.removeEventListener("keyup", showSelectionMenu);
     };
   }, [showSelectionMenu]);
+
+  useEffect(() => {
+    const root = documentRef.current;
+    if (!root || !selectionToRestore) return;
+    restoreTextSelection(root, selectionToRestore);
+    onSelectionRestored();
+  }, [onSelectionRestored, selectionToRestore]);
 
   useEffect(() => {
     if (!selectionMenu) return;
@@ -812,10 +836,9 @@ function ArticleDocument({
                 aria-label="Filter selected text"
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => {
-                  const { text } = selectionMenu;
-                  window.getSelection()?.removeAllRanges();
+                  const { text, selection } = selectionMenu;
                   setSelectionMenu(null);
-                  onFilterSelection(article, text);
+                  onFilterSelection(article, text, selection);
                 }}
               >
                 <ListFilter aria-hidden="true" size={15} />
@@ -839,6 +862,8 @@ export function ReaderPane({
   onCopy,
   onRetryExtraction,
   onFilterSelection,
+  selectionToRestore,
+  onSelectionRestored,
 }: {
   article: Article | null;
   onBack: () => void;
@@ -848,7 +873,9 @@ export function ReaderPane({
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onRetryExtraction: (article: Article) => void;
-  onFilterSelection: (article: Article, text: string) => void;
+  onFilterSelection: (article: Article, text: string, selection: TextSelectionSnapshot) => void;
+  selectionToRestore: ArticleSelectionRestore | null;
+  onSelectionRestored: () => void;
 }) {
   if (!article) {
     return (
@@ -886,6 +913,10 @@ export function ReaderPane({
         titleId={`article-${article.id}-title`}
         onRetryExtraction={onRetryExtraction}
         onFilterSelection={onFilterSelection}
+        selectionToRestore={
+          selectionToRestore?.articleId === article.id ? selectionToRestore.selection : null
+        }
+        onSelectionRestored={onSelectionRestored}
       />
     </article>
   );
@@ -1050,6 +1081,8 @@ export function ExpandedStream({
   onCopy,
   onRetryExtraction,
   onFilterSelection,
+  selectionToRestore,
+  onSelectionRestored,
 }: {
   articles: Article[];
   activeId: number | null;
@@ -1064,7 +1097,9 @@ export function ExpandedStream({
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onRetryExtraction: (article: Article) => void;
-  onFilterSelection: (article: Article, text: string) => void;
+  onFilterSelection: (article: Article, text: string, selection: TextSelectionSnapshot) => void;
+  selectionToRestore: ArticleSelectionRestore | null;
+  onSelectionRestored: () => void;
 }) {
   const streamRef = useRef<HTMLElement>(null);
   const registerItem = useMarkReadOnScroll({
@@ -1100,6 +1135,10 @@ export function ExpandedStream({
             titleId={`expanded-${article.id}-title`}
             onRetryExtraction={onRetryExtraction}
             onFilterSelection={onFilterSelection}
+            selectionToRestore={
+              selectionToRestore?.articleId === article.id ? selectionToRestore.selection : null
+            }
+            onSelectionRestored={onSelectionRestored}
           />
         </article>
       ))}
