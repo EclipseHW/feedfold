@@ -53,7 +53,7 @@ function number(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function plainText(value: string | null): string {
+export function plainText(value: string | null): string {
   if (!value) return "";
   return sanitizeHtml(
     value.replace(/<(?:br|\/p|\/div|\/li|\/h[1-6]|\/blockquote|\/tr)\b[^>]*>/gi, " "),
