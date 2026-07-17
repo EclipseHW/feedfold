@@ -12,6 +12,7 @@ import type {
 } from "../shared/types";
 import { AUTH_REQUIRED_EVENT, api, errorMessage } from "./api";
 import { LoginPage, SessionLoading } from "./auth";
+import { articlesWithContextReturn, type ContextArticleReturn } from "./contextual-filter";
 import { FeedsPage, type RuleFormDraft, RulesPage, SettingsPage, ShortcutHelp } from "./management";
 import { type AppView, ReaderToolbar, Sidebar } from "./navigation";
 import {
@@ -211,6 +212,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const toastExitTimer = useRef<number | null>(null);
   const sequence = useRef<{ startedAt: number } | null>(null);
   const ruleDraftId = useRef(0);
+  const contextArticleReturn = useRef<ContextArticleReturn | null>(null);
   const fullContentLoadedIds = useRef(new Set<number>());
   const fullContentLoadingIds = useRef(new Set<number>());
   const prioritizedExtractionIds = useRef(new Set<number>());
@@ -246,7 +248,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
 
   const loadArticles = useCallback(async () => {
     if (!bootstrapReady) return;
-    setArticlesLoading(true);
+    const returnTarget = contextArticleReturn.current;
+    if (!returnTarget) setArticlesLoading(true);
     setArticlesError(null);
     try {
       const page = await api.articles({
@@ -257,19 +260,24 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         limit: readingMode === "expanded" ? 20 : 100,
         includeContent: readingMode === "expanded",
       });
-      setArticles(page.articles);
+      const nextArticles = articlesWithContextReturn(page.articles, returnTarget);
+      setArticles(nextArticles);
       setNextCursor(page.nextCursor);
       fullContentLoadedIds.current = new Set(
         readingMode === "expanded" ? page.articles.map((article) => article.id) : [],
       );
       fullContentLoadingIds.current.clear();
-      setReaderOpen(false);
-      setExpandedKeyboardTargetId(null);
+      setReaderOpen(returnTarget ? readingMode === "magazine" : false);
+      setExpandedKeyboardTargetId(
+        returnTarget && readingMode === "expanded" ? returnTarget.article.id : null,
+      );
       setActiveArticleId((current) => {
-        if (current !== null && page.articles.some((article) => article.id === current))
+        if (returnTarget) return returnTarget.article.id;
+        if (current !== null && nextArticles.some((article) => article.id === current))
           return current;
-        return page.articles[0]?.id ?? null;
+        return nextArticles[0]?.id ?? null;
       });
+      if (contextArticleReturn.current === returnTarget) contextArticleReturn.current = null;
     } catch (error) {
       setArticlesError(errorMessage(error));
     } finally {
@@ -597,16 +605,32 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       setRuleDraft({
         id: ruleDraftId.current,
         name: filterRuleName(pattern),
+        article,
+        articleIndex: Math.max(
+          0,
+          articles.findIndex((item) => item.id === article.id),
+        ),
         feedId: article.feedId,
         field: "any",
         pattern,
       });
       navigateTo("rules");
     },
-    [navigateTo],
+    [articles, navigateTo],
   );
 
   const clearRuleDraft = useCallback(() => setRuleDraft(null), []);
+
+  const returnToContextArticle = useCallback(
+    (draft: RuleFormDraft) => {
+      contextArticleReturn.current = { article: draft.article, index: draft.articleIndex };
+      setActiveArticleId(draft.article.id);
+      setReaderOpen(readingMode === "magazine");
+      setExpandedKeyboardTargetId(readingMode === "expanded" ? draft.article.id : null);
+      navigateTo("reader");
+    },
+    [navigateTo, readingMode],
+  );
 
   const moveScope = useCallback(
     (direction: 1 | -1) => {
@@ -1055,8 +1079,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
             draft={ruleDraft}
             onMenu={() => setNavOpen(true)}
             onClearDraft={clearRuleDraft}
+            onReturnToArticle={returnToContextArticle}
             onReload={async () => {
-              await Promise.all([loadRules(), loadBootstrap(), loadArticles()]);
+              await Promise.all([loadRules(), loadBootstrap()]);
             }}
             showToast={showToast}
           />

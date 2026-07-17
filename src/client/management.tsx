@@ -27,6 +27,7 @@ import {
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
 import type {
   AppSettings,
+  Article,
   BootstrapData,
   Feed,
   FeedPreview,
@@ -79,6 +80,8 @@ interface EditableRuleCondition extends RuleCondition {
 export interface RuleFormDraft {
   id: number;
   name: string;
+  article: Article;
+  articleIndex: number;
   feedId: number;
   field: RuleField;
   pattern: string;
@@ -1012,6 +1015,7 @@ export function RulesPage({
   draft,
   onMenu,
   onClearDraft,
+  onReturnToArticle,
   onReload,
   showToast,
 }: {
@@ -1022,6 +1026,7 @@ export function RulesPage({
   draft: RuleFormDraft | null;
   onMenu: () => void;
   onClearDraft: () => void;
+  onReturnToArticle: (draft: RuleFormDraft) => void;
   onReload: () => Promise<void> | void;
   showToast: (message: string) => void;
 }) {
@@ -1057,15 +1062,19 @@ export function RulesPage({
           initial={editing ?? undefined}
           preset={editing ? undefined : (draft ?? undefined)}
           onCancel={() => {
+            const returnDraft = editing ? null : draft;
             onClearDraft();
             setFormOpen(false);
             setEditing(null);
+            if (returnDraft) onReturnToArticle(returnDraft);
           }}
           onSaved={async (rule) => {
+            const returnDraft = editing ? null : draft;
             showToast(editing ? `Saved ${rule.name}` : `Added ${rule.name}`);
             onClearDraft();
             setFormOpen(false);
             setEditing(null);
+            if (returnDraft) onReturnToArticle(returnDraft);
             await onReload();
           }}
           showToast={showToast}
@@ -1251,14 +1260,14 @@ function RuleForm({
     <form className="inline-editor rule-form" onSubmit={(event) => void submit(event)}>
       <div className="inline-editor-heading">
         <div>
-          <h2>{initial ? "Edit rule" : "Add rule"}</h2>
+          <h2>{initial ? "Edit rule" : preset ? "Filter selected text" : "Add rule"}</h2>
           <p>Saving checks existing articles now and new articles during future refreshes.</p>
         </div>
         <button
           className="icon-button"
           type="button"
           onClick={onCancel}
-          aria-label="Close rule form"
+          aria-label={preset ? "Back to article" : "Close rule form"}
         >
           <X aria-hidden="true" size={18} />
         </button>
@@ -1477,7 +1486,7 @@ function RuleForm({
       </div>
       <div className="form-actions">
         <button className="secondary-button" type="button" onClick={onCancel}>
-          Cancel
+          {preset ? "Back to article" : "Cancel"}
         </button>
         <button
           className="primary-button"
@@ -1491,7 +1500,7 @@ function RuleForm({
           ) : (
             <Check aria-hidden="true" size={16} />
           )}
-          {saving ? "Saving rule" : "Save rule"}
+          {saving ? "Saving rule" : preset ? "Save and return" : "Save rule"}
         </button>
       </div>
     </form>
