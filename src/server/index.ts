@@ -39,7 +39,7 @@ mkdirSync(dirname(databasePath), { recursive: true });
 const database = new AppDatabase(databasePath, pollIntervalMinutes);
 const authService = new AuthService(database, pollIntervalMinutes);
 const extractionQueue = new ExtractionQueue(database, 2, articleFetchTimeoutMs);
-const refreshService = new FeedRefreshService(database, extractionQueue, 3, feedFetchTimeoutMs);
+const refreshService = new FeedRefreshService(database, 3, feedFetchTimeoutMs);
 const app = await createApp({
   database,
   authService,

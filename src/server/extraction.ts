@@ -1,138 +1,17 @@
 import { Readability } from "@mozilla/readability";
 import { JSDOM, VirtualConsole } from "jsdom";
 import sanitizeHtml from "sanitize-html";
+import { cleanArticleHtml } from "./article-html.js";
 import { firstSafeImageUrl } from "./article-image.js";
 import type { AppDatabase, ExtractionRecord } from "./db.js";
-import { isTelegramPostUrl } from "./telegram-feed.js";
 
 const MAX_ARTICLE_BYTES = 5 * 1024 * 1024;
 const articleVirtualConsole = new VirtualConsole().forwardTo(console, {
   jsdomErrors: ["not-implemented", "resource-loading", "unhandled-exception"],
 });
 
-const sanitizeOptions: sanitizeHtml.IOptions = {
-  allowedTags: [
-    "article",
-    "section",
-    "header",
-    "footer",
-    "main",
-    "aside",
-    "nav",
-    "div",
-    "span",
-    "p",
-    "br",
-    "hr",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "blockquote",
-    "pre",
-    "code",
-    "strong",
-    "b",
-    "em",
-    "i",
-    "u",
-    "s",
-    "sub",
-    "sup",
-    "mark",
-    "small",
-    "a",
-    "ul",
-    "ol",
-    "li",
-    "dl",
-    "dt",
-    "dd",
-    "figure",
-    "figcaption",
-    "picture",
-    "img",
-    "source",
-    "table",
-    "thead",
-    "tbody",
-    "tfoot",
-    "tr",
-    "th",
-    "td",
-    "caption",
-    "time",
-  ],
-  allowedAttributes: {
-    a: ["href", "title", "target", "rel"],
-    img: ["src", "srcset", "alt", "title", "width", "height", "loading"],
-    source: ["src", "srcset", "type", "media", "sizes"],
-    td: ["colspan", "rowspan"],
-    th: ["colspan", "rowspan", "scope"],
-    time: ["datetime"],
-  },
-  allowedSchemes: ["http", "https", "mailto"],
-  allowedSchemesByTag: { img: ["http", "https", "data"], source: ["http", "https"] },
-  allowProtocolRelative: false,
-};
-
-function absoluteUrl(value: string, baseUrl: string): string {
-  try {
-    return new URL(value, baseUrl).toString();
-  } catch {
-    return value;
-  }
-}
-
-function resolveRelativeUrls(html: string, baseUrl: string): string {
-  const dom = new JSDOM(`<body>${html}</body>`, {
-    url: baseUrl,
-    virtualConsole: articleVirtualConsole,
-  });
-  try {
-    for (const element of dom.window.document.querySelectorAll<HTMLElement>("[href], [src]")) {
-      for (const attribute of ["href", "src"] as const) {
-        const value = element.getAttribute(attribute);
-        if (value) element.setAttribute(attribute, absoluteUrl(value, baseUrl));
-      }
-    }
-    for (const element of dom.window.document.querySelectorAll<HTMLElement>("[srcset]")) {
-      const value = element.getAttribute("srcset");
-      if (!value) continue;
-      element.setAttribute(
-        "srcset",
-        value
-          .split(",")
-          .map((candidate) => {
-            const [candidateUrl, ...descriptor] = candidate.trim().split(/\s+/);
-            return [absoluteUrl(candidateUrl, baseUrl), ...descriptor].join(" ");
-          })
-          .join(", "),
-      );
-    }
-    for (const link of dom.window.document.querySelectorAll<HTMLAnchorElement>("a[href]")) {
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
-    }
-    return dom.window.document.body.innerHTML;
-  } finally {
-    dom.window.close();
-  }
-}
-
-export function cleanArticleHtml(html: string, baseUrl?: string): string {
-  const normalized = baseUrl ? resolveRelativeUrls(html, baseUrl) : html;
-  return sanitizeHtml(normalized, sanitizeOptions).trim();
-}
-
 function containsText(html: string): boolean {
   return sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} }).trim().length > 0;
-}
-
-function containsArticleMedia(html: string): boolean {
-  return /<(?:img|picture)(?:\s|>)/i.test(html);
 }
 
 function message(error: unknown): string {
@@ -166,8 +45,8 @@ async function readHtmlResponse(response: Response): Promise<string> {
 export type ExtractionOutcome = {
   contentHtml: string | null;
   imageUrl: string | null;
-  contentSource: "article" | "feed" | null;
-  status: "complete" | "feed" | "failed";
+  contentSource: "article" | null;
+  status: "complete" | "failed";
   error: string | null;
 };
 
@@ -175,29 +54,6 @@ export async function extractArticle(
   record: ExtractionRecord,
   timeoutMs = 20_000,
 ): Promise<ExtractionOutcome> {
-  const feedContent = record.feedContentHtml
-    ? cleanArticleHtml(record.feedContentHtml, record.url ?? undefined)
-    : null;
-  if (feedContent && record.url && isTelegramPostUrl(record.url)) {
-    return {
-      contentHtml: feedContent,
-      imageUrl: firstSafeImageUrl(feedContent, record.url),
-      contentSource: "feed",
-      status: "feed",
-      error: null,
-    };
-  }
-  if (feedContent && !containsText(feedContent) && containsArticleMedia(feedContent)) {
-    return {
-      contentHtml: feedContent,
-      imageUrl: firstSafeImageUrl(feedContent, record.url ?? undefined),
-      contentSource: "feed",
-      status: "feed",
-      error: null,
-    };
-  }
-
-  let extractionError: string | null = null;
   if (record.url) {
     try {
       const response = await fetch(record.url, {
@@ -229,20 +85,12 @@ export async function extractArticle(
         dom.window.close();
       }
     } catch (error) {
-      extractionError = message(error);
-    }
-  } else {
-    extractionError = "Article has no URL";
-  }
-
-  if (feedContent) {
-    if (containsText(feedContent) || containsArticleMedia(feedContent)) {
       return {
-        contentHtml: feedContent,
-        imageUrl: firstSafeImageUrl(feedContent, record.url ?? undefined),
-        contentSource: "feed",
-        status: "feed",
-        error: extractionError,
+        contentHtml: null,
+        imageUrl: null,
+        contentSource: null,
+        status: "failed",
+        error: message(error),
       };
     }
   }
@@ -252,7 +100,7 @@ export async function extractArticle(
     imageUrl: null,
     contentSource: null,
     status: "failed",
-    error: extractionError ?? "Feed did not include readable content",
+    error: "Article has no URL",
   };
 }
 

@@ -1691,6 +1691,11 @@ kbd {
   color: var(--text-secondary);
 }
 
+.extraction-loading,
+.extraction-failed {
+  margin-bottom: 18px;
+}
+
 .article-extraction-state strong {
   color: var(--text);
 }
@@ -3667,6 +3672,10 @@ kbd {
   .shortcut-dialog[open] {
     transform: none;
   }
+}
+
+.reader-action-row .full-content-action .action-label {
+  display: none;
 }
 
 @media (forced-colors: active) {

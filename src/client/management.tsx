@@ -1828,6 +1828,7 @@ const shortcuts = [
   ["U", "Mark active article unread"],
   ["S", "Star or unstar article"],
   ["C", "Copy active article URL"],
+  ["W", "Load full content"],
   ["R", "Refresh current feed or folder"],
   ["Shift R", "Refresh every feed"],
   ["[", "Decrease article text size"],

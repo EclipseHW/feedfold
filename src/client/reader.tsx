@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   Circle,
   Copy,
+  Download,
   ExternalLink,
   FileText,
   Inbox,
@@ -18,6 +19,7 @@ import {
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Article, ArticleState, ReadingMode } from "../shared/types";
+import { articleContentView } from "./article-content";
 import { extractHttpLinks, supplementalHttpLinks } from "./article-links";
 import {
   captureTextSelection,
@@ -620,21 +622,38 @@ export function ArticleList({
 
 interface ArticleActionsProps {
   article: Article;
+  fullContentVisible: boolean;
   onPrevious?: () => void;
   onNext?: () => void;
   onMarkUnread: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
+  onLoadFullContent: (article: Article) => void;
 }
 
 function ArticleActions({
   article,
+  fullContentVisible,
   onPrevious,
   onNext,
   onMarkUnread,
   onToggleStar,
   onCopy,
+  onLoadFullContent,
 }: ArticleActionsProps) {
+  const fullContentAvailable = Boolean(article.url) && !article.media;
+  const fullContentLoading =
+    fullContentVisible &&
+    (article.extractionStatus === "pending" || article.extractionStatus === "processing");
+  const fullContentLoaded =
+    fullContentVisible && article.extractionStatus === "complete" && Boolean(article.contentHtml);
+  const fullContentLabel = fullContentLoading
+    ? "Loading full content"
+    : fullContentLoaded
+      ? "Full content loaded"
+      : fullContentVisible && article.extractionStatus === "failed"
+        ? "Retry full content"
+        : "Load full content";
   return (
     <div className="article-actions" role="toolbar" aria-label="Article actions">
       {onPrevious ? (
@@ -662,6 +681,26 @@ function ArticleActions({
         </button>
       ) : null}
       <span className="action-divider" />
+      {fullContentAvailable ? (
+        <button
+          className="full-content-action"
+          type="button"
+          disabled={fullContentLoading || fullContentLoaded}
+          onClick={() => onLoadFullContent(article)}
+          aria-label={`${fullContentLabel} (W)`}
+          title={`${fullContentLabel} (W)`}
+        >
+          {fullContentLoading ? (
+            <LoaderCircle className="spin" aria-hidden="true" size={16} />
+          ) : fullContentLoaded ? (
+            <CheckCircle2 aria-hidden="true" size={16} />
+          ) : (
+            <Download aria-hidden="true" size={16} />
+          )}
+          <span className="action-label">{fullContentLabel}</span>
+          <Kbd>W</Kbd>
+        </button>
+      ) : null}
       <button
         type="button"
         disabled={!article.isRead}
@@ -710,12 +749,14 @@ interface SelectionMenuState {
 function ArticleDocument({
   article,
   titleId,
-  onRetryExtraction,
+  fullContentVisible,
+  onLoadFullContent,
   onFilterSelection,
 }: {
   article: Article;
   titleId: string;
-  onRetryExtraction: (article: Article) => void;
+  fullContentVisible: boolean;
+  onLoadFullContent: (article: Article) => void;
   onFilterSelection: (article: Article, text: string) => void;
 }) {
   const documentRef = useRef<HTMLDivElement>(null);
@@ -808,7 +849,11 @@ function ArticleDocument({
     <>
       <div ref={documentRef} className="article-document">
         <ArticleHeader article={article} id={titleId} />
-        <ArticleBody article={article} onRetryExtraction={onRetryExtraction} />
+        <ArticleBody
+          article={article}
+          fullContentVisible={fullContentVisible}
+          onLoadFullContent={onLoadFullContent}
+        />
       </div>
       {selectionMenu
         ? createPortal(
@@ -844,23 +889,25 @@ function ArticleDocument({
 
 export function ReaderPane({
   article,
+  fullContentVisible,
   onBack,
   onPrevious,
   onNext,
   onMarkUnread,
   onToggleStar,
   onCopy,
-  onRetryExtraction,
+  onLoadFullContent,
   onFilterSelection,
 }: {
   article: Article | null;
+  fullContentVisible: boolean;
   onBack: () => void;
   onPrevious: () => void;
   onNext: () => void;
   onMarkUnread: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
-  onRetryExtraction: (article: Article) => void;
+  onLoadFullContent: (article: Article) => void;
   onFilterSelection: (article: Article, text: string) => void;
 }) {
   if (!article) {
@@ -886,18 +933,21 @@ export function ReaderPane({
           <span className="reader-action-divider" aria-hidden="true" />
           <ArticleActions
             article={article}
+            fullContentVisible={fullContentVisible}
             onPrevious={onPrevious}
             onNext={onNext}
             onMarkUnread={onMarkUnread}
             onToggleStar={onToggleStar}
             onCopy={onCopy}
+            onLoadFullContent={onLoadFullContent}
           />
         </div>
       </div>
       <ArticleDocument
         article={article}
         titleId={`article-${article.id}-title`}
-        onRetryExtraction={onRetryExtraction}
+        fullContentVisible={fullContentVisible}
+        onLoadFullContent={onLoadFullContent}
         onFilterSelection={onFilterSelection}
       />
     </article>
@@ -949,15 +999,21 @@ function ArticleHeader({ article, id }: { article: Article; id: string }) {
 
 function ArticleBody({
   article,
-  onRetryExtraction,
+  fullContentVisible,
+  onLoadFullContent,
 }: {
   article: Article;
-  onRetryExtraction: (article: Article) => void;
+  fullContentVisible: boolean;
+  onLoadFullContent: (article: Article) => void;
 }) {
   return (
     <>
       {article.media ? <ArticleMediaPlayer article={article} /> : null}
-      <ArticleText article={article} onRetryExtraction={onRetryExtraction} />
+      <ArticleText
+        article={article}
+        fullContentVisible={fullContentVisible}
+        onLoadFullContent={onLoadFullContent}
+      />
     </>
   );
 }
@@ -981,57 +1037,73 @@ function ArticleMediaPlayer({ article }: { article: Article }) {
 
 function ArticleText({
   article,
-  onRetryExtraction,
+  fullContentVisible,
+  onLoadFullContent,
 }: {
   article: Article;
-  onRetryExtraction: (article: Article) => void;
+  fullContentVisible: boolean;
+  onLoadFullContent: (article: Article) => void;
 }) {
-  if (article.extractionStatus === "pending" || article.extractionStatus === "processing") {
+  const contentView = articleContentView(article, fullContentVisible);
+  if (contentView === "feed" || contentView === "summary" || contentView === "empty") {
+    return <FeedArticleText article={article} />;
+  }
+
+  if (contentView === "loading") {
     return (
-      <div className="article-extraction-state" role="status">
-        <LoaderCircle className="spin" aria-hidden="true" size={18} />
-        <div>
-          <strong>Extracting full text</strong>
-          <p>The feed summary is shown while the complete article is prepared.</p>
+      <>
+        <div className="article-extraction-state extraction-loading" role="status">
+          <LoaderCircle className="spin" aria-hidden="true" size={18} />
+          <div>
+            <strong>Loading full content</strong>
+            <p>The feed article remains available while the source page is processed.</p>
+          </div>
         </div>
-        {article.summary ? (
-          <p className="article-summary-fallback">
-            <LinkifiedText text={article.summary} />
-          </p>
-        ) : null}
-      </div>
+        <FeedArticleText article={article} />
+      </>
     );
   }
-  if (article.contentHtml) {
+  if (contentView === "full" && article.contentHtml) {
     return (
       // biome-ignore lint/security/noDangerouslySetInnerHtml: The server sanitizes extracted article HTML before returning it.
       <div className="article-content" dangerouslySetInnerHTML={{ __html: article.contentHtml }} />
     );
   }
-  if (article.extractionStatus === "failed") {
+  if (contentView === "failed") {
     return (
-      <div className="article-extraction-state extraction-failed" role="note">
-        <AlertTriangle aria-hidden="true" size={18} />
-        <div>
-          <strong>Full text could not be extracted</strong>
-          <p>
-            {article.extractionError ?? "The source page did not return readable article content."}
-          </p>
-          <button
-            className="secondary-button"
-            type="button"
-            onClick={() => onRetryExtraction(article)}
-          >
-            <RefreshCw aria-hidden="true" size={15} />
-            Retry full text
-          </button>
+      <>
+        <div className="article-extraction-state extraction-failed" role="note">
+          <AlertTriangle aria-hidden="true" size={18} />
+          <div>
+            <strong>Full content could not be loaded</strong>
+            <p>
+              {article.extractionError ??
+                "The source page did not return readable article content."}
+            </p>
+            <button
+              className="secondary-button"
+              type="button"
+              onClick={() => onLoadFullContent(article)}
+            >
+              <RefreshCw aria-hidden="true" size={15} />
+              Retry full content
+            </button>
+          </div>
         </div>
-        {article.summary ? (
-          <p className="article-summary-fallback">
-            <LinkifiedText text={article.summary} />
-          </p>
-        ) : null}
-      </div>
+        <FeedArticleText article={article} />
+      </>
+    );
+  }
+
+  return <FeedArticleText article={article} />;
+}
+
+function FeedArticleText({ article }: { article: Article }) {
+  if (article.feedContentHtml) {
+    const html = article.feedContentHtml;
+    return (
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: The server sanitizes feed HTML before returning it.
+      <div className="article-content" dangerouslySetInnerHTML={{ __html: html }} />
     );
   }
   return article.summary ? (
@@ -1052,6 +1124,7 @@ export function ExpandedStream({
   articles,
   activeId,
   topAlignedId,
+  fullContentVisibleIds,
   markReadOnScroll,
   hasMore,
   loadingMore,
@@ -1061,12 +1134,13 @@ export function ExpandedStream({
   onMarkUnread,
   onToggleStar,
   onCopy,
-  onRetryExtraction,
+  onLoadFullContent,
   onFilterSelection,
 }: {
   articles: Article[];
   activeId: number | null;
   topAlignedId: number | null;
+  fullContentVisibleIds: ReadonlySet<number>;
   markReadOnScroll: boolean;
   hasMore: boolean;
   loadingMore: boolean;
@@ -1076,7 +1150,7 @@ export function ExpandedStream({
   onMarkUnread: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
-  onRetryExtraction: (article: Article) => void;
+  onLoadFullContent: (article: Article) => void;
   onFilterSelection: (article: Article, text: string) => void;
 }) {
   const streamRef = useRef<HTMLElement>(null);
@@ -1103,15 +1177,18 @@ export function ExpandedStream({
           <div className="expanded-actions">
             <ArticleActions
               article={article}
+              fullContentVisible={fullContentVisibleIds.has(article.id)}
               onMarkUnread={onMarkUnread}
               onToggleStar={onToggleStar}
               onCopy={onCopy}
+              onLoadFullContent={onLoadFullContent}
             />
           </div>
           <ArticleDocument
             article={article}
             titleId={`expanded-${article.id}-title`}
-            onRetryExtraction={onRetryExtraction}
+            fullContentVisible={fullContentVisibleIds.has(article.id)}
+            onLoadFullContent={onLoadFullContent}
             onFilterSelection={onFilterSelection}
           />
         </article>
