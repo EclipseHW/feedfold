@@ -11,6 +11,7 @@ import type {
   SessionUser,
 } from "../shared/types";
 import { AUTH_REQUIRED_EVENT, api, errorMessage } from "./api";
+import { fullContentToggleAction } from "./article-content";
 import { LoginPage, SessionLoading } from "./auth";
 import { articlesWithContextReturn, type ContextArticleReturn } from "./contextual-filter";
 import { FeedsPage, type RuleFormDraft, RulesPage, SettingsPage, ShortcutHelp } from "./management";
@@ -545,12 +546,26 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     [showToast],
   );
 
-  const loadFullContent = useCallback(
+  const toggleFullContent = useCallback(
     async (article: Article) => {
       if (!article.url || article.media) return;
+      const action = fullContentToggleAction(
+        article,
+        fullContentVisibleIdsRef.current.has(article.id),
+      );
+      if (action === "wait") return;
+      if (action === "hide") {
+        fullContentVisibleIdsRef.current.delete(article.id);
+        setFullContentVisibleIds((current) => {
+          const next = new Set(current);
+          next.delete(article.id);
+          return next;
+        });
+        return;
+      }
       fullContentVisibleIdsRef.current.add(article.id);
       setFullContentVisibleIds((current) => new Set(current).add(article.id));
-      if (article.extractionStatus === "complete" && article.contentHtml) return;
+      if (action === "show") return;
       try {
         mergeFullArticle(await api.loadFullContent(article.id));
       } catch (error) {
@@ -841,7 +856,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         c: () => void copyArticleUrl(activeArticle),
         w: () => {
           const articleVisible = view === "reader" && (readingMode === "expanded" || readerOpen);
-          if (articleVisible && activeArticle) void loadFullContent(activeArticle);
+          if (articleVisible && activeArticle) void toggleFullContent(activeArticle);
         },
         r: () => void refresh(),
         "[": () =>
@@ -881,7 +896,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     bootstrap?.settings.singleKeyShortcuts,
     changeArticleState,
     copyArticleUrl,
-    loadFullContent,
+    toggleFullContent,
     readerOpen,
     readingMode,
     moveArticle,
@@ -1024,7 +1039,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                       void changeArticleState(article, { isStarred: !article.isStarred })
                     }
                     onCopy={(article) => void copyArticleUrl(article)}
-                    onLoadFullContent={(article) => void loadFullContent(article)}
+                    onToggleFullContent={(article) => void toggleFullContent(article)}
                     onFilterSelection={filterSelectedText}
                   />
                 </>
@@ -1050,7 +1065,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     void changeArticleState(article, { isStarred: !article.isStarred })
                   }
                   onCopy={(article) => void copyArticleUrl(article)}
-                  onLoadFullContent={(article) => void loadFullContent(article)}
+                  onToggleFullContent={(article) => void toggleFullContent(article)}
                   onFilterSelection={filterSelectedText}
                 />
               )}
