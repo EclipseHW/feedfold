@@ -15,7 +15,7 @@ import {
   Rss,
   Star,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { Article, ArticleState, ReadingMode } from "../shared/types";
 import { extractHttpLinks, supplementalHttpLinks } from "./article-links";
@@ -707,25 +707,16 @@ interface SelectionMenuState {
   placement: "above" | "below";
 }
 
-interface ArticleSelectionRestore {
-  articleId: number;
-  selection: TextSelectionSnapshot;
-}
-
 function ArticleDocument({
   article,
   titleId,
   onRetryExtraction,
   onFilterSelection,
-  selectionToRestore,
-  onSelectionRestored,
 }: {
   article: Article;
   titleId: string;
   onRetryExtraction: (article: Article) => void;
-  onFilterSelection: (article: Article, text: string, selection: TextSelectionSnapshot) => void;
-  selectionToRestore: TextSelectionSnapshot | null;
-  onSelectionRestored: () => void;
+  onFilterSelection: (article: Article, text: string) => void;
 }) {
   const documentRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -779,12 +770,11 @@ function ArticleDocument({
     };
   }, [showSelectionMenu]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const root = documentRef.current;
-    if (!root || !selectionToRestore) return;
-    restoreTextSelection(root, selectionToRestore);
-    onSelectionRestored();
-  }, [onSelectionRestored, selectionToRestore]);
+    if (!root || !selectionMenu) return;
+    restoreTextSelection(root, selectionMenu.selection);
+  }, [selectionMenu]);
 
   useEffect(() => {
     if (!selectionMenu) return;
@@ -836,9 +826,9 @@ function ArticleDocument({
                 aria-label="Filter selected text"
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => {
-                  const { text, selection } = selectionMenu;
+                  const { text } = selectionMenu;
                   setSelectionMenu(null);
-                  onFilterSelection(article, text, selection);
+                  onFilterSelection(article, text);
                 }}
               >
                 <ListFilter aria-hidden="true" size={15} />
@@ -862,8 +852,6 @@ export function ReaderPane({
   onCopy,
   onRetryExtraction,
   onFilterSelection,
-  selectionToRestore,
-  onSelectionRestored,
 }: {
   article: Article | null;
   onBack: () => void;
@@ -873,9 +861,7 @@ export function ReaderPane({
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onRetryExtraction: (article: Article) => void;
-  onFilterSelection: (article: Article, text: string, selection: TextSelectionSnapshot) => void;
-  selectionToRestore: ArticleSelectionRestore | null;
-  onSelectionRestored: () => void;
+  onFilterSelection: (article: Article, text: string) => void;
 }) {
   if (!article) {
     return (
@@ -913,10 +899,6 @@ export function ReaderPane({
         titleId={`article-${article.id}-title`}
         onRetryExtraction={onRetryExtraction}
         onFilterSelection={onFilterSelection}
-        selectionToRestore={
-          selectionToRestore?.articleId === article.id ? selectionToRestore.selection : null
-        }
-        onSelectionRestored={onSelectionRestored}
       />
     </article>
   );
@@ -1081,8 +1063,6 @@ export function ExpandedStream({
   onCopy,
   onRetryExtraction,
   onFilterSelection,
-  selectionToRestore,
-  onSelectionRestored,
 }: {
   articles: Article[];
   activeId: number | null;
@@ -1097,9 +1077,7 @@ export function ExpandedStream({
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onRetryExtraction: (article: Article) => void;
-  onFilterSelection: (article: Article, text: string, selection: TextSelectionSnapshot) => void;
-  selectionToRestore: ArticleSelectionRestore | null;
-  onSelectionRestored: () => void;
+  onFilterSelection: (article: Article, text: string) => void;
 }) {
   const streamRef = useRef<HTMLElement>(null);
   const registerItem = useMarkReadOnScroll({
@@ -1135,10 +1113,6 @@ export function ExpandedStream({
             titleId={`expanded-${article.id}-title`}
             onRetryExtraction={onRetryExtraction}
             onFilterSelection={onFilterSelection}
-            selectionToRestore={
-              selectionToRestore?.articleId === article.id ? selectionToRestore.selection : null
-            }
-            onSelectionRestored={onSelectionRestored}
           />
         </article>
       ))}

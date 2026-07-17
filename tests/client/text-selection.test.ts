@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { captureTextSelection, restoreTextSelection } from "../../src/client/text-selection.js";
 
 describe("article text selection", () => {
-  it("restores the selected passage after the article is remounted", () => {
+  it("restores the selected passage after rendering its action menu", () => {
     const dom = new JSDOM(
       '<div id="article"><p>Read the <a href="#notes">release notes</a> before upgrading.</p></div>',
     );
