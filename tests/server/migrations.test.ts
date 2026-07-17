@@ -220,6 +220,9 @@ describe("database migrations", () => {
           imageUrl: "https://example.test/feed-hero.jpg",
         },
       ]);
+      expect(database.getArticle(1, 3)?.feedContentHtml).toContain(
+        'src="https://example.test/feed-hero.jpg"',
+      );
       expect(database.getArticle(1, 4)).toMatchObject({
         title: "YouTube Short",
         imageUrl: "https://i.ytimg.com/vi/short123/hqdefault.jpg",
