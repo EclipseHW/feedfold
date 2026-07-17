@@ -628,7 +628,7 @@ interface ArticleActionsProps {
   onMarkUnread: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
-  onLoadFullContent: (article: Article) => void;
+  onToggleFullContent: (article: Article) => void;
 }
 
 function ArticleActions({
@@ -639,21 +639,24 @@ function ArticleActions({
   onMarkUnread,
   onToggleStar,
   onCopy,
-  onLoadFullContent,
+  onToggleFullContent,
 }: ArticleActionsProps) {
   const fullContentAvailable = Boolean(article.url) && !article.media;
+  const cachedFullContent = article.extractionStatus === "complete" && Boolean(article.contentHtml);
   const fullContentLoading =
     fullContentVisible &&
     (article.extractionStatus === "pending" || article.extractionStatus === "processing");
-  const fullContentLoaded =
-    fullContentVisible && article.extractionStatus === "complete" && Boolean(article.contentHtml);
+  const fullContentLoaded = fullContentVisible && cachedFullContent;
+  const fullContentFailed = fullContentVisible && article.extractionStatus === "failed";
   const fullContentLabel = fullContentLoading
     ? "Loading full content"
     : fullContentLoaded
-      ? "Full content loaded"
-      : fullContentVisible && article.extractionStatus === "failed"
+      ? "Show feed content"
+      : fullContentFailed
         ? "Retry full content"
-        : "Load full content";
+        : cachedFullContent
+          ? "Show full content"
+          : "Load full content";
   return (
     <div className="article-actions" role="toolbar" aria-label="Article actions">
       {onPrevious ? (
@@ -685,15 +688,20 @@ function ArticleActions({
         <button
           className="full-content-action"
           type="button"
-          disabled={fullContentLoading || fullContentLoaded}
-          onClick={() => onLoadFullContent(article)}
+          disabled={fullContentLoading}
+          aria-pressed={fullContentLoaded}
+          onClick={() => onToggleFullContent(article)}
           aria-label={`${fullContentLabel} (W)`}
           title={`${fullContentLabel} (W)`}
         >
           {fullContentLoading ? (
             <LoaderCircle className="spin" aria-hidden="true" size={16} />
           ) : fullContentLoaded ? (
-            <CheckCircle2 aria-hidden="true" size={16} />
+            <Rss aria-hidden="true" size={16} />
+          ) : fullContentFailed ? (
+            <RefreshCw aria-hidden="true" size={16} />
+          ) : cachedFullContent ? (
+            <FileText aria-hidden="true" size={16} />
           ) : (
             <Download aria-hidden="true" size={16} />
           )}
@@ -750,13 +758,13 @@ function ArticleDocument({
   article,
   titleId,
   fullContentVisible,
-  onLoadFullContent,
+  onToggleFullContent,
   onFilterSelection,
 }: {
   article: Article;
   titleId: string;
   fullContentVisible: boolean;
-  onLoadFullContent: (article: Article) => void;
+  onToggleFullContent: (article: Article) => void;
   onFilterSelection: (article: Article, text: string) => void;
 }) {
   const documentRef = useRef<HTMLDivElement>(null);
@@ -852,7 +860,7 @@ function ArticleDocument({
         <ArticleBody
           article={article}
           fullContentVisible={fullContentVisible}
-          onLoadFullContent={onLoadFullContent}
+          onToggleFullContent={onToggleFullContent}
         />
       </div>
       {selectionMenu
@@ -896,7 +904,7 @@ export function ReaderPane({
   onMarkUnread,
   onToggleStar,
   onCopy,
-  onLoadFullContent,
+  onToggleFullContent,
   onFilterSelection,
 }: {
   article: Article | null;
@@ -907,7 +915,7 @@ export function ReaderPane({
   onMarkUnread: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
-  onLoadFullContent: (article: Article) => void;
+  onToggleFullContent: (article: Article) => void;
   onFilterSelection: (article: Article, text: string) => void;
 }) {
   if (!article) {
@@ -939,7 +947,7 @@ export function ReaderPane({
             onMarkUnread={onMarkUnread}
             onToggleStar={onToggleStar}
             onCopy={onCopy}
-            onLoadFullContent={onLoadFullContent}
+            onToggleFullContent={onToggleFullContent}
           />
         </div>
       </div>
@@ -947,7 +955,7 @@ export function ReaderPane({
         article={article}
         titleId={`article-${article.id}-title`}
         fullContentVisible={fullContentVisible}
-        onLoadFullContent={onLoadFullContent}
+        onToggleFullContent={onToggleFullContent}
         onFilterSelection={onFilterSelection}
       />
     </article>
@@ -1000,11 +1008,11 @@ function ArticleHeader({ article, id }: { article: Article; id: string }) {
 function ArticleBody({
   article,
   fullContentVisible,
-  onLoadFullContent,
+  onToggleFullContent,
 }: {
   article: Article;
   fullContentVisible: boolean;
-  onLoadFullContent: (article: Article) => void;
+  onToggleFullContent: (article: Article) => void;
 }) {
   return (
     <>
@@ -1012,7 +1020,7 @@ function ArticleBody({
       <ArticleText
         article={article}
         fullContentVisible={fullContentVisible}
-        onLoadFullContent={onLoadFullContent}
+        onToggleFullContent={onToggleFullContent}
       />
     </>
   );
@@ -1038,11 +1046,11 @@ function ArticleMediaPlayer({ article }: { article: Article }) {
 function ArticleText({
   article,
   fullContentVisible,
-  onLoadFullContent,
+  onToggleFullContent,
 }: {
   article: Article;
   fullContentVisible: boolean;
-  onLoadFullContent: (article: Article) => void;
+  onToggleFullContent: (article: Article) => void;
 }) {
   const contentView = articleContentView(article, fullContentVisible);
   if (contentView === "feed" || contentView === "summary" || contentView === "empty") {
@@ -1083,7 +1091,7 @@ function ArticleText({
             <button
               className="secondary-button"
               type="button"
-              onClick={() => onLoadFullContent(article)}
+              onClick={() => onToggleFullContent(article)}
             >
               <RefreshCw aria-hidden="true" size={15} />
               Retry full content
@@ -1134,7 +1142,7 @@ export function ExpandedStream({
   onMarkUnread,
   onToggleStar,
   onCopy,
-  onLoadFullContent,
+  onToggleFullContent,
   onFilterSelection,
 }: {
   articles: Article[];
@@ -1150,7 +1158,7 @@ export function ExpandedStream({
   onMarkUnread: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
-  onLoadFullContent: (article: Article) => void;
+  onToggleFullContent: (article: Article) => void;
   onFilterSelection: (article: Article, text: string) => void;
 }) {
   const streamRef = useRef<HTMLElement>(null);
@@ -1181,14 +1189,14 @@ export function ExpandedStream({
               onMarkUnread={onMarkUnread}
               onToggleStar={onToggleStar}
               onCopy={onCopy}
-              onLoadFullContent={onLoadFullContent}
+              onToggleFullContent={onToggleFullContent}
             />
           </div>
           <ArticleDocument
             article={article}
             titleId={`expanded-${article.id}-title`}
             fullContentVisible={fullContentVisibleIds.has(article.id)}
-            onLoadFullContent={onLoadFullContent}
+            onToggleFullContent={onToggleFullContent}
             onFilterSelection={onFilterSelection}
           />
         </article>

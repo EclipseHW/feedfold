@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { articleContentView } from "../../src/client/article-content.js";
+import { articleContentView, fullContentToggleAction } from "../../src/client/article-content.js";
 import type { Article } from "../../src/shared/types.js";
 
 function linkedArticle(): Article {
@@ -27,11 +27,13 @@ function linkedArticle(): Article {
 }
 
 describe("article content source selection", () => {
-  it("keeps the feed article visible until full content is explicitly selected", () => {
+  it("switches between the feed article and cached publisher content", () => {
     const article = linkedArticle();
 
     expect(articleContentView(article, false)).toBe("feed");
     expect(articleContentView(article, true)).toBe("full");
+    expect(fullContentToggleAction(article, false)).toBe("show");
+    expect(fullContentToggleAction(article, true)).toBe("hide");
   });
 
   it("keeps extraction progress and failure distinct from the feed fallback", () => {
@@ -43,5 +45,14 @@ describe("article content source selection", () => {
     expect(
       articleContentView({ ...article, contentHtml: null, extractionStatus: "failed" }, true),
     ).toBe("failed");
+    expect(
+      fullContentToggleAction(
+        { ...article, contentHtml: null, extractionStatus: "processing" },
+        true,
+      ),
+    ).toBe("wait");
+    expect(
+      fullContentToggleAction({ ...article, contentHtml: null, extractionStatus: "failed" }, true),
+    ).toBe("load");
   });
 });
