@@ -39,6 +39,7 @@ import type {
   RuleField,
 } from "../shared/types";
 import { api, appUrl, errorMessage, type RuleInput } from "./api";
+import type { TextSelectionSnapshot } from "./text-selection";
 
 type Theme = "dark" | "light";
 
@@ -85,6 +86,7 @@ export interface RuleFormDraft {
   feedId: number;
   field: RuleField;
   pattern: string;
+  selection: TextSelectionSnapshot;
 }
 
 function formatDate(value: string | null): string {

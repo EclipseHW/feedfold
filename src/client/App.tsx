@@ -25,6 +25,7 @@ import {
   ReaderPane,
   StartupError,
 } from "./reader";
+import type { TextSelectionSnapshot } from "./text-selection";
 
 type Theme = "dark" | "light";
 
@@ -202,6 +203,10 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const [rulesLoading, setRulesLoading] = useState(false);
   const [rulesError, setRulesError] = useState<string | null>(null);
   const [ruleDraft, setRuleDraft] = useState<RuleFormDraft | null>(null);
+  const [contextSelectionReturn, setContextSelectionReturn] = useState<{
+    articleId: number;
+    selection: TextSelectionSnapshot;
+  } | null>(null);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
@@ -598,10 +603,11 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   }, []);
 
   const filterSelectedText = useCallback(
-    (article: Article, text: string) => {
+    (article: Article, text: string, selection: TextSelectionSnapshot) => {
       const pattern = text.replace(/\s+/g, " ").trim();
       if (!pattern) return;
       ruleDraftId.current += 1;
+      setContextSelectionReturn(null);
       setRuleDraft({
         id: ruleDraftId.current,
         name: filterRuleName(pattern),
@@ -613,6 +619,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         feedId: article.feedId,
         field: "any",
         pattern,
+        selection,
       });
       navigateTo("rules");
     },
@@ -621,12 +628,18 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
 
   const clearRuleDraft = useCallback(() => setRuleDraft(null), []);
 
+  const clearContextSelectionReturn = useCallback(() => setContextSelectionReturn(null), []);
+
   const returnToContextArticle = useCallback(
     (draft: RuleFormDraft) => {
       contextArticleReturn.current = { article: draft.article, index: draft.articleIndex };
       setActiveArticleId(draft.article.id);
       setReaderOpen(readingMode === "magazine");
       setExpandedKeyboardTargetId(readingMode === "expanded" ? draft.article.id : null);
+      setContextSelectionReturn({
+        articleId: draft.article.id,
+        selection: draft.selection,
+      });
       navigateTo("reader");
     },
     [navigateTo, readingMode],
@@ -1033,6 +1046,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     onCopy={(article) => void copyArticleUrl(article)}
                     onRetryExtraction={(article) => void retryExtraction(article)}
                     onFilterSelection={filterSelectedText}
+                    selectionToRestore={contextSelectionReturn}
+                    onSelectionRestored={clearContextSelectionReturn}
                   />
                 </>
               ) : (
@@ -1058,6 +1073,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   onCopy={(article) => void copyArticleUrl(article)}
                   onRetryExtraction={(article) => void retryExtraction(article)}
                   onFilterSelection={filterSelectedText}
+                  selectionToRestore={contextSelectionReturn}
+                  onSelectionRestored={clearContextSelectionReturn}
                 />
               )}
             </div>
