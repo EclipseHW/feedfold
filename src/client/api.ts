@@ -126,7 +126,7 @@ export const api = {
 
   article: (id: number) => request<Article>(`/api/articles/${id}`),
 
-  retryExtraction: (id: number) =>
+  loadFullContent: (id: number) =>
     request<Article>(`/api/articles/${id}/extract`, { method: "POST" }),
 
   updateArticleState: (id: number, state: { isRead?: boolean; isStarred?: boolean }) =>

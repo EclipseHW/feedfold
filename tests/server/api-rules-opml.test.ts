@@ -42,7 +42,7 @@ describe("live API, OPML, and filtering rules", () => {
     const database = new AppDatabase(join(directory, "echovale.db"));
     const authService = new AuthService(database);
     const extraction = new ExtractionQueue(database, 1, 1_000);
-    const refresh = new FeedRefreshService(database, extraction, 1, 1_000);
+    const refresh = new FeedRefreshService(database, 1, 1_000);
     const app = await createApp({
       database,
       authService,
@@ -419,7 +419,7 @@ describe("live API, OPML, and filtering rules", () => {
       authService.register(TEST_ACCOUNTS[0].username, TEST_ACCOUNTS[0].password),
     ).not.toBeNull();
     const extraction = new ExtractionQueue(database, 2, 2_000);
-    const refresh = new FeedRefreshService(database, extraction, 2, 2_000);
+    const refresh = new FeedRefreshService(database, 2, 2_000);
     const app = await createApp({
       database,
       authService,
@@ -560,7 +560,8 @@ describe("live API, OPML, and filtering rules", () => {
     const expanded = await asReader<{ articles: Article[] }>(
       "/api/articles?state=all&includeContent=true",
     );
-    expect(expanded.articles[0].contentHtml).toContain("Feed fallback worth reading");
+    expect(expanded.articles[0].feedContentHtml).toContain("Feed fallback worth reading");
+    expect(expanded.articles[0].contentHtml).toBeNull();
     const updated = await asReader<Article>(`/api/articles/${keep.id}/state`, {
       method: "PATCH",
       body: JSON.stringify({ isRead: true, isStarred: true }),
@@ -572,7 +573,7 @@ describe("live API, OPML, and filtering rules", () => {
       isStarred: true,
       imageUrl: `${feedBase}/keep.jpg`,
     });
-    expect((await asReader<Article>(`/api/articles/${keep.id}`)).contentHtml).toContain(
+    expect((await asReader<Article>(`/api/articles/${keep.id}`)).feedContentHtml).toContain(
       "Feed fallback worth reading",
     );
 
@@ -581,7 +582,12 @@ describe("live API, OPML, and filtering rules", () => {
     });
     expect(["pending", "processing"]).toContain(retry.extractionStatus);
     await extraction.waitForIdle();
-    expect((await asReader<Article>(`/api/articles/${keep.id}`)).extractionStatus).toBe("feed");
+    expect(await asReader<Article>(`/api/articles/${keep.id}`)).toMatchObject({
+      extractionStatus: "failed",
+      contentHtml: null,
+      feedContentHtml: expect.stringContaining("Feed fallback worth reading"),
+      extractionError: "Article request returned HTTP 503",
+    });
 
     const exported = await fetch(`${apiBase}/api/opml/export`, { headers: { Cookie: cookie } });
     expect(exported.headers.get("content-disposition")).toContain("echovale-subscriptions.opml");

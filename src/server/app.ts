@@ -214,7 +214,9 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     const { id } = idParams.parse(request.params);
     const accountId = userId(request);
     if (!services.database.getArticle(accountId, id)) return missing(reply, "Article");
-    if (services.database.retryExtraction(accountId, id)) services.extractionQueue.prioritize(id);
+    if (services.database.requestExtraction(accountId, id)) {
+      services.extractionQueue.prioritize(id);
+    }
     return services.database.getArticle(accountId, id);
   });
 

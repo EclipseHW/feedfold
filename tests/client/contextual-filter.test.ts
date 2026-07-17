@@ -16,6 +16,7 @@ function article(id: number, contentHtml: string | null = null): Article {
     summary: `Summary ${id}`,
     imageUrl: null,
     media: null,
+    feedContentHtml: null,
     contentHtml,
     contentSource: contentHtml ? "article" : null,
     extractionStatus: contentHtml ? "complete" : "feed",

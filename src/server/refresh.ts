@@ -1,6 +1,5 @@
 import type { RefreshResult } from "../shared/types.js";
 import type { AppDatabase, FeedRecord, ParsedFeed } from "./db.js";
-import type { ExtractionQueue } from "./extraction.js";
 import { parseAndNormalizeFeed, parseAndNormalizeWordPressPosts } from "./feed-parser.js";
 import { parseAndNormalizeTelegramFeed, telegramChannelUrls } from "./telegram-feed.js";
 
@@ -56,7 +55,6 @@ export class FeedRefreshService {
 
   constructor(
     private readonly database: AppDatabase,
-    private readonly extractionQueue: ExtractionQueue,
     private readonly concurrency = 3,
     private readonly timeoutMs = 15_000,
   ) {}
@@ -148,14 +146,13 @@ export class FeedRefreshService {
           ? parseAndNormalizeTelegramFeed(feedSource, telegram.channelUrl)
           : parseAndNormalizeFeed(feedSource, response.url || feed.feedUrl);
       }
-      const articleIds = this.database.markFeedSuccess(feed.id, {
+      this.database.markFeedSuccess(feed.id, {
         httpStatus: response.status,
         etag: response.headers.get("etag"),
         lastModified: response.headers.get("last-modified"),
         pollIntervalMinutes: feed.pollIntervalMinutes,
         parsed,
       });
-      this.extractionQueue.enqueue(articleIds);
     } catch (error) {
       this.database.markFeedFailure(feed.id, {
         httpStatus: error instanceof FeedHttpError ? error.status : httpStatus,

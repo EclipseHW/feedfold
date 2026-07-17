@@ -86,6 +86,7 @@ export interface Article {
   summary: string;
   imageUrl: string | null;
   media: ArticleMedia | null;
+  feedContentHtml: string | null;
   contentHtml: string | null;
   contentSource: "article" | "feed" | null;
   extractionStatus: ExtractionStatus;

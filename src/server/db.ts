@@ -15,6 +15,7 @@ import type {
   RuleConditionOperator,
   RuleField,
 } from "../shared/types.js";
+import { cleanArticleHtml } from "./article-html.js";
 import { firstSafeImageUrl } from "./article-image.js";
 import { articleMediaRuleText, youtubeMediaFromUrl } from "./article-media.js";
 
@@ -51,7 +52,6 @@ export interface ParsedFeed {
 export interface ExtractionRecord {
   id: number;
   url: string | null;
-  feedContentHtml: string | null;
 }
 
 type Row = Record<string, unknown>;
@@ -488,6 +488,36 @@ const migrations: Migration[] = [
       CREATE INDEX rules_folder_id_idx ON rules(folder_id);
     `,
   },
+  {
+    sql: `
+      UPDATE articles
+      SET content_html = CASE
+            WHEN content_source = 'article' AND content_html IS NOT NULL THEN content_html
+            ELSE NULL
+          END,
+          content_source = CASE
+            WHEN content_source = 'article' AND content_html IS NOT NULL THEN 'article'
+            ELSE NULL
+          END,
+          extraction_status = CASE
+            WHEN content_source = 'article' AND content_html IS NOT NULL THEN 'complete'
+            ELSE 'feed'
+          END,
+          extraction_error = NULL;
+    `,
+    after: (database) => {
+      const rows = database
+        .prepare(
+          `SELECT id, url, feed_content_html AS feedContentHtml
+           FROM articles WHERE feed_content_html IS NOT NULL`,
+        )
+        .all() as Array<{ id: number; url: string | null; feedContentHtml: string }>;
+      const update = database.prepare("UPDATE articles SET feed_content_html = ? WHERE id = ?");
+      for (const row of rows) {
+        update.run(cleanArticleHtml(row.feedContentHtml, row.url ?? undefined), row.id);
+      }
+    },
+  },
 ];
 
 function now(): string {
@@ -581,6 +611,7 @@ function mapArticle(row: Row): Article {
     summary: String(row.summary),
     imageUrl: row.imageUrl === null ? null : String(row.imageUrl),
     media: parseArticleMedia(row.mediaJson),
+    feedContentHtml: row.feedContentHtml === null ? null : String(row.feedContentHtml),
     contentHtml: row.contentHtml === null ? null : String(row.contentHtml),
     contentSource:
       row.contentSource === "article" || row.contentSource === "feed" ? row.contentSource : null,
@@ -1085,11 +1116,24 @@ export class AppDatabase {
       pollIntervalMinutes: number;
       parsed?: ParsedFeed;
     },
-  ): number[] {
-    const extractionIds: number[] = [];
+  ): void {
+    const parsed = input.parsed
+      ? {
+          ...input.parsed,
+          articles: input.parsed.articles.map((article) => ({
+            ...article,
+            feedContentHtml: article.feedContentHtml
+              ? cleanArticleHtml(
+                  article.feedContentHtml,
+                  article.url ?? input.parsed?.siteUrl ?? undefined,
+                )
+              : null,
+          })),
+        }
+      : undefined;
     const ruleArticleIds = new Set<number>();
     const complete = this.sqlite.transaction(() => {
-      if (input.parsed) {
+      if (parsed) {
         this.sqlite
           .prepare(
             `UPDATE feeds
@@ -1097,7 +1141,7 @@ export class AppDatabase {
                  site_url = COALESCE(?, site_url), updated_at = ?
              WHERE id = ?`,
           )
-          .run(input.parsed.title, input.parsed.siteUrl, now(), id);
+          .run(parsed.title, parsed.siteUrl, now(), id);
         const findExisting = this.sqlite.prepare(
           `SELECT id, title, url, author, published_at AS publishedAt, summary,
                   image_url AS imageUrl, media_json AS mediaJson,
@@ -1122,14 +1166,10 @@ export class AppDatabase {
                extraction_error = CASE WHEN ? = 1 THEN NULL ELSE extraction_error END
            WHERE id = ?`,
         );
-        for (const article of input.parsed.articles) {
+        for (const article of parsed.articles) {
           const media = article.media ?? null;
           const mediaJson = media ? JSON.stringify(media) : null;
-          const extractionStatus = media
-            ? "feed"
-            : article.url || article.feedContentHtml
-              ? "pending"
-              : "failed";
+          const extractionStatus = "feed";
           const existing = findExisting.get(id, article.externalId) as Row | undefined;
           if (existing) {
             const sourceChanged =
@@ -1166,7 +1206,6 @@ export class AppDatabase {
               articleId,
             );
             ruleArticleIds.add(articleId);
-            if (resetExtraction && extractionStatus === "pending") extractionIds.push(articleId);
             continue;
           }
           const result = insert.run(
@@ -1185,7 +1224,6 @@ export class AppDatabase {
           );
           const articleId = Number(result.lastInsertRowid);
           ruleArticleIds.add(articleId);
-          if (extractionStatus === "pending") extractionIds.push(articleId);
         }
       }
       const completedAt = now();
@@ -1204,7 +1242,6 @@ export class AppDatabase {
       for (const articleId of ruleArticleIds) this.recomputeRulesForArticle(articleId);
     });
     complete();
-    return extractionIds;
   }
 
   markFeedFailure(
@@ -1305,6 +1342,7 @@ export class AppDatabase {
                 articles.summary,
                 articles.image_url AS imageUrl,
                 articles.media_json AS mediaJson,
+                ${query.includeContent ? "articles.feed_content_html" : "NULL"} AS feedContentHtml,
                 ${query.includeContent ? "articles.content_html" : "NULL"} AS contentHtml,
                 articles.content_source AS contentSource,
                 articles.extraction_status AS extractionStatus,
@@ -1345,6 +1383,7 @@ export class AppDatabase {
                 articles.summary,
                 articles.image_url AS imageUrl,
                 articles.media_json AS mediaJson,
+                articles.feed_content_html AS feedContentHtml,
                 articles.content_html AS contentHtml,
                 articles.content_source AS contentSource,
                 articles.extraction_status AS extractionStatus,
@@ -1652,30 +1691,24 @@ export class AppDatabase {
   getPendingExtractions(limit = 100): ExtractionRecord[] {
     const rows = this.sqlite
       .prepare(
-        `SELECT id, url, feed_content_html AS feedContentHtml
-         FROM articles WHERE extraction_status = 'pending'
+        `SELECT id, url FROM articles WHERE extraction_status = 'pending'
          ORDER BY discovered_at LIMIT ?`,
       )
       .all(limit) as Row[];
     return rows.map((row) => ({
       id: Number(row.id),
       url: row.url === null ? null : String(row.url),
-      feedContentHtml: row.feedContentHtml === null ? null : String(row.feedContentHtml),
     }));
   }
 
   getExtractionRecord(id: number): ExtractionRecord | null {
     const row = this.sqlite
-      .prepare(
-        `SELECT id, url, feed_content_html AS feedContentHtml
-         FROM articles WHERE id = ? AND extraction_status = 'pending'`,
-      )
+      .prepare(`SELECT id, url FROM articles WHERE id = ? AND extraction_status = 'pending'`)
       .get(id) as Row | undefined;
     if (!row) return null;
     return {
       id: Number(row.id),
       url: row.url === null ? null : String(row.url),
-      feedContentHtml: row.feedContentHtml === null ? null : String(row.feedContentHtml),
     };
   }
 
@@ -1689,13 +1722,14 @@ export class AppDatabase {
     );
   }
 
-  retryExtraction(userId: number, id: number): boolean {
+  requestExtraction(userId: number, id: number): boolean {
     return (
       this.sqlite
         .prepare(
           `UPDATE articles
            SET extraction_status = 'pending', extraction_error = NULL
            WHERE id = ? AND extraction_status != 'processing'
+             AND NOT (extraction_status = 'complete' AND content_html IS NOT NULL)
              AND feed_id IN (SELECT id FROM feeds WHERE user_id = ?)`,
         )
         .run(id, userId).changes > 0
@@ -1707,20 +1741,27 @@ export class AppDatabase {
     input: {
       contentHtml: string | null;
       imageUrl: string | null;
-      contentSource: "article" | "feed" | null;
-      status: "complete" | "feed" | "failed";
+      contentSource: "article" | null;
+      status: "complete" | "failed";
       error: string | null;
     },
   ): void {
-    this.sqlite
+    const updated = this.sqlite
       .prepare(
         `UPDATE articles
          SET content_html = ?, image_url = COALESCE(?, image_url), content_source = ?,
              extraction_status = ?, extraction_error = ?
-         WHERE id = ?`,
+         WHERE id = ? AND extraction_status = 'processing'`,
       )
-      .run(input.contentHtml, input.imageUrl, input.contentSource, input.status, input.error, id);
-    this.recomputeRulesForArticle(id);
+      .run(
+        input.contentHtml,
+        input.imageUrl,
+        input.contentSource,
+        input.status,
+        input.error,
+        id,
+      ).changes;
+    if (updated > 0) this.recomputeRulesForArticle(id);
   }
 
   listOpmlFolders(userId: number): Array<{ id: number; name: string; parentId: number | null }> {

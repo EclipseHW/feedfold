@@ -206,6 +206,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const [navOpen, setNavOpen] = useState(false);
   const [readerOpen, setReaderOpen] = useState(false);
   const [expandedKeyboardTargetId, setExpandedKeyboardTargetId] = useState<number | null>(null);
+  const [fullContentVisibleIds, setFullContentVisibleIds] = useState<Set<number>>(() => new Set());
   const [markReadPending, setMarkReadPending] = useState(false);
   const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -213,9 +214,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const sequence = useRef<{ startedAt: number } | null>(null);
   const ruleDraftId = useRef(0);
   const contextArticleReturn = useRef<ContextArticleReturn | null>(null);
+  const fullContentVisibleIdsRef = useRef(new Set<number>());
   const fullContentLoadedIds = useRef(new Set<number>());
   const fullContentLoadingIds = useRef(new Set<number>());
-  const prioritizedExtractionIds = useRef(new Set<number>());
   const manuallyUnreadArticleIds = useRef(new Set<number>());
   const bootstrapReady = bootstrap !== null;
 
@@ -262,6 +263,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       });
       const nextArticles = articlesWithContextReturn(page.articles, returnTarget);
       setArticles(nextArticles);
+      fullContentVisibleIdsRef.current = new Set();
+      setFullContentVisibleIds(new Set());
       setNextCursor(page.nextCursor);
       fullContentLoadedIds.current = new Set(
         readingMode === "expanded" ? page.articles.map((article) => article.id) : [],
@@ -385,57 +388,29 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     );
   }, []);
 
-  const prioritizeExtraction = useCallback(
-    async (article: Article) => {
-      if (
-        article.extractionStatus !== "pending" ||
-        prioritizedExtractionIds.current.has(article.id)
-      ) {
-        return;
-      }
-      prioritizedExtractionIds.current.add(article.id);
-      try {
-        mergeFullArticle(await api.retryExtraction(article.id));
-      } catch (error) {
-        prioritizedExtractionIds.current.delete(article.id);
-        showToast(`Could not prioritize full text: ${errorMessage(error)}`);
-      }
-    },
-    [mergeFullArticle, showToast],
-  );
-
   const loadFullArticle = useCallback(
     async (article: Article) => {
-      if (fullContentLoadedIds.current.has(article.id)) {
-        await prioritizeExtraction(article);
-        return;
-      }
+      if (fullContentLoadedIds.current.has(article.id)) return;
       if (fullContentLoadingIds.current.has(article.id)) return;
 
       fullContentLoadingIds.current.add(article.id);
       try {
         const fullArticle = await api.article(article.id);
-        mergeFullArticle(fullArticle);
-        await prioritizeExtraction(fullArticle);
+        if (!fullContentVisibleIdsRef.current.has(article.id)) mergeFullArticle(fullArticle);
       } catch (error) {
         showToast(`Could not load full article: ${errorMessage(error)}`);
       } finally {
         fullContentLoadingIds.current.delete(article.id);
       }
     },
-    [mergeFullArticle, prioritizeExtraction, showToast],
+    [mergeFullArticle, showToast],
   );
-
-  useEffect(() => {
-    if (readingMode === "expanded" && activeArticle?.extractionStatus === "pending") {
-      void prioritizeExtraction(activeArticle);
-    }
-  }, [activeArticle, prioritizeExtraction, readingMode]);
 
   useEffect(() => {
     if (
       (readingMode === "magazine" && !readerOpen) ||
       !activeArticle ||
+      !fullContentVisibleIds.has(activeArticle.id) ||
       (activeArticle.extractionStatus !== "pending" &&
         activeArticle.extractionStatus !== "processing")
     ) {
@@ -453,7 +428,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         });
     }, 2000);
     return () => window.clearInterval(poll);
-  }, [activeArticle, mergeFullArticle, readerOpen, readingMode]);
+  }, [activeArticle, fullContentVisibleIds, mergeFullArticle, readerOpen, readingMode]);
 
   const changeArticleState = useCallback(
     async (article: Article, change: { isRead?: boolean; isStarred?: boolean }) => {
@@ -570,18 +545,26 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     [showToast],
   );
 
-  const retryExtraction = useCallback(
+  const loadFullContent = useCallback(
     async (article: Article) => {
+      if (!article.url || article.media) return;
+      fullContentVisibleIdsRef.current.add(article.id);
+      setFullContentVisibleIds((current) => new Set(current).add(article.id));
+      if (article.extractionStatus === "complete" && article.contentHtml) return;
       try {
-        prioritizedExtractionIds.current.add(article.id);
-        mergeFullArticle(await api.retryExtraction(article.id));
-        showToast("Full-text extraction restarted");
+        mergeFullArticle(await api.loadFullContent(article.id));
       } catch (error) {
-        prioritizedExtractionIds.current.delete(article.id);
-        showToast(`Could not retry extraction: ${errorMessage(error)}`);
+        fullContentVisibleIdsRef.current.delete(article.id);
+        setFullContentVisibleIds((current) => {
+          const next = new Set(current);
+          next.delete(article.id);
+          return next;
+        });
+        showToast(`Could not load full content: ${errorMessage(error)}`);
+        void loadFullArticle(article);
       }
     },
-    [mergeFullArticle, showToast],
+    [loadFullArticle, mergeFullArticle, showToast],
   );
 
   const selectScope = useCallback((feedId: number | null, folderId: number | null) => {
@@ -856,6 +839,10 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           }
         },
         c: () => void copyArticleUrl(activeArticle),
+        w: () => {
+          const articleVisible = view === "reader" && (readingMode === "expanded" || readerOpen);
+          if (articleVisible && activeArticle) void loadFullContent(activeArticle);
+        },
         r: () => void refresh(),
         "[": () =>
           setArticleFontSize((current) => {
@@ -894,12 +881,15 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     bootstrap?.settings.singleKeyShortcuts,
     changeArticleState,
     copyArticleUrl,
+    loadFullContent,
     readerOpen,
+    readingMode,
     moveArticle,
     navigateTo,
     refresh,
     selectScope,
     showToast,
+    view,
   ]);
 
   if (!bootstrap) {
@@ -1021,6 +1011,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   />
                   <ReaderPane
                     article={activeArticle}
+                    fullContentVisible={
+                      activeArticle ? fullContentVisibleIds.has(activeArticle.id) : false
+                    }
                     onBack={() => setReaderOpen(false)}
                     onPrevious={() => moveArticle(-1)}
                     onNext={() => moveArticle(1)}
@@ -1031,7 +1024,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                       void changeArticleState(article, { isStarred: !article.isStarred })
                     }
                     onCopy={(article) => void copyArticleUrl(article)}
-                    onRetryExtraction={(article) => void retryExtraction(article)}
+                    onLoadFullContent={(article) => void loadFullContent(article)}
                     onFilterSelection={filterSelectedText}
                   />
                 </>
@@ -1040,6 +1033,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   articles={articles}
                   activeId={activeArticleId}
                   topAlignedId={expandedKeyboardTargetId}
+                  fullContentVisibleIds={fullContentVisibleIds}
                   markReadOnScroll={bootstrap.settings.markReadOnScroll}
                   hasMore={nextCursor !== null}
                   loadingMore={articlesLoadingMore}
@@ -1056,7 +1050,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     void changeArticleState(article, { isStarred: !article.isStarred })
                   }
                   onCopy={(article) => void copyArticleUrl(article)}
-                  onRetryExtraction={(article) => void retryExtraction(article)}
+                  onLoadFullContent={(article) => void loadFullContent(article)}
                   onFilterSelection={filterSelectedText}
                 />
               )}

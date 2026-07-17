@@ -198,7 +198,7 @@ describe("database migrations", () => {
           id: 1,
           contentHtml: null,
           contentSource: null,
-          extractionStatus: "pending",
+          extractionStatus: "feed",
           extractionError: null,
           imageUrl: "https://media.example.test/fallback.jpg",
         },
@@ -232,7 +232,7 @@ describe("database migrations", () => {
           embedUrl: "https://www.youtube.com/embed/short123",
         },
       });
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(5);
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(6);
     } finally {
       database.close();
     }
@@ -244,7 +244,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(5);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(6);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");
