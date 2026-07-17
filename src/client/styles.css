@@ -1507,8 +1507,7 @@ kbd {
   border-bottom: 1px solid var(--border);
 }
 
-.article-source-row,
-.article-source-status {
+.article-source-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1576,10 +1575,6 @@ kbd {
   }
 }
 
-.article-source-status {
-  margin-top: 16px;
-}
-
 .article-media-player {
   width: 100%;
   aspect-ratio: 16 / 9;
@@ -1601,12 +1596,6 @@ kbd {
   width: 100%;
   height: 100%;
   border: 0;
-}
-
-.article-source-status > span {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
 }
 
 .article-content,
@@ -3484,10 +3473,6 @@ kbd {
   }
   .article-header h2 {
     font-size: 24px;
-  }
-  .article-source-status {
-    align-items: flex-start;
-    flex-direction: column;
   }
   .management-page {
     padding-inline: 13px;
