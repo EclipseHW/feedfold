@@ -94,7 +94,7 @@ describe("database migrations", () => {
          'video bytes incorrectly stored as article HTML', 'article', 'complete', NULL),
         (2, 1, 'two', 'Story', 'https://example.test/story',
          '2026-07-13T00:00:00.000Z', NULL,
-         '<img src="https://img.shields.io/badge/build-passing"><img src="/hero.jpg">',
+         '<img src="https://img.shields.io/badge/build-passing"><img src="/hero.jpg"><table><thead><tr><th>Example</th><th>What it shows</th></tr></thead><tbody><tr><td>calculator</td><td>A complete small app.</td></tr></tbody></table>',
          'article', 'complete', NULL),
         (3, 1, 'three', 'Feed image', 'https://example.test/feed-image',
          '2026-07-13T00:00:00.000Z', '<img src="/feed-hero.jpg">',
@@ -205,7 +205,7 @@ describe("database migrations", () => {
         {
           id: 2,
           contentHtml:
-            '<img src="https://img.shields.io/badge/build-passing"><img src="/hero.jpg">',
+            '<img src="https://img.shields.io/badge/build-passing"><img src="https://example.test/hero.jpg"><div class="article-table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Example</th><th>What it shows</th></tr></thead><tbody><tr><td>calculator</td><td>A complete small app.</td></tr></tbody></table></div>',
           contentSource: "article",
           extractionStatus: "complete",
           extractionError: null,
@@ -235,7 +235,7 @@ describe("database migrations", () => {
           embedUrl: "https://www.youtube.com/embed/short123",
         },
       });
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(6);
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(7);
     } finally {
       database.close();
     }
@@ -247,7 +247,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(6);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(7);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");

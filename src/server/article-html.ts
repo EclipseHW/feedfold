@@ -1,4 +1,9 @@
+import { JSDOM } from "jsdom";
 import sanitizeHtml from "sanitize-html";
+
+const TABLE_SCROLL_CLASS = "article-table-scroll";
+const QUOTE_FIGURE_CLASS = "article-quote";
+const SCROLLABLE_TABLE_LABEL = "Scrollable table";
 
 const sanitizeOptions: sanitizeHtml.IOptions = {
   allowedTags: [
@@ -23,6 +28,10 @@ const sanitizeOptions: sanitizeHtml.IOptions = {
     "blockquote",
     "pre",
     "code",
+    "kbd",
+    "samp",
+    "var",
+    "cite",
     "strong",
     "b",
     "em",
@@ -56,6 +65,7 @@ const sanitizeOptions: sanitizeHtml.IOptions = {
     "time",
   ],
   allowedAttributes: {
+    div: ["class"],
     a: ["href", "title", "target", "rel"],
     img: ["src", "srcset", "alt", "title", "width", "height", "loading"],
     source: ["src", "srcset", "type", "media", "sizes"],
@@ -63,10 +73,86 @@ const sanitizeOptions: sanitizeHtml.IOptions = {
     th: ["colspan", "rowspan", "scope"],
     time: ["datetime"],
   },
+  allowedClasses: {
+    div: [TABLE_SCROLL_CLASS],
+    figure: [QUOTE_FIGURE_CLASS],
+  },
   allowedSchemes: ["http", "https", "mailto"],
   allowedSchemesByTag: { img: ["http", "https", "data"], source: ["http", "https"] },
   allowProtocolRelative: false,
 };
+
+function enrichArticleStructure(html: string): string {
+  if (!/<(?:blockquote|table)\b/i.test(html)) return html;
+
+  const fragment = JSDOM.fragment(html);
+  for (const blockquote of fragment.querySelectorAll("blockquote")) {
+    const attribution = blockquote.nextElementSibling;
+    if (
+      attribution?.tagName !== "P" ||
+      !/^[—–]\s+/.test(attribution.textContent?.trimStart() ?? "")
+    ) {
+      continue;
+    }
+
+    const figure = fragment.ownerDocument.createElement("figure");
+    figure.className = QUOTE_FIGURE_CLASS;
+    const caption = fragment.ownerDocument.createElement("figcaption");
+    while (attribution.firstChild) caption.append(attribution.firstChild);
+    blockquote.before(figure);
+    figure.append(blockquote, caption);
+    attribution.remove();
+  }
+
+  for (const table of fragment.querySelectorAll("table")) {
+    const rows = [...table.querySelectorAll("tr")]
+      .filter((row) => row.closest("table") === table)
+      .map((row) => [...row.children].filter((cell) => /^(?:TH|TD)$/.test(cell.tagName)));
+    if (!rows.some((row) => row.length > 1)) continue;
+
+    const caption = [...table.children].find((child) => child.tagName === "CAPTION");
+    const hasTableHeading =
+      [...table.querySelectorAll("th")].some((heading) => heading.closest("table") === table) ||
+      Boolean(caption);
+    const cells = rows.flat();
+    const imageCellCount = cells.filter((cell) => cell.querySelector("img, picture")).length;
+    const columnCount = Math.max(...rows.map((row) => row.length));
+    const hasEmptyColumn = Array.from({ length: columnCount }, (_, index) =>
+      rows.every((row) => !row[index]?.textContent?.trim()),
+    ).some(Boolean);
+    const linkedOrMediaOnlyCellCount = cells.filter((cell) => {
+      const remainingContent = cell.cloneNode(true) as Element;
+      for (const element of remainingContent.querySelectorAll("a, img, picture")) element.remove();
+      return !remainingContent.textContent?.trim();
+    }).length;
+    const isHeaderlessDataTable =
+      rows.length > 1 &&
+      !table.querySelector("pre, code") &&
+      !hasEmptyColumn &&
+      Boolean(table.textContent?.trim()) &&
+      imageCellCount < cells.length / 2 &&
+      linkedOrMediaOnlyCellCount <= cells.length / 2;
+    if (!hasTableHeading && !isHeaderlessDataTable) continue;
+
+    const ancestorTable = table.parentElement?.closest("table");
+    if (ancestorTable?.parentElement?.classList.contains(TABLE_SCROLL_CLASS)) continue;
+
+    let wrapper = table.parentElement;
+    if (!wrapper?.classList.contains(TABLE_SCROLL_CLASS)) {
+      wrapper = fragment.ownerDocument.createElement("div");
+      wrapper.className = TABLE_SCROLL_CLASS;
+      table.before(wrapper);
+      wrapper.append(table);
+    }
+    wrapper.tabIndex = 0;
+    wrapper.setAttribute("role", "region");
+    wrapper.setAttribute("aria-label", caption?.textContent?.trim() || SCROLLABLE_TABLE_LABEL);
+  }
+
+  const container = fragment.ownerDocument.createElement("div");
+  container.append(fragment);
+  return container.innerHTML.trim();
+}
 
 function absoluteUrl(value: string, baseUrl: string): string {
   try {
@@ -120,5 +206,6 @@ export function cleanArticleHtml(html: string, baseUrl?: string): string {
         }),
       }
     : undefined;
-  return sanitizeHtml(html, { ...sanitizeOptions, transformTags }).trim();
+  const sanitized = sanitizeHtml(html, { ...sanitizeOptions, transformTags }).trim();
+  return enrichArticleStructure(sanitized);
 }
