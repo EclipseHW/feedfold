@@ -1391,6 +1391,12 @@ kbd {
   min-height: 44px;
   flex: 1;
   padding: 4px 0;
+  overflow-x: clip;
+}
+
+:where(.reader-action-row) .article-actions button {
+  gap: 3px;
+  padding-inline: 5px;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -3889,6 +3895,22 @@ kbd {
   .shortcut-dialog,
   .shortcut-dialog[open] {
     transform: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .reader-action-row {
+    flex-wrap: wrap;
+  }
+  .reader-action-divider {
+    display: none;
+  }
+  :where(.reader-action-row) .article-actions {
+    flex: 1 0 100%;
+    gap: 0;
+  }
+  :where(.reader-action-row) .article-actions button {
+    padding-inline: 4px;
   }
 }
 
