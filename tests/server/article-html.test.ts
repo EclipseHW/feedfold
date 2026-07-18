@@ -64,4 +64,49 @@ native dev
     const cleanedAgain = articleBody(cleanArticleHtml(html));
     expect(cleanedAgain.querySelectorAll("figure.article-quote")).toHaveLength(1);
   });
+
+  it("distinguishes the Fable prose quote from callouts and publisher punctuation", () => {
+    const html = cleanArticleHtml(
+      `<blockquote>
+         <p>Beginning July 20, Claude Fable 5 will be included in all Max and Team Premium plans, at 50% of limits.</p>
+         <p>Pro and Team Standard users will continue to have access to Fable via usage credits, and will receive a one-time $100 credit.</p>
+       </blockquote>
+       <blockquote class="article-prose-quote article-prose-quote-marked"><p>Note: This release requires a database migration.</p></blockquote>
+       <blockquote><p>[!TIP] Run <code>native check</code> before building.</p></blockquote>
+       <blockquote><p>“This publisher already included an opening quote.”</p></blockquote>
+       <blockquote>&quot;We are honored to share this update.&quot;</blockquote>
+       <blockquote><p><span class="article-quote-mark" aria-hidden="true">Injected publisher text</span> remains visible.</p></blockquote>
+       <p><span class="article-quote-mark" aria-hidden="true">Visible outside text</span></p>`,
+    );
+    const body = articleBody(html);
+    const quotes = body.querySelectorAll("blockquote");
+
+    expect(quotes[0]?.classList.contains("article-prose-quote")).toBe(true);
+    expect(quotes[0]?.classList.contains("article-prose-quote-marked")).toBe(true);
+    expect(quotes[0]?.querySelector(".article-quote-mark")).toMatchObject({
+      ariaHidden: "true",
+      textContent: "“",
+    });
+    expect(quotes[1]?.className).toBe("");
+    expect(quotes[2]?.className).toBe("");
+    expect(quotes[3]?.classList.contains("article-prose-quote")).toBe(true);
+    expect(quotes[3]?.classList.contains("article-prose-quote-marked")).toBe(false);
+    expect(quotes[3]?.querySelector(".article-quote-mark")).toBeNull();
+    expect(quotes[4]?.classList.contains("article-prose-quote")).toBe(true);
+    expect(quotes[4]?.classList.contains("article-prose-quote-marked")).toBe(false);
+    expect(quotes[5]?.classList.contains("article-prose-quote-marked")).toBe(true);
+    expect(quotes[5]?.querySelectorAll(":scope > .article-quote-mark")).toHaveLength(1);
+    const injectedPublisherText = [...(quotes[5]?.querySelectorAll("span") ?? [])].find((span) =>
+      span.textContent?.includes("Injected publisher text"),
+    );
+    expect(injectedPublisherText).toMatchObject({ className: "" });
+    expect(injectedPublisherText?.getAttribute("aria-hidden")).toBeNull();
+    const outsidePublisherText = [...body.querySelectorAll("span")].find((span) =>
+      span.textContent?.includes("Visible outside text"),
+    );
+    expect(outsidePublisherText).toMatchObject({ className: "" });
+    expect(outsidePublisherText?.getAttribute("aria-hidden")).toBeNull();
+
+    expect(cleanArticleHtml(html)).toBe(html);
+  });
 });
