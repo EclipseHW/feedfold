@@ -585,6 +585,10 @@ const migrations: Migration[] = [
     sql: "",
     after: repairStoredArticleSrcsets,
   },
+  {
+    sql: "",
+    after: (database) => recleanStructuredArticleHtml(database, ["blockquote"]),
+  },
 ];
 
 function now(): string {
