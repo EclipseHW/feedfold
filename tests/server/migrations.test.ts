@@ -2,6 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Sqlite from "better-sqlite3";
+import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it } from "vitest";
 import { AuthService } from "../../src/server/auth.js";
 import { AppDatabase } from "../../src/server/db.js";
@@ -94,10 +95,10 @@ describe("database migrations", () => {
          'video bytes incorrectly stored as article HTML', 'article', 'complete', NULL),
         (2, 1, 'two', 'Story', 'https://example.test/story',
          '2026-07-13T00:00:00.000Z', NULL,
-         '<img src="https://img.shields.io/badge/build-passing"><img src="/hero.jpg"><table><thead><tr><th>Example</th><th>What it shows</th></tr></thead><tbody><tr><td>calculator</td><td>A complete small app.</td></tr></tbody></table>',
+         '<img src="https://img.shields.io/badge/build-passing"><picture><source type="image/webp" srcset="https://substackcdn.com/image/fetch/$s_!legacy!, https://example.test/w_424, https://example.test/c_limit, https://example.test/f_webp/hero.png 424w"><img src="/hero.jpg" srcset="https://substackcdn.com/image/fetch/$s_!legacy!, https://example.test/w_424, https://example.test/c_limit, https://example.test/f_auto/hero.png 424w"></picture><table><thead><tr><th>Example</th><th>What it shows</th></tr></thead><tbody><tr><td>calculator</td><td>A complete small app.</td></tr></tbody></table>',
          'article', 'complete', NULL),
         (3, 1, 'three', 'Feed image', 'https://example.test/feed-image',
-         '2026-07-13T00:00:00.000Z', '<img src="/feed-hero.jpg">',
+         '2026-07-13T00:00:00.000Z', '<picture><source type="image/webp" srcset="https://substackcdn.com/image/fetch/$s_!legacy!, https://example.test/w_424, https://example.test/c_limit, https://example.test/f_webp/feed-hero.png 424w"><img src="/feed-hero.jpg" srcset="https://substackcdn.com/image/fetch/$s_!legacy!, https://example.test/w_424, https://example.test/c_limit, https://example.test/f_auto/feed-hero.png 424w"></picture>',
          '<p>Extracted text without an image.</p>', 'article', 'complete', NULL),
         (4, 1, 'four', 'YouTube Short', 'https://www.youtube.com/shorts/short123',
          '2026-07-13T00:00:00.000Z', NULL, NULL, NULL, 'failed', 'Extraction failed');
@@ -205,7 +206,7 @@ describe("database migrations", () => {
         {
           id: 2,
           contentHtml:
-            '<img src="https://img.shields.io/badge/build-passing"><img src="https://example.test/hero.jpg"><div class="article-table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Example</th><th>What it shows</th></tr></thead><tbody><tr><td>calculator</td><td>A complete small app.</td></tr></tbody></table></div>',
+            '<img src="https://img.shields.io/badge/build-passing"><picture><img src="https://example.test/hero.jpg"></picture><div class="article-table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Example</th><th>What it shows</th></tr></thead><tbody><tr><td>calculator</td><td>A complete small app.</td></tr></tbody></table></div>',
           contentSource: "article",
           extractionStatus: "complete",
           extractionError: null,
@@ -223,6 +224,14 @@ describe("database migrations", () => {
       expect(database.getArticle(1, 3)?.feedContentHtml).toContain(
         'src="https://example.test/feed-hero.jpg"',
       );
+      for (const articleId of [2, 3]) {
+        const article = database.getArticle(1, articleId);
+        const html = articleId === 2 ? article?.contentHtml : article?.feedContentHtml;
+        const body = new JSDOM(`<body>${html}</body>`).window.document.body;
+        expect(body.querySelectorAll("[srcset]")).toHaveLength(0);
+        expect(body.querySelectorAll("source")).toHaveLength(0);
+        expect(body.querySelector("img[src]")).not.toBeNull();
+      }
       expect(database.getArticle(1, 4)).toMatchObject({
         title: "YouTube Short",
         imageUrl: "https://i.ytimg.com/vi/short123/hqdefault.jpg",
@@ -235,7 +244,7 @@ describe("database migrations", () => {
           embedUrl: "https://www.youtube.com/embed/short123",
         },
       });
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(8);
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(9);
     } finally {
       database.close();
     }
@@ -247,7 +256,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(8);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(9);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");

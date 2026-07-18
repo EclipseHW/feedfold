@@ -1,4 +1,5 @@
 import { JSDOM } from "jsdom";
+import parseSrcset from "parse-srcset";
 import sanitizeHtml from "sanitize-html";
 
 const TABLE_SCROLL_CLASS = "article-table-scroll";
@@ -11,6 +12,12 @@ const CALLOUT_PREFIX_PATTERN =
   /^(?:\[\s*!\s*(?:note|tip|warning|important|caution)\s*\]|(?:a|side)\s+note\b|(?:note|tip|warning|important|caution|abstract|source|failsafe|disclaimer|reminder|update|takeaway|summary)\b|system\s+message\b|table\s+of\s+contents\b|bottom\s+line\b|tl\s*;\s*dr\b)/i;
 const COMPLEX_QUOTE_CONTENT =
   "blockquote, pre, code, ul, ol, dl, table, img, picture, video, audio, iframe, h1, h2, h3, h4, h5, h6, div";
+
+function fragmentHtml(fragment: DocumentFragment): string {
+  const container = fragment.ownerDocument.createElement("div");
+  container.append(fragment);
+  return container.innerHTML.trim();
+}
 
 const sanitizeOptions: sanitizeHtml.IOptions = {
   allowedTags: [
@@ -102,9 +109,7 @@ function stripGeneratedQuoteMarkers(html: string): string {
       marker.textContent === "“";
     if (isGeneratedMarker) marker.remove();
   }
-  const container = fragment.ownerDocument.createElement("div");
-  container.append(fragment);
-  return container.innerHTML.trim();
+  return fragmentHtml(fragment);
 }
 
 function enrichArticleStructure(html: string): string {
@@ -201,9 +206,7 @@ function enrichArticleStructure(html: string): string {
     wrapper.setAttribute("aria-label", caption?.textContent?.trim() || SCROLLABLE_TABLE_LABEL);
   }
 
-  const container = fragment.ownerDocument.createElement("div");
-  container.append(fragment);
-  return container.innerHTML.trim();
+  return fragmentHtml(fragment);
 }
 
 function absoluteUrl(value: string, baseUrl: string): string {
@@ -215,13 +218,35 @@ function absoluteUrl(value: string, baseUrl: string): string {
 }
 
 function absoluteSrcset(value: string, baseUrl: string): string {
-  return value
-    .split(",")
-    .map((candidate) => {
-      const [candidateUrl, ...descriptor] = candidate.trim().split(/\s+/);
-      return [absoluteUrl(candidateUrl, baseUrl), ...descriptor].join(" ");
-    })
+  return parseSrcset(value)
+    .map(
+      (candidate) =>
+        absoluteUrl(candidate.url, baseUrl) +
+        (candidate.w ? ` ${candidate.w}w` : "") +
+        (candidate.h ? ` ${candidate.h}h` : "") +
+        (candidate.d ? ` ${candidate.d}x` : ""),
+    )
     .join(", ");
+}
+
+export function removeStoredSrcsetsWithFallback(html: string): string {
+  if (!/\bsrcset\s*=/i.test(html)) return html;
+
+  const fragment = JSDOM.fragment(html);
+  let changed = false;
+  for (const image of fragment.querySelectorAll("img[src][srcset]")) {
+    image.removeAttribute("srcset");
+    changed = true;
+  }
+  for (const picture of fragment.querySelectorAll("picture")) {
+    if (!picture.querySelector("img[src]")) continue;
+    for (const source of picture.querySelectorAll("source[srcset]")) {
+      source.remove();
+      changed = true;
+    }
+  }
+
+  return changed ? fragmentHtml(fragment) : html;
 }
 
 export function cleanArticleHtml(html: string, baseUrl?: string): string {
