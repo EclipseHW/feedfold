@@ -121,7 +121,7 @@ Create a persistent encryption key before saving provider credentials:
 openssl rand -hex 32
 ```
 
-Save the generated value as `AI_CREDENTIALS_KEY` in the project-level `.env` file, recreate the service, then open **Settings → AI summaries**. Choose Google Gemini, OpenAI, or Anthropic and save that provider's API key. Keys are encrypted per account before they enter SQLite and are never returned to the browser after saving.
+Save the generated value as `AI_CREDENTIALS_KEY` in the project-level `.env` file, recreate the service, then open **Settings → AI summaries**. Choose Google Gemini, OpenAI, or Anthropic, enter the model ID you want to use, and save that provider's API key. Each provider starts with a recommended model ID, but the field accepts any model that the provider makes available to your account. Keys are encrypted per account before they enter SQLite and are never returned to the browser after saving.
 
 Use **Summarize** in the article action bar, or press `m`. Echovale prefers loaded publisher content, falls back to feed content, and finally uses the feed excerpt. A summary is cached until the article source changes; **Regenerate** deliberately requests a new result and can use a newly selected provider.
 

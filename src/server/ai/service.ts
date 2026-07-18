@@ -89,13 +89,6 @@ export class AiService {
       throw new AiError("AI_NOT_CONFIGURED", 422, "Choose a supported AI provider.");
     }
     const selectedModel = model?.trim() || provider.defaultModel;
-    if (!provider.models.some((candidate) => candidate.id === selectedModel)) {
-      throw new AiError(
-        "AI_MODEL_UNAVAILABLE",
-        422,
-        `Choose an available ${provider.label} model.`,
-      );
-    }
     this.database.setAiFeatureSetting(userId, feature, {
       provider: providerId,
       model: selectedModel,
@@ -212,8 +205,7 @@ export class AiService {
 
   private validFeatureSetting(setting: AiFeatureSetting | null): AiFeatureSetting | null {
     if (!setting) return null;
-    const provider = this.providers.get(setting.provider);
-    if (!provider?.models.some((model) => model.id === setting.model)) return null;
+    if (!this.providers.has(setting.provider) || !setting.model.trim()) return null;
     return setting;
   }
 }

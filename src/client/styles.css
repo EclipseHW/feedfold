@@ -3361,6 +3361,34 @@ kbd {
   color: var(--text);
 }
 
+.ai-model-form {
+  display: flex;
+  width: min(100%, 620px);
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.ai-model-form input {
+  width: min(100%, 420px);
+  height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.ai-model-form input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.ai-settings-section .setting-row code {
+  color: var(--text-secondary);
+  font-size: 0.95em;
+}
+
 .ai-key-form {
   display: flex;
   width: min(100%, 620px);
@@ -3808,6 +3836,10 @@ kbd {
     width: 100%;
     justify-content: flex-start;
   }
+  .ai-model-form {
+    width: 100%;
+    justify-content: flex-start;
+  }
   .ai-provider-control {
     width: 100%;
     justify-content: flex-start;
@@ -3967,6 +3999,15 @@ kbd {
   }
   .ai-key-form {
     flex-wrap: wrap;
+  }
+  .ai-model-form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .ai-model-form input,
+  .ai-model-form .secondary-button {
+    width: 100%;
+    max-width: none;
   }
   .ai-provider-control {
     align-items: stretch;
