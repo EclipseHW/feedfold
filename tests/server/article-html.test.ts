@@ -110,6 +110,31 @@ native dev
     expect(cleanArticleHtml(html)).toBe(html);
   });
 
+  it("renders Telegram blockquotes with inline formatting as prose quotes", () => {
+    const source = `<blockquote>Средняя продолжительность жизни российского военного на поле боя сейчас — <b>от 20 до 30 минут.</b><br><br><b>20–30 минут.</b> Это потому что ИИ-дроны стали специализированными машинами.</blockquote>
+      <blockquote>&quot;Противники США, включая <b>как минимум Россию,</b> имеют возможности компрометировать инфраструктуру&quot;.</blockquote>
+      <blockquote><b>Note:</b> This remains a callout.</blockquote>`;
+    const telegramUrl = "https://t.me/ToBeOr_Official/21389";
+    const html = cleanArticleHtml(source, telegramUrl);
+    const body = articleBody(html);
+    const quotes = body.querySelectorAll("blockquote");
+
+    expect(quotes[0]?.className).toBe("article-prose-quote article-prose-quote-marked");
+    expect(quotes[0]?.querySelector(":scope > .article-quote-mark")).toMatchObject({
+      ariaHidden: "true",
+      textContent: "“",
+    });
+    expect(quotes[1]?.className).toBe("article-prose-quote");
+    expect(quotes[1]?.querySelector(":scope > .article-quote-mark")).toBeNull();
+    expect(quotes[2]?.className).toBe("");
+    expect(cleanArticleHtml(html, telegramUrl)).toBe(html);
+
+    const genericBody = articleBody(cleanArticleHtml(source, "https://example.test/article"));
+    expect([...genericBody.querySelectorAll("blockquote")].map((quote) => quote.className)).toEqual(
+      ["", "", ""],
+    );
+  });
+
   it("keeps commas inside responsive image URLs while resolving relative candidates", () => {
     const webpCandidate =
       "https://substackcdn.com/image/fetch/$s_!token!,w_424,c_limit,f_webp,q_auto:good/https%3A%2F%2Fmedia.example%2Fhero.png";

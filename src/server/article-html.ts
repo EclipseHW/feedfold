@@ -1,6 +1,7 @@
 import { JSDOM } from "jsdom";
 import parseSrcset from "parse-srcset";
 import sanitizeHtml from "sanitize-html";
+import { isTelegramPostUrl } from "./telegram-feed.js";
 
 const TABLE_SCROLL_CLASS = "article-table-scroll";
 const QUOTE_FIGURE_CLASS = "article-quote";
@@ -112,10 +113,11 @@ function stripGeneratedQuoteMarkers(html: string): string {
   return fragmentHtml(fragment);
 }
 
-function enrichArticleStructure(html: string): string {
+function enrichArticleStructure(html: string, baseUrl?: string): string {
   if (!/<(?:blockquote|table)\b/i.test(html)) return html;
 
   const fragment = JSDOM.fragment(html);
+  const isTelegramArticle = baseUrl ? isTelegramPostUrl(baseUrl) : false;
   for (const blockquote of fragment.querySelectorAll("blockquote")) {
     for (const marker of blockquote.querySelectorAll(`:scope > span.${QUOTE_MARK_CLASS}`)) {
       marker.remove();
@@ -129,7 +131,7 @@ function enrichArticleStructure(html: string): string {
     const isQuotedTextOnly = directChildren.length === 0 && /^[“"]/.test(text);
     const isProseQuote =
       text.length > 0 &&
-      (hasParagraphStructure || isQuotedTextOnly) &&
+      (hasParagraphStructure || isQuotedTextOnly || isTelegramArticle) &&
       !blockquote.querySelector(COMPLEX_QUOTE_CONTENT) &&
       !CALLOUT_PREFIX_PATTERN.test(text);
     if (isProseQuote) {
@@ -287,5 +289,5 @@ export function cleanArticleHtml(html: string, baseUrl?: string): string {
     ...sanitizeOptions,
     transformTags,
   }).trim();
-  return enrichArticleStructure(sanitized);
+  return enrichArticleStructure(sanitized, baseUrl);
 }
