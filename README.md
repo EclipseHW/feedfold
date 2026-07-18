@@ -12,6 +12,7 @@ It deliberately has no social, discovery, recommendation, or public account-mana
 - Keyboard navigation for the complete reading loop.
 - Rules that keep wanted articles, hide noise, or mark matches as read.
 - Full-text extraction with feed content as a visible fallback.
+- One-click AI article summaries through Google Gemini, OpenAI, or Anthropic.
 - Manual refresh and server-side background polling.
 - Per-feed last attempt, last success, HTTP status, and error details.
 - Persistent article font sizing, visible keyboard focus, and reduced-motion support.
@@ -99,6 +100,8 @@ Compose accepts these values from a project-level `.env` file or the shell:
 | `POLL_INTERVAL_MINUTES` | `20` | Initial background polling interval for a new database. |
 | `FEED_FETCH_TIMEOUT_MS` | `15000` | Feed request timeout in milliseconds. |
 | `ARTICLE_FETCH_TIMEOUT_MS` | `20000` | Full-text article request timeout in milliseconds. |
+| `AI_CREDENTIALS_KEY` | none | A persistent 64-character hexadecimal key used to encrypt provider API keys. AI setup is disabled until this is set. |
+| `AI_REQUEST_TIMEOUT_MS` | `60000` | AI provider request timeout in milliseconds. |
 
 The container fixes its internal runtime settings to `HOST=0.0.0.0`, `PORT=3000`, and `DATABASE_PATH=/data/echovale.db`. For a non-container run, all server settings are listed in `.env.example`.
 
@@ -110,9 +113,23 @@ docker compose up -d
 
 Background polling runs in the server and continues when no browser is open. The initial interval comes from `POLL_INTERVAL_MINUTES`; later changes made in **Settings** are stored in SQLite and survive restarts. Manual refresh remains available from the interface. Feed health shows the last attempt separately from the last successful update, so a stale or failing source is distinguishable from a healthy feed with no new articles.
 
+## AI article summaries
+
+Create a persistent encryption key before saving provider credentials:
+
+```sh
+openssl rand -hex 32
+```
+
+Save the generated value as `AI_CREDENTIALS_KEY` in the project-level `.env` file, recreate the service, then open **Settings → AI summaries**. Choose Google Gemini, OpenAI, or Anthropic and save that provider's API key. Keys are encrypted per account before they enter SQLite and are never returned to the browser after saving.
+
+Use **Summarize** in the article action bar, or press `m`. Echovale prefers loaded publisher content, falls back to feed content, and finally uses the feed excerpt. A summary is cached until the article source changes; **Regenerate** deliberately requests a new result and can use a newly selected provider.
+
+Provider credentials are shared by Echovale's AI feature foundation, while each feature owns its provider/model choice and prompt. This lets a future digest feature reuse saved credentials without coupling its model or behavior to article summaries.
+
 ## Back up and restore
 
-Use a stopped service for a consistent copy of the SQLite database and its journal files.
+Use a stopped service for a consistent copy of the SQLite database and its journal files. Back up the project-level `.env` securely as well: restoring encrypted provider keys requires the same `AI_CREDENTIALS_KEY`. If that key is lost, the database still starts, but each provider API key must be entered again.
 
 Create a timestamped backup:
 
@@ -173,6 +190,7 @@ Single-key shortcuts pause while focus is in a text field or other editable cont
 | `u` | Mark the active article unread. |
 | `s` | Toggle the active article's starred state. |
 | `c` | Copy the active article URL. |
+| `m` | Show, hide, or create the active article summary. |
 | `r` | Refresh the current feed or scope. |
 | `Shift+r` | Refresh all feeds. |
 | `[` | Decrease article font size. |

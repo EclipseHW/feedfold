@@ -1,6 +1,10 @@
 import type {
+  AiFeature,
+  AiProvider,
+  AiSettings,
   AppSettings,
   Article,
+  ArticleAiSummary,
   ArticlePage,
   ArticleQuery,
   BootstrapData,
@@ -129,6 +133,12 @@ export const api = {
   loadFullContent: (id: number) =>
     request<Article>(`/api/articles/${id}/extract`, { method: "POST" }),
 
+  summarizeArticle: (id: number, regenerate = false) =>
+    request<ArticleAiSummary>(`/api/articles/${id}/summary`, {
+      method: "POST",
+      body: JSON.stringify(regenerate ? { regenerate: true } : {}),
+    }),
+
   updateArticleState: (id: number, state: { isRead?: boolean; isStarred?: boolean }) =>
     request<Article>(`/api/articles/${id}/state`, {
       method: "PATCH",
@@ -187,6 +197,23 @@ export const api = {
 
   updateSettings: (input: Partial<AppSettings>) =>
     request<AppSettings>("/api/settings", { method: "PATCH", body: JSON.stringify(input) }),
+
+  aiSettings: () => request<AiSettings>("/api/ai/settings"),
+
+  updateAiFeature: (feature: AiFeature, input: { provider: AiProvider; model?: string }) =>
+    request<AiSettings>(`/api/ai/features/${feature}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+
+  saveAiProviderKey: (provider: AiProvider, apiKey: string) =>
+    request<AiSettings>(`/api/ai/providers/${provider}/key`, {
+      method: "PUT",
+      body: JSON.stringify({ apiKey }),
+    }),
+
+  deleteAiProviderKey: (provider: AiProvider) =>
+    request<AiSettings>(`/api/ai/providers/${provider}/key`, { method: "DELETE" }),
 
   importOpml: async (file: File) =>
     request<ImportResult>("/api/opml/import", {

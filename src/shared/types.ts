@@ -4,8 +4,51 @@ export type ExtractionStatus = "pending" | "processing" | "complete" | "failed" 
 export type RuleField = "title" | "author" | "summary" | "content" | "media" | "any";
 export type RuleAction = "hide" | "keep" | "mark_read";
 export type RuleConditionOperator = "and" | "or";
+export type AiProvider = "gemini" | "openai" | "anthropic";
+export type AiFeature = "article_summary";
+export type AiArticleSourceKind = "full" | "feed" | "excerpt";
 export const MARK_READ_AGE_DAYS = [1, 2, 3, 7, 14] as const;
 export type MarkReadAgeDays = (typeof MARK_READ_AGE_DAYS)[number];
+
+export interface AiModelOption {
+  id: string;
+  label: string;
+}
+
+export interface AiProviderOption {
+  id: AiProvider;
+  label: string;
+  configured: boolean;
+  defaultModel: string;
+  models: AiModelOption[];
+}
+
+export interface AiFeatureSetting {
+  provider: AiProvider;
+  model: string;
+}
+
+export interface AiSettings {
+  credentialStorageAvailable: boolean;
+  providers: AiProviderOption[];
+  features: {
+    articleSummary: AiFeatureSetting | null;
+  };
+}
+
+export interface AiUsage {
+  inputTokens: number | null;
+  outputTokens: number | null;
+}
+
+export interface ArticleAiSummary {
+  text: string;
+  provider: AiProvider;
+  model: string;
+  sourceKind: AiArticleSourceKind;
+  generatedAt: string;
+  usage: AiUsage;
+}
 
 export interface RuleCondition {
   field: RuleField;
@@ -91,6 +134,7 @@ export interface Article {
   contentSource: "article" | "feed" | null;
   extractionStatus: ExtractionStatus;
   extractionError: string | null;
+  aiSummary: ArticleAiSummary | null;
   isRead: boolean;
   isStarred: boolean;
 }
@@ -119,6 +163,7 @@ export interface BootstrapData {
   folders: Folder[];
   feeds: Feed[];
   settings: AppSettings;
+  aiSettings: AiSettings;
   counts: {
     unread: number;
     starred: number;

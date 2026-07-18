@@ -13,6 +13,7 @@ import {
   LoaderCircle,
   RefreshCw,
   Rss,
+  Sparkles,
   Star,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -601,26 +602,44 @@ export function ArticleList({
   );
 }
 
+export interface ArticleSummaryViewState {
+  visible: boolean;
+  loading: boolean;
+  error: string | null;
+  configurationMissing: boolean;
+}
+
+export const EMPTY_ARTICLE_SUMMARY_STATE: ArticleSummaryViewState = {
+  visible: false,
+  loading: false,
+  error: null,
+  configurationMissing: false,
+};
+
 interface ArticleActionsProps {
   article: Article;
   fullContentVisible: boolean;
+  summaryState: ArticleSummaryViewState;
   onPrevious?: () => void;
   onNext?: () => void;
   onMarkUnread: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onToggleFullContent: (article: Article) => void;
+  onToggleSummary: (article: Article) => void;
 }
 
 function ArticleActions({
   article,
   fullContentVisible,
+  summaryState,
   onPrevious,
   onNext,
   onMarkUnread,
   onToggleStar,
   onCopy,
   onToggleFullContent,
+  onToggleSummary,
 }: ArticleActionsProps) {
   const fullContentAvailable = Boolean(article.url) && !article.media;
   const cachedFullContent = article.extractionStatus === "complete" && Boolean(article.contentHtml);
@@ -638,6 +657,15 @@ function ArticleActions({
         : cachedFullContent
           ? "Show full content"
           : "Load full content";
+  const summaryLabel = summaryState.loading
+    ? "Summarizing"
+    : summaryState.visible
+      ? "Hide summary"
+      : article.aiSummary
+        ? "Show summary"
+        : summaryState.error
+          ? "Retry summary"
+          : "Summarize";
   return (
     <div className="article-actions" role="toolbar" aria-label="Article actions">
       {onPrevious ? (
@@ -691,6 +719,27 @@ function ArticleActions({
         </button>
       ) : null}
       <button
+        className="summary-action"
+        type="button"
+        disabled={summaryState.loading}
+        aria-expanded={summaryState.visible}
+        aria-controls={`article-${article.id}-ai-summary`}
+        onClick={() => onToggleSummary(article)}
+        aria-label={`${summaryLabel} (M)`}
+        title={`${summaryLabel} (M)`}
+      >
+        {summaryState.loading ? (
+          <LoaderCircle className="spin" aria-hidden="true" size={16} />
+        ) : summaryState.error && !summaryState.visible ? (
+          <RefreshCw aria-hidden="true" size={16} />
+        ) : (
+          <Sparkles aria-hidden="true" size={16} />
+        )}
+        <span className="action-label">{summaryLabel}</span>
+        <Kbd>M</Kbd>
+      </button>
+      <span className="action-divider" />
+      <button
         type="button"
         disabled={!article.isRead}
         onClick={() => onMarkUnread(article)}
@@ -727,6 +776,134 @@ function ArticleActions({
   );
 }
 
+function summaryContent(text: string): { paragraphs: string[]; bullets: string[] } {
+  const paragraphs: string[] = [];
+  const bullets: string[] = [];
+  for (const line of text.split(/\n+/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    if (trimmed.startsWith("•")) {
+      bullets.push(trimmed.slice(1).trim());
+    } else {
+      paragraphs.push(trimmed);
+    }
+  }
+  return { paragraphs, bullets };
+}
+
+function ArticleSummaryPanel({
+  article,
+  state,
+  onRegenerate,
+  onOpenSettings,
+}: {
+  article: Article;
+  state: ArticleSummaryViewState;
+  onRegenerate: (article: Article) => void;
+  onOpenSettings: () => void;
+}) {
+  if (!state.visible) return null;
+  const summary = article.aiSummary;
+  const content = summary ? summaryContent(summary.text) : null;
+  const titleId = `article-${article.id}-ai-summary-title`;
+
+  return (
+    <section
+      id={`article-${article.id}-ai-summary`}
+      className="article-ai-summary"
+      aria-labelledby={titleId}
+      aria-live="polite"
+      aria-busy={state.loading}
+    >
+      <div className="article-ai-summary-heading">
+        <div>
+          <Sparkles aria-hidden="true" size={17} />
+          <h3 id={titleId}>Summary</h3>
+        </div>
+        {summary ? (
+          <button
+            className="quiet-button article-summary-regenerate"
+            type="button"
+            disabled={state.loading}
+            onClick={() => onRegenerate(article)}
+          >
+            {state.loading ? (
+              <LoaderCircle className="spin" aria-hidden="true" size={14} />
+            ) : (
+              <RefreshCw aria-hidden="true" size={14} />
+            )}
+            {state.loading ? "Updating" : "Regenerate"}
+          </button>
+        ) : null}
+      </div>
+
+      {state.loading && !summary ? (
+        <div className="article-summary-loading" role="status">
+          <span>Generating summary</span>
+          <div className="article-summary-skeleton" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </div>
+        </div>
+      ) : state.configurationMissing ? (
+        <div className="article-summary-message">
+          <strong>Article summaries are not set up</strong>
+          <p>Choose a provider and save an API key in Settings.</p>
+          <button className="secondary-button" type="button" onClick={onOpenSettings}>
+            Open AI settings
+          </button>
+        </div>
+      ) : summary ? (
+        <div className="article-summary-text">
+          {content?.paragraphs.map((paragraph, index) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: Provider output can repeat an identical sentence.
+            <p key={`${index}-${paragraph}`}>{paragraph}</p>
+          ))}
+          {content && content.bullets.length > 0 ? (
+            <ul>
+              {content.bullets.map((bullet, index) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: Provider output can repeat an identical key point.
+                <li key={`${index}-${bullet}`}>{bullet}</li>
+              ))}
+            </ul>
+          ) : null}
+        </div>
+      ) : !state.error ? (
+        <div className="article-summary-message">
+          <strong>The article changed</strong>
+          <p>Create an updated summary from the latest article text.</p>
+          <button className="secondary-button" type="button" onClick={() => onRegenerate(article)}>
+            <Sparkles aria-hidden="true" size={14} />
+            Create updated summary
+          </button>
+        </div>
+      ) : null}
+
+      {state.error ? (
+        <div className="article-summary-error" role="alert">
+          <AlertTriangle aria-hidden="true" size={16} />
+          <div>
+            <strong>Summary could not be created</strong>
+            <p>{state.error}</p>
+          </div>
+          {!summary ? (
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={state.loading}
+              onClick={() => onRegenerate(article)}
+            >
+              <RefreshCw aria-hidden="true" size={14} />
+              Retry summary
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 interface SelectionMenuState {
   text: string;
   selection: TextSelectionSnapshot;
@@ -739,13 +916,19 @@ function ArticleDocument({
   article,
   titleId,
   fullContentVisible,
+  summaryState,
   onToggleFullContent,
+  onRegenerateSummary,
+  onOpenAiSettings,
   onFilterSelection,
 }: {
   article: Article;
   titleId: string;
   fullContentVisible: boolean;
+  summaryState: ArticleSummaryViewState;
   onToggleFullContent: (article: Article) => void;
+  onRegenerateSummary: (article: Article) => void;
+  onOpenAiSettings: () => void;
   onFilterSelection: (article: Article, text: string) => void;
 }) {
   const documentRef = useRef<HTMLDivElement>(null);
@@ -838,6 +1021,12 @@ function ArticleDocument({
     <>
       <div ref={documentRef} className="article-document">
         <ArticleHeader article={article} id={titleId} />
+        <ArticleSummaryPanel
+          article={article}
+          state={summaryState}
+          onRegenerate={onRegenerateSummary}
+          onOpenSettings={onOpenAiSettings}
+        />
         <ArticleBody
           article={article}
           fullContentVisible={fullContentVisible}
@@ -879,6 +1068,7 @@ function ArticleDocument({
 export function ReaderPane({
   article,
   fullContentVisible,
+  summaryState,
   onBack,
   onPrevious,
   onNext,
@@ -886,10 +1076,14 @@ export function ReaderPane({
   onToggleStar,
   onCopy,
   onToggleFullContent,
+  onToggleSummary,
+  onRegenerateSummary,
+  onOpenAiSettings,
   onFilterSelection,
 }: {
   article: Article | null;
   fullContentVisible: boolean;
+  summaryState: ArticleSummaryViewState;
   onBack: () => void;
   onPrevious: () => void;
   onNext: () => void;
@@ -897,6 +1091,9 @@ export function ReaderPane({
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onToggleFullContent: (article: Article) => void;
+  onToggleSummary: (article: Article) => void;
+  onRegenerateSummary: (article: Article) => void;
+  onOpenAiSettings: () => void;
   onFilterSelection: (article: Article, text: string) => void;
 }) {
   if (!article) {
@@ -923,12 +1120,14 @@ export function ReaderPane({
           <ArticleActions
             article={article}
             fullContentVisible={fullContentVisible}
+            summaryState={summaryState}
             onPrevious={onPrevious}
             onNext={onNext}
             onMarkUnread={onMarkUnread}
             onToggleStar={onToggleStar}
             onCopy={onCopy}
             onToggleFullContent={onToggleFullContent}
+            onToggleSummary={onToggleSummary}
           />
         </div>
       </div>
@@ -936,7 +1135,10 @@ export function ReaderPane({
         article={article}
         titleId={`article-${article.id}-title`}
         fullContentVisible={fullContentVisible}
+        summaryState={summaryState}
         onToggleFullContent={onToggleFullContent}
+        onRegenerateSummary={onRegenerateSummary}
+        onOpenAiSettings={onOpenAiSettings}
         onFilterSelection={onFilterSelection}
       />
     </article>
@@ -1113,6 +1315,7 @@ export function ExpandedStream({
   activeId,
   topAlignedId,
   fullContentVisibleIds,
+  summaryStates,
   markReadOnScroll,
   hasMore,
   loadingMore,
@@ -1123,12 +1326,16 @@ export function ExpandedStream({
   onToggleStar,
   onCopy,
   onToggleFullContent,
+  onToggleSummary,
+  onRegenerateSummary,
+  onOpenAiSettings,
   onFilterSelection,
 }: {
   articles: Article[];
   activeId: number | null;
   topAlignedId: number | null;
   fullContentVisibleIds: ReadonlySet<number>;
+  summaryStates: ReadonlyMap<number, ArticleSummaryViewState>;
   markReadOnScroll: boolean;
   hasMore: boolean;
   loadingMore: boolean;
@@ -1139,6 +1346,9 @@ export function ExpandedStream({
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onToggleFullContent: (article: Article) => void;
+  onToggleSummary: (article: Article) => void;
+  onRegenerateSummary: (article: Article) => void;
+  onOpenAiSettings: () => void;
   onFilterSelection: (article: Article, text: string) => void;
 }) {
   const streamRef = useRef<HTMLElement>(null);
@@ -1166,17 +1376,22 @@ export function ExpandedStream({
             <ArticleActions
               article={article}
               fullContentVisible={fullContentVisibleIds.has(article.id)}
+              summaryState={summaryStates.get(article.id) ?? EMPTY_ARTICLE_SUMMARY_STATE}
               onMarkUnread={onMarkUnread}
               onToggleStar={onToggleStar}
               onCopy={onCopy}
               onToggleFullContent={onToggleFullContent}
+              onToggleSummary={onToggleSummary}
             />
           </div>
           <ArticleDocument
             article={article}
             titleId={`expanded-${article.id}-title`}
             fullContentVisible={fullContentVisibleIds.has(article.id)}
+            summaryState={summaryStates.get(article.id) ?? EMPTY_ARTICLE_SUMMARY_STATE}
             onToggleFullContent={onToggleFullContent}
+            onRegenerateSummary={onRegenerateSummary}
+            onOpenAiSettings={onOpenAiSettings}
             onFilterSelection={onFilterSelection}
           />
         </article>

@@ -244,7 +244,25 @@ describe("database migrations", () => {
           embedUrl: "https://www.youtube.com/embed/short123",
         },
       });
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(10);
+      expect(
+        database.sqlite
+          .prepare("SELECT id, content_revision AS contentRevision FROM articles ORDER BY id")
+          .all(),
+      ).toMatchObject([
+        { id: 1, contentRevision: 1 },
+        { id: 2, contentRevision: 1 },
+        { id: 3, contentRevision: 1 },
+        { id: 4, contentRevision: 1 },
+      ]);
+      expect(
+        database.sqlite
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'ai_%' ORDER BY name",
+          )
+          .pluck()
+          .all(),
+      ).toEqual(["ai_credentials", "ai_feature_settings"]);
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(11);
     } finally {
       database.close();
     }
@@ -256,7 +274,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(10);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(11);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");

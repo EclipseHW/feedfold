@@ -1,7 +1,13 @@
 import Sqlite from "better-sqlite3";
 import type {
+  AiArticleSourceKind,
+  AiFeature,
+  AiFeatureSetting,
+  AiProvider,
+  AiUsage,
   AppSettings,
   Article,
+  ArticleAiSummary,
   ArticleMedia,
   ArticlePage,
   ArticleQuery,
@@ -52,6 +58,23 @@ export interface ParsedFeed {
 export interface ExtractionRecord {
   id: number;
   url: string | null;
+}
+
+export interface AiArticleRecord {
+  id: number;
+  revision: number;
+  title: string;
+  url: string | null;
+  author: string | null;
+  contentHtml: string | null;
+  feedContentHtml: string | null;
+  excerpt: string;
+  currentSummary: StoredArticleAiSummary | null;
+}
+
+export interface StoredArticleAiSummary extends ArticleAiSummary {
+  sourceRevision: number;
+  promptVersion: number;
 }
 
 type Row = Record<string, unknown>;
@@ -589,6 +612,42 @@ const migrations: Migration[] = [
     sql: "",
     after: (database) => recleanStructuredArticleHtml(database, ["blockquote"]),
   },
+  {
+    sql: `
+      ALTER TABLE articles ADD COLUMN content_revision INTEGER NOT NULL DEFAULT 1;
+
+      CREATE TABLE ai_credentials (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        provider TEXT NOT NULL,
+        encrypted_api_key TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(user_id, provider)
+      );
+
+      CREATE TABLE ai_feature_settings (
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        feature TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(user_id, feature)
+      );
+
+      CREATE TABLE article_ai_summaries (
+        article_id INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
+        source_revision INTEGER NOT NULL,
+        prompt_version INTEGER NOT NULL,
+        source_kind TEXT NOT NULL CHECK(source_kind IN ('full', 'feed', 'excerpt')),
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        summary_text TEXT NOT NULL,
+        input_tokens INTEGER CHECK(input_tokens IS NULL OR input_tokens >= 0),
+        output_tokens INTEGER CHECK(output_tokens IS NULL OR output_tokens >= 0),
+        generated_at TEXT NOT NULL
+      );
+    `,
+  },
 ];
 
 function now(): string {
@@ -688,8 +747,34 @@ function mapArticle(row: Row): Article {
       row.contentSource === "article" || row.contentSource === "feed" ? row.contentSource : null,
     extractionStatus: row.extractionStatus as Article["extractionStatus"],
     extractionError: row.extractionError === null ? null : String(row.extractionError),
+    aiSummary: mapArticleAiSummary(row),
     isRead: toBoolean(row.isRead),
     isStarred: toBoolean(row.isStarred),
+  };
+}
+
+function mapArticleAiSummary(row: Row): ArticleAiSummary | null {
+  if (row.aiSummaryText === null || row.aiSummaryText === undefined) return null;
+  return {
+    text: String(row.aiSummaryText),
+    provider: row.aiSummaryProvider as AiProvider,
+    model: String(row.aiSummaryModel),
+    sourceKind: row.aiSummarySourceKind as AiArticleSourceKind,
+    generatedAt: String(row.aiSummaryGeneratedAt),
+    usage: {
+      inputTokens: row.aiSummaryInputTokens === null ? null : Number(row.aiSummaryInputTokens),
+      outputTokens: row.aiSummaryOutputTokens === null ? null : Number(row.aiSummaryOutputTokens),
+    },
+  };
+}
+
+function mapStoredArticleAiSummary(row: Row): StoredArticleAiSummary | null {
+  const summary = mapArticleAiSummary(row);
+  if (!summary) return null;
+  return {
+    ...summary,
+    sourceRevision: Number(row.aiSummarySourceRevision),
+    promptVersion: Number(row.aiSummaryPromptVersion),
   };
 }
 
@@ -840,6 +925,76 @@ export class AppDatabase {
         userId,
       );
     return this.getSettings(userId);
+  }
+
+  getAiFeatureSetting(userId: number, feature: AiFeature): AiFeatureSetting | null {
+    const row = this.sqlite
+      .prepare(
+        `SELECT provider, model
+         FROM ai_feature_settings
+         WHERE user_id = ? AND feature = ?`,
+      )
+      .get(userId, feature) as Row | undefined;
+    if (!row) return null;
+    return { provider: row.provider as AiProvider, model: String(row.model) };
+  }
+
+  setAiFeatureSetting(
+    userId: number,
+    feature: AiFeature,
+    setting: AiFeatureSetting,
+  ): AiFeatureSetting {
+    this.sqlite
+      .prepare(
+        `INSERT INTO ai_feature_settings (user_id, feature, provider, model, updated_at)
+         VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, feature) DO UPDATE SET
+           provider = excluded.provider,
+           model = excluded.model,
+           updated_at = excluded.updated_at`,
+      )
+      .run(userId, feature, setting.provider, setting.model, now());
+    return this.getAiFeatureSetting(userId, feature) as AiFeatureSetting;
+  }
+
+  listConfiguredAiProviders(userId: number): AiProvider[] {
+    return (
+      this.sqlite
+        .prepare("SELECT provider FROM ai_credentials WHERE user_id = ? ORDER BY provider")
+        .all(userId) as Array<{ provider: AiProvider }>
+    ).map((row) => row.provider);
+  }
+
+  getEncryptedAiCredential(userId: number, provider: AiProvider): string | null {
+    const row = this.sqlite
+      .prepare(
+        `SELECT encrypted_api_key AS encryptedApiKey
+         FROM ai_credentials WHERE user_id = ? AND provider = ?`,
+      )
+      .get(userId, provider) as { encryptedApiKey: string } | undefined;
+    return row?.encryptedApiKey ?? null;
+  }
+
+  setEncryptedAiCredential(userId: number, provider: AiProvider, encryptedApiKey: string): void {
+    const timestamp = now();
+    this.sqlite
+      .prepare(
+        `INSERT INTO ai_credentials (
+           user_id, provider, encrypted_api_key, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(user_id, provider) DO UPDATE SET
+           encrypted_api_key = excluded.encrypted_api_key,
+           updated_at = excluded.updated_at`,
+      )
+      .run(userId, provider, encryptedApiKey, timestamp, timestamp);
+  }
+
+  deleteAiCredential(userId: number, provider: AiProvider): boolean {
+    return (
+      this.sqlite
+        .prepare("DELETE FROM ai_credentials WHERE user_id = ? AND provider = ?")
+        .run(userId, provider).changes > 0
+    );
   }
 
   listFolders(userId: number): Folder[] {
@@ -1234,7 +1389,8 @@ export class AppDatabase {
                content_html = CASE WHEN ? = 1 THEN NULL ELSE content_html END,
                content_source = CASE WHEN ? = 1 THEN NULL ELSE content_source END,
                extraction_status = CASE WHEN ? = 1 THEN ? ELSE extraction_status END,
-               extraction_error = CASE WHEN ? = 1 THEN NULL ELSE extraction_error END
+               extraction_error = CASE WHEN ? = 1 THEN NULL ELSE extraction_error END,
+               content_revision = content_revision + ?
            WHERE id = ?`,
         );
         for (const article of parsed.articles) {
@@ -1248,6 +1404,13 @@ export class AppDatabase {
             const statusChanged = media !== null && existing.extractionStatus !== "feed";
             const replaceImage = sourceChanged || media !== null;
             const resetExtraction = sourceChanged || statusChanged;
+            const aiSourceChanged =
+              resetExtraction ||
+              existing.title !== article.title ||
+              existing.url !== article.url ||
+              existing.author !== article.author ||
+              existing.summary !== article.summary ||
+              existing.feedContentHtml !== article.feedContentHtml;
             const changed =
               sourceChanged ||
               statusChanged ||
@@ -1274,6 +1437,7 @@ export class AppDatabase {
               resetExtraction ? 1 : 0,
               extractionStatus,
               resetExtraction ? 1 : 0,
+              aiSourceChanged ? 1 : 0,
               articleId,
             );
             ruleArticleIds.add(articleId);
@@ -1329,7 +1493,7 @@ export class AppDatabase {
       .run(input.httpStatus, input.error, nextPollAt, id);
   }
 
-  getBootstrap(userId: number): BootstrapData {
+  getBootstrap(userId: number): Omit<BootstrapData, "aiSettings"> {
     const counts = this.sqlite
       .prepare(
         `SELECT
@@ -1418,11 +1582,21 @@ export class AppDatabase {
                 articles.content_source AS contentSource,
                 articles.extraction_status AS extractionStatus,
                 articles.extraction_error AS extractionError,
+                ${query.includeContent ? "article_ai_summaries.summary_text" : "NULL"} AS aiSummaryText,
+                ${query.includeContent ? "article_ai_summaries.provider" : "NULL"} AS aiSummaryProvider,
+                ${query.includeContent ? "article_ai_summaries.model" : "NULL"} AS aiSummaryModel,
+                ${query.includeContent ? "article_ai_summaries.source_kind" : "NULL"} AS aiSummarySourceKind,
+                ${query.includeContent ? "article_ai_summaries.generated_at" : "NULL"} AS aiSummaryGeneratedAt,
+                ${query.includeContent ? "article_ai_summaries.input_tokens" : "NULL"} AS aiSummaryInputTokens,
+                ${query.includeContent ? "article_ai_summaries.output_tokens" : "NULL"} AS aiSummaryOutputTokens,
                 articles.is_read AS isRead,
                 articles.is_starred AS isStarred,
                 COALESCE(articles.published_at, articles.discovered_at) AS sortAt
          FROM articles
          JOIN feeds ON feeds.id = articles.feed_id
+         LEFT JOIN article_ai_summaries
+           ON article_ai_summaries.article_id = articles.id
+          AND article_ai_summaries.source_revision = articles.content_revision
          WHERE ${where.join(" AND ")}
          ORDER BY COALESCE(articles.published_at, articles.discovered_at) DESC, articles.id DESC
          LIMIT ?`,
@@ -1459,13 +1633,145 @@ export class AppDatabase {
                 articles.content_source AS contentSource,
                 articles.extraction_status AS extractionStatus,
                 articles.extraction_error AS extractionError,
+                article_ai_summaries.summary_text AS aiSummaryText,
+                article_ai_summaries.provider AS aiSummaryProvider,
+                article_ai_summaries.model AS aiSummaryModel,
+                article_ai_summaries.source_kind AS aiSummarySourceKind,
+                article_ai_summaries.generated_at AS aiSummaryGeneratedAt,
+                article_ai_summaries.input_tokens AS aiSummaryInputTokens,
+                article_ai_summaries.output_tokens AS aiSummaryOutputTokens,
                 articles.is_read AS isRead,
                 articles.is_starred AS isStarred
-         FROM articles JOIN feeds ON feeds.id = articles.feed_id
+         FROM articles
+         JOIN feeds ON feeds.id = articles.feed_id
+         LEFT JOIN article_ai_summaries
+           ON article_ai_summaries.article_id = articles.id
+          AND article_ai_summaries.source_revision = articles.content_revision
          WHERE articles.id = ? AND feeds.user_id = ?`,
       )
       .get(id, userId) as Row | undefined;
     return row ? mapArticle(row) : null;
+  }
+
+  getArticleForAiSummary(userId: number, id: number): AiArticleRecord | null {
+    const row = this.sqlite
+      .prepare(
+        `SELECT articles.id,
+                articles.content_revision AS revision,
+                articles.title,
+                articles.url,
+                articles.author,
+                articles.content_html AS contentHtml,
+                articles.feed_content_html AS feedContentHtml,
+                articles.summary AS excerpt,
+                article_ai_summaries.source_revision AS aiSummarySourceRevision,
+                article_ai_summaries.prompt_version AS aiSummaryPromptVersion,
+                article_ai_summaries.source_kind AS aiSummarySourceKind,
+                article_ai_summaries.provider AS aiSummaryProvider,
+                article_ai_summaries.model AS aiSummaryModel,
+                article_ai_summaries.summary_text AS aiSummaryText,
+                article_ai_summaries.input_tokens AS aiSummaryInputTokens,
+                article_ai_summaries.output_tokens AS aiSummaryOutputTokens,
+                article_ai_summaries.generated_at AS aiSummaryGeneratedAt
+         FROM articles
+         JOIN feeds ON feeds.id = articles.feed_id
+         LEFT JOIN article_ai_summaries
+           ON article_ai_summaries.article_id = articles.id
+          AND article_ai_summaries.source_revision = articles.content_revision
+         WHERE articles.id = ? AND feeds.user_id = ?`,
+      )
+      .get(id, userId) as Row | undefined;
+    if (!row) return null;
+    return {
+      id: Number(row.id),
+      revision: Number(row.revision),
+      title: String(row.title),
+      url: row.url === null ? null : String(row.url),
+      author: row.author === null ? null : String(row.author),
+      contentHtml: row.contentHtml === null ? null : String(row.contentHtml),
+      feedContentHtml: row.feedContentHtml === null ? null : String(row.feedContentHtml),
+      excerpt: String(row.excerpt),
+      currentSummary: mapStoredArticleAiSummary(row),
+    };
+  }
+
+  getArticleAiSummary(userId: number, id: number): StoredArticleAiSummary | null {
+    const row = this.sqlite
+      .prepare(
+        `SELECT article_ai_summaries.source_revision AS aiSummarySourceRevision,
+                article_ai_summaries.prompt_version AS aiSummaryPromptVersion,
+                article_ai_summaries.source_kind AS aiSummarySourceKind,
+                article_ai_summaries.provider AS aiSummaryProvider,
+                article_ai_summaries.model AS aiSummaryModel,
+                article_ai_summaries.summary_text AS aiSummaryText,
+                article_ai_summaries.input_tokens AS aiSummaryInputTokens,
+                article_ai_summaries.output_tokens AS aiSummaryOutputTokens,
+                article_ai_summaries.generated_at AS aiSummaryGeneratedAt
+         FROM article_ai_summaries
+         JOIN articles ON articles.id = article_ai_summaries.article_id
+         JOIN feeds ON feeds.id = articles.feed_id
+         WHERE article_ai_summaries.article_id = ?
+           AND article_ai_summaries.source_revision = articles.content_revision
+           AND feeds.user_id = ?`,
+      )
+      .get(id, userId) as Row | undefined;
+    return row ? mapStoredArticleAiSummary(row) : null;
+  }
+
+  saveArticleAiSummary(
+    userId: number,
+    id: number,
+    sourceRevision: number,
+    input: {
+      promptVersion: number;
+      sourceKind: AiArticleSourceKind;
+      provider: AiProvider;
+      model: string;
+      text: string;
+      usage: AiUsage;
+    },
+  ): StoredArticleAiSummary | null {
+    const save = this.sqlite.transaction(() => {
+      const current = this.sqlite
+        .prepare(
+          `SELECT articles.content_revision AS revision
+           FROM articles JOIN feeds ON feeds.id = articles.feed_id
+           WHERE articles.id = ? AND feeds.user_id = ?`,
+        )
+        .get(id, userId) as { revision: number } | undefined;
+      if (!current || current.revision !== sourceRevision) return null;
+      this.sqlite
+        .prepare(
+          `INSERT INTO article_ai_summaries (
+             article_id, source_revision, prompt_version, source_kind, provider, model,
+             summary_text, input_tokens, output_tokens, generated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(article_id) DO UPDATE SET
+             source_revision = excluded.source_revision,
+             prompt_version = excluded.prompt_version,
+             source_kind = excluded.source_kind,
+             provider = excluded.provider,
+             model = excluded.model,
+             summary_text = excluded.summary_text,
+             input_tokens = excluded.input_tokens,
+             output_tokens = excluded.output_tokens,
+             generated_at = excluded.generated_at`,
+        )
+        .run(
+          id,
+          sourceRevision,
+          input.promptVersion,
+          input.sourceKind,
+          input.provider,
+          input.model,
+          input.text,
+          input.usage.inputTokens,
+          input.usage.outputTokens,
+          now(),
+        );
+      return this.getArticleAiSummary(userId, id);
+    });
+    return save();
   }
 
   updateArticleState(
@@ -1821,7 +2127,11 @@ export class AppDatabase {
       .prepare(
         `UPDATE articles
          SET content_html = ?, image_url = COALESCE(?, image_url), content_source = ?,
-             extraction_status = ?, extraction_error = ?
+             extraction_status = ?, extraction_error = ?,
+             content_revision = content_revision +
+               CASE WHEN ? = 'complete'
+                          AND (content_html IS NOT ? OR content_source IS NOT ?)
+                    THEN 1 ELSE 0 END
          WHERE id = ? AND extraction_status = 'processing'`,
       )
       .run(
@@ -1830,6 +2140,9 @@ export class AppDatabase {
         input.contentSource,
         input.status,
         input.error,
+        input.status,
+        input.contentHtml,
+        input.contentSource,
         id,
       ).changes;
     if (updated > 0) this.recomputeRulesForArticle(id);

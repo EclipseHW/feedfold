@@ -4,11 +4,15 @@ import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { ZodError, z } from "zod";
 import {
+  type AiFeature,
+  type AiProvider,
   type ArticleQuery,
   MARK_READ_AGE_DAYS,
   type MarkReadAgeDays,
   type MarkReadRequest,
 } from "../shared/types.js";
+import { AiError } from "./ai/errors.js";
+import { AiService } from "./ai/service.js";
 import { type AuthService, type LoginSession, sessionToken } from "./auth.js";
 import type { AppDatabase } from "./db.js";
 import type { ExtractionQueue } from "./extraction.js";
@@ -21,12 +25,15 @@ export interface AppServices {
   authService: AuthService;
   extractionQueue: ExtractionQueue;
   refreshService: FeedRefreshService;
+  aiService?: AiService;
   feedDiscoveryTimeoutMs?: number;
   staticDir?: string;
   logger?: boolean;
 }
 
 const idParams = z.object({ id: z.coerce.number().int().positive() });
+const aiFeatureParams = z.object({ feature: z.literal("article_summary") });
+const aiProviderParams = z.object({ provider: z.enum(["gemini", "openai", "anthropic"]) });
 const nullableId = z.number().int().positive().nullable();
 const markReadAgeDays = z
   .number()
@@ -77,6 +84,11 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     bodyLimit: 10 * 1024 * 1024,
     trustProxy: true,
   });
+  const aiService =
+    services.aiService ??
+    new AiService(services.database, {
+      credentialCipher: null,
+    });
   const requestUsers = new WeakMap<FastifyRequest, { id: number; username: string }>();
   const userId = (request: FastifyRequest): number => {
     const user = requestUsers.get(request);
@@ -85,6 +97,10 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
   };
 
   app.setErrorHandler((error, _request, reply) => {
+    if (error instanceof AiError) {
+      reply.code(error.statusCode).send({ error: error.message, code: error.code });
+      return;
+    }
     if (error instanceof ZodError) {
       reply.code(400).send({ error: error.issues[0]?.message ?? "Invalid request" });
       return;
@@ -160,7 +176,13 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
       .send();
   });
 
-  app.get("/api/bootstrap", async (request) => services.database.getBootstrap(userId(request)));
+  app.get("/api/bootstrap", async (request) => {
+    const accountId = userId(request);
+    return {
+      ...services.database.getBootstrap(accountId),
+      aiSettings: aiService.getSettings(accountId),
+    };
+  });
 
   app.get("/api/articles", async (request) => {
     const query = z
@@ -218,6 +240,15 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
       services.extractionQueue.prioritize(id);
     }
     return services.database.getArticle(accountId, id);
+  });
+
+  app.post("/api/articles/:id/summary", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const { regenerate } = z
+      .object({ regenerate: z.boolean().optional() })
+      .parse(request.body ?? {});
+    const summary = await aiService.summarizeArticle(userId(request), id, regenerate ?? false);
+    return summary ?? missing(reply, "Article");
   });
 
   app.get("/api/feeds", async (request) => ({
@@ -372,6 +403,32 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
       })
       .parse(request.body);
     return services.database.updateSettings(userId(request), body);
+  });
+
+  app.get("/api/ai/settings", async (request) => aiService.getSettings(userId(request)));
+
+  app.patch("/api/ai/features/:feature", async (request) => {
+    const { feature } = aiFeatureParams.parse(request.params) as { feature: AiFeature };
+    const body = z
+      .object({
+        provider: z.enum(["gemini", "openai", "anthropic"]),
+        model: z.string().trim().min(1).max(200).optional(),
+      })
+      .parse(request.body) as { provider: AiProvider; model?: string };
+    return aiService.setFeatureSetting(userId(request), feature, body.provider, body.model);
+  });
+
+  app.put("/api/ai/providers/:provider/key", async (request) => {
+    const { provider } = aiProviderParams.parse(request.params) as { provider: AiProvider };
+    const { apiKey } = z
+      .object({ apiKey: z.string().trim().min(1).max(10_000) })
+      .parse(request.body);
+    return aiService.setApiKey(userId(request), provider, apiKey);
+  });
+
+  app.delete("/api/ai/providers/:provider/key", async (request) => {
+    const { provider } = aiProviderParams.parse(request.params) as { provider: AiProvider };
+    return aiService.deleteApiKey(userId(request), provider);
   });
 
   app.post("/api/refresh", async (request) => {
