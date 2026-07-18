@@ -1719,6 +1719,35 @@ kbd {
   line-height: 1.68;
 }
 
+.article-content blockquote.article-prose-quote {
+  position: relative;
+  margin: 1.7em 0;
+  padding: 0.08em 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  font-size: 1.04em;
+  line-height: 1.7;
+  text-wrap: pretty;
+}
+
+.article-content blockquote.article-prose-quote-marked {
+  padding-inline-start: 2.45em;
+}
+
+.article-content blockquote > .article-quote-mark {
+  position: absolute;
+  inset-block-start: -0.14em;
+  inset-inline-start: 0;
+  color: var(--border-strong);
+  font-family: Georgia, Cambria, "Times New Roman", serif;
+  font-size: 2.5em;
+  font-weight: 700;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+}
+
 .article-content blockquote > :first-child {
   margin-top: 0;
 }
@@ -1742,6 +1771,10 @@ kbd {
   font-size: 0.76em;
   font-style: normal;
   line-height: 1.5;
+}
+
+.article-content .article-quote:has(> blockquote.article-prose-quote-marked) figcaption {
+  margin-inline-start: 3.35em;
 }
 
 .article-content pre {
@@ -3678,6 +3711,18 @@ kbd {
   }
   .article-header h2 {
     font-size: 24px;
+  }
+  .article-content blockquote.article-prose-quote {
+    font-size: 1.02em;
+  }
+  .article-content blockquote.article-prose-quote-marked {
+    padding-inline-start: 2em;
+  }
+  .article-content blockquote > .article-quote-mark {
+    font-size: 2.25em;
+  }
+  .article-content .article-quote:has(> blockquote.article-prose-quote-marked) figcaption {
+    margin-inline-start: 2.7em;
   }
   .management-page {
     padding-inline: 13px;

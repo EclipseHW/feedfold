@@ -62,6 +62,38 @@ interface Migration {
   foreignKeysOff?: boolean;
 }
 
+type ArticleStructureTag = "blockquote" | "table";
+
+function recleanStructuredArticleHtml(
+  database: Sqlite.Database,
+  tags: ArticleStructureTag[],
+): void {
+  for (const column of ["feed_content_html", "content_html"] as const) {
+    const structureCondition = tags.map((tag) => `${column} LIKE '%<${tag}%'`).join(" OR ");
+    const selectBatch = database.prepare(
+      `SELECT id, url, ${column} AS html
+       FROM articles
+       WHERE id > ? AND (${structureCondition})
+       ORDER BY id
+       LIMIT 50`,
+    );
+    const update = database.prepare(`UPDATE articles SET ${column} = ? WHERE id = ?`);
+    let lastId = 0;
+    while (true) {
+      const rows = selectBatch.all(lastId) as Array<{
+        id: number;
+        url: string | null;
+        html: string;
+      }>;
+      if (rows.length === 0) break;
+      for (const row of rows) {
+        update.run(cleanArticleHtml(row.html, row.url ?? undefined), row.id);
+      }
+      lastId = rows.at(-1)?.id ?? lastId;
+    }
+  }
+}
+
 const migrations: Migration[] = [
   {
     sql: `
@@ -520,32 +552,11 @@ const migrations: Migration[] = [
   },
   {
     sql: "",
-    after: (database) => {
-      for (const column of ["feed_content_html", "content_html"] as const) {
-        const selectBatch = database.prepare(
-          `SELECT id, url, ${column} AS html
-           FROM articles
-           WHERE id > ?
-             AND (${column} LIKE '%<blockquote%' OR ${column} LIKE '%<table%')
-           ORDER BY id
-           LIMIT 50`,
-        );
-        const update = database.prepare(`UPDATE articles SET ${column} = ? WHERE id = ?`);
-        let lastId = 0;
-        while (true) {
-          const rows = selectBatch.all(lastId) as Array<{
-            id: number;
-            url: string | null;
-            html: string;
-          }>;
-          if (rows.length === 0) break;
-          for (const row of rows) {
-            update.run(cleanArticleHtml(row.html, row.url ?? undefined), row.id);
-          }
-          lastId = rows.at(-1)?.id ?? lastId;
-        }
-      }
-    },
+    after: (database) => recleanStructuredArticleHtml(database, ["blockquote", "table"]),
+  },
+  {
+    sql: "",
+    after: (database) => recleanStructuredArticleHtml(database, ["blockquote"]),
   },
 ];
 

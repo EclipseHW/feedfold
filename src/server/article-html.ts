@@ -3,7 +3,14 @@ import sanitizeHtml from "sanitize-html";
 
 const TABLE_SCROLL_CLASS = "article-table-scroll";
 const QUOTE_FIGURE_CLASS = "article-quote";
+const PROSE_QUOTE_CLASS = "article-prose-quote";
+const PROSE_QUOTE_MARKED_CLASS = "article-prose-quote-marked";
+const QUOTE_MARK_CLASS = "article-quote-mark";
 const SCROLLABLE_TABLE_LABEL = "Scrollable table";
+const CALLOUT_PREFIX_PATTERN =
+  /^(?:\[\s*!\s*(?:note|tip|warning|important|caution)\s*\]|(?:a|side)\s+note\b|(?:note|tip|warning|important|caution|abstract|source|failsafe|disclaimer|reminder|update|takeaway|summary)\b|system\s+message\b|table\s+of\s+contents\b|bottom\s+line\b|tl\s*;\s*dr\b)/i;
+const COMPLEX_QUOTE_CONTENT =
+  "blockquote, pre, code, ul, ol, dl, table, img, picture, video, audio, iframe, h1, h2, h3, h4, h5, h6, div";
 
 const sanitizeOptions: sanitizeHtml.IOptions = {
   allowedTags: [
@@ -82,11 +89,56 @@ const sanitizeOptions: sanitizeHtml.IOptions = {
   allowProtocolRelative: false,
 };
 
+function stripGeneratedQuoteMarkers(html: string): string {
+  if (!html.includes(QUOTE_MARK_CLASS)) return html;
+
+  const fragment = JSDOM.fragment(html);
+  for (const marker of fragment.querySelectorAll(`span.${QUOTE_MARK_CLASS}`)) {
+    const isGeneratedMarker =
+      marker.parentElement?.tagName === "BLOCKQUOTE" &&
+      marker.parentElement.firstElementChild === marker &&
+      marker.getAttribute("aria-hidden") === "true" &&
+      marker.children.length === 0 &&
+      marker.textContent === "“";
+    if (isGeneratedMarker) marker.remove();
+  }
+  const container = fragment.ownerDocument.createElement("div");
+  container.append(fragment);
+  return container.innerHTML.trim();
+}
+
 function enrichArticleStructure(html: string): string {
   if (!/<(?:blockquote|table)\b/i.test(html)) return html;
 
   const fragment = JSDOM.fragment(html);
   for (const blockquote of fragment.querySelectorAll("blockquote")) {
+    for (const marker of blockquote.querySelectorAll(`:scope > span.${QUOTE_MARK_CLASS}`)) {
+      marker.remove();
+    }
+    blockquote.classList.remove(PROSE_QUOTE_CLASS, PROSE_QUOTE_MARKED_CLASS);
+
+    const text = (blockquote.textContent ?? "").replace(/\s+/g, " ").trim();
+    const directChildren = [...blockquote.children];
+    const hasParagraphStructure =
+      directChildren.length > 0 && directChildren.every((child) => child.tagName === "P");
+    const isQuotedTextOnly = directChildren.length === 0 && /^[“"]/.test(text);
+    const isProseQuote =
+      text.length > 0 &&
+      (hasParagraphStructure || isQuotedTextOnly) &&
+      !blockquote.querySelector(COMPLEX_QUOTE_CONTENT) &&
+      !CALLOUT_PREFIX_PATTERN.test(text);
+    if (isProseQuote) {
+      blockquote.classList.add(PROSE_QUOTE_CLASS);
+      if (!/^[“"]/.test(text)) {
+        blockquote.classList.add(PROSE_QUOTE_MARKED_CLASS);
+        const marker = fragment.ownerDocument.createElement("span");
+        marker.className = QUOTE_MARK_CLASS;
+        marker.setAttribute("aria-hidden", "true");
+        marker.textContent = "“";
+        blockquote.prepend(marker);
+      }
+    }
+
     const attribution = blockquote.nextElementSibling;
     if (
       attribution?.tagName !== "P" ||
@@ -206,6 +258,9 @@ export function cleanArticleHtml(html: string, baseUrl?: string): string {
         }),
       }
     : undefined;
-  const sanitized = sanitizeHtml(html, { ...sanitizeOptions, transformTags }).trim();
+  const sanitized = sanitizeHtml(stripGeneratedQuoteMarkers(html), {
+    ...sanitizeOptions,
+    transformTags,
+  }).trim();
   return enrichArticleStructure(sanitized);
 }
