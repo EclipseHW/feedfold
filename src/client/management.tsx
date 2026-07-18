@@ -5,6 +5,7 @@ import {
   Download,
   Edit3,
   ExternalLink,
+  Eye,
   EyeOff,
   FolderPlus,
   Keyboard,
@@ -26,6 +27,8 @@ import {
 } from "lucide-react";
 import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
 import type {
+  AiProvider,
+  AiSettings,
   AppSettings,
   Article,
   BootstrapData,
@@ -1619,24 +1622,289 @@ function RuleRow({
   );
 }
 
+function AiSettingsSection({
+  aiSettings,
+  onAiSettings,
+  showToast,
+}: {
+  aiSettings: AiSettings;
+  onAiSettings: (settings: AiSettings) => void;
+  showToast: (message: string) => void;
+}) {
+  const initialFeature = aiSettings.features.articleSummary;
+  const initialProvider = initialFeature?.provider ?? "gemini";
+  const [providerId, setProviderId] = useState<AiProvider>(initialProvider);
+  const [apiKey, setApiKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
+  const [savingFeature, setSavingFeature] = useState(false);
+  const [savingKey, setSavingKey] = useState(false);
+  const [removingKey, setRemovingKey] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const keyInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const feature = aiSettings.features.articleSummary;
+    const nextProviderId = feature?.provider ?? "gemini";
+    setProviderId((current) => {
+      const currentProvider = aiSettings.providers.find((provider) => provider.id === current);
+      if (currentProvider?.configured && current !== feature?.provider) return current;
+      return nextProviderId;
+    });
+  }, [aiSettings]);
+
+  const provider = aiSettings.providers.find((option) => option.id === providerId);
+  if (!provider) return null;
+  const modelId =
+    aiSettings.features.articleSummary?.provider === providerId
+      ? aiSettings.features.articleSummary.model
+      : provider.defaultModel;
+  const modelLabel = provider.models.find((model) => model.id === modelId)?.label;
+  const busy = savingFeature || savingKey || removingKey;
+
+  const updateFeature = async (nextProvider: AiProvider, nextModel: string) => {
+    setSavingFeature(true);
+    setError(null);
+    try {
+      onAiSettings(
+        await api.updateAiFeature("article_summary", {
+          provider: nextProvider,
+          model: nextModel,
+        }),
+      );
+      showToast("Article summary provider saved");
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSavingFeature(false);
+    }
+  };
+
+  const selectProvider = (nextProviderId: AiProvider) => {
+    const nextProvider = aiSettings.providers.find((option) => option.id === nextProviderId);
+    if (!nextProvider) return;
+    setProviderId(nextProviderId);
+    setApiKey("");
+    setShowKey(false);
+    setError(null);
+    if (nextProvider.configured) {
+      void updateFeature(nextProviderId, nextProvider.defaultModel);
+      return;
+    }
+    window.requestAnimationFrame(() => keyInputRef.current?.focus());
+  };
+
+  const saveKey = async (event: FormEvent) => {
+    event.preventDefault();
+    const nextKey = apiKey.trim();
+    if (!nextKey) return;
+    setSavingKey(true);
+    setError(null);
+    try {
+      const keySettings = await api.saveAiProviderKey(providerId, nextKey);
+      try {
+        const updated = await api.updateAiFeature("article_summary", {
+          provider: providerId,
+          model: modelId,
+        });
+        onAiSettings(updated);
+        setApiKey("");
+        setShowKey(false);
+        showToast(`${provider.label} API key saved for article summaries`);
+      } catch (caught) {
+        onAiSettings(keySettings);
+        throw caught;
+      }
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSavingKey(false);
+    }
+  };
+
+  const removeKey = async () => {
+    if (
+      !window.confirm(
+        `Remove the ${provider.label} API key? New summaries will stop until another key is saved.`,
+      )
+    ) {
+      return;
+    }
+    setRemovingKey(true);
+    setError(null);
+    try {
+      onAiSettings(await api.deleteAiProviderKey(providerId));
+      setApiKey("");
+      setShowKey(false);
+      showToast(`${provider.label} API key removed`);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setRemovingKey(false);
+    }
+  };
+
+  return (
+    <section
+      id="ai-settings"
+      className="settings-section ai-settings-section"
+      aria-labelledby="ai-heading"
+    >
+      <div className="settings-heading">
+        <div>
+          <h2 id="ai-heading">AI summaries</h2>
+          <p>Choose the service Echovale uses to summarize articles.</p>
+        </div>
+        {busy ? (
+          <span className="saving-label" role="status">
+            <LoaderCircle className="spin" aria-hidden="true" size={15} />
+            Saving
+          </span>
+        ) : null}
+      </div>
+
+      {!aiSettings.credentialStorageAvailable ? (
+        <div className="ai-settings-warning" role="alert">
+          <AlertTriangle aria-hidden="true" size={17} />
+          <span>
+            Set <code>AI_CREDENTIALS_KEY</code>, then restart or recreate the server to store
+            provider keys.
+          </span>
+        </div>
+      ) : null}
+
+      <div className="setting-row">
+        <label htmlFor="ai-summary-provider">
+          <strong>Provider</strong>
+          <p>
+            Used when a summary is generated or regenerated.
+            {modelLabel ? ` Recommended model: ${modelLabel}.` : ""}
+          </p>
+        </label>
+        <div className="ai-provider-control">
+          <select
+            id="ai-summary-provider"
+            value={providerId}
+            disabled={busy || !aiSettings.credentialStorageAvailable}
+            onChange={(event) => selectProvider(event.target.value as AiProvider)}
+          >
+            {aiSettings.providers.map((option) => (
+              <option key={option.id} value={option.id}>
+                {option.label}
+                {option.configured ? " (key saved)" : ""}
+              </option>
+            ))}
+          </select>
+          {provider.configured && aiSettings.features.articleSummary?.provider !== providerId ? (
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={busy || !aiSettings.credentialStorageAvailable}
+              onClick={() => void updateFeature(providerId, provider.defaultModel)}
+            >
+              Use provider
+            </button>
+          ) : null}
+        </div>
+      </div>
+
+      <div className="setting-row ai-key-row">
+        <div>
+          <strong>{provider.label} API key</strong>
+          <p id="ai-api-key-help">
+            {provider.configured
+              ? "A key is saved. Paste another key only to replace it."
+              : "The key is encrypted on this server and never shown again."}
+          </p>
+        </div>
+        <form className="ai-key-form" onSubmit={(event) => void saveKey(event)}>
+          <div className="ai-key-input">
+            <label className="sr-only" htmlFor="ai-api-key">
+              {provider.label} API key
+            </label>
+            <input
+              ref={keyInputRef}
+              id="ai-api-key"
+              type={showKey ? "text" : "password"}
+              value={apiKey}
+              placeholder={provider.configured ? "Paste a replacement key" : "Paste API key"}
+              autoComplete="new-password"
+              autoCapitalize="none"
+              spellCheck={false}
+              aria-describedby="ai-api-key-help"
+              disabled={busy || !aiSettings.credentialStorageAvailable}
+              onChange={(event) => {
+                setApiKey(event.target.value);
+                setError(null);
+              }}
+            />
+            <button
+              className="icon-button"
+              type="button"
+              disabled={!apiKey || busy}
+              aria-label={showKey ? "Hide API key" : "Show API key"}
+              aria-pressed={showKey}
+              onClick={() => setShowKey((current) => !current)}
+            >
+              {showKey ? (
+                <EyeOff aria-hidden="true" size={16} />
+              ) : (
+                <Eye aria-hidden="true" size={16} />
+              )}
+            </button>
+          </div>
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={!apiKey.trim() || busy || !aiSettings.credentialStorageAvailable}
+          >
+            {savingKey ? <LoaderCircle className="spin" aria-hidden="true" size={15} /> : null}
+            {provider.configured ? "Replace key" : "Save key"}
+          </button>
+          {provider.configured ? (
+            <button
+              className="secondary-button ai-key-remove"
+              type="button"
+              disabled={busy || !aiSettings.credentialStorageAvailable}
+              onClick={() => void removeKey()}
+            >
+              Remove key
+            </button>
+          ) : null}
+        </form>
+      </div>
+
+      {error ? (
+        <div className="ai-settings-error" role="alert">
+          <AlertTriangle aria-hidden="true" size={16} />
+          <span>{error}</span>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export function SettingsPage({
   settings,
+  aiSettings,
   theme,
   fontSize,
   onMenu,
   onTheme,
   onFontSize,
   onSettings,
+  onAiSettings,
   onReload,
   showToast,
 }: {
   settings: AppSettings;
+  aiSettings: AiSettings;
   theme: Theme;
   fontSize: number;
   onMenu: () => void;
   onTheme: (theme: Theme) => void;
   onFontSize: (value: number | ((current: number) => number)) => void;
   onSettings: (settings: AppSettings) => void;
+  onAiSettings: (settings: AiSettings) => void;
   onReload: () => Promise<void> | void;
   showToast: (message: string) => void;
 }) {
@@ -1658,7 +1926,7 @@ export function SettingsPage({
     <div className="management-page settings-page">
       <PageHeader
         title="Settings"
-        description="Reading preferences, polling, shortcuts, and portable subscriptions for this account."
+        description="Reading preferences, AI summaries, polling, shortcuts, and portable subscriptions for this account."
         onMenu={onMenu}
         actions={
           saving ? (
@@ -1741,6 +2009,12 @@ export function SettingsPage({
           </button>
         </div>
       </section>
+
+      <AiSettingsSection
+        aiSettings={aiSettings}
+        onAiSettings={onAiSettings}
+        showToast={showToast}
+      />
 
       <section className="settings-section" aria-labelledby="refresh-heading">
         <div className="settings-heading">
@@ -1829,6 +2103,7 @@ const shortcuts = [
   ["S", "Star or unstar article"],
   ["C", "Copy active article URL"],
   ["W", "Toggle feed or full content"],
+  ["M", "Show, hide, or create article summary"],
   ["R", "Refresh current feed or folder"],
   ["Shift R", "Refresh every feed"],
   ["[", "Decrease article text size"],

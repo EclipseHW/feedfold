@@ -1,6 +1,8 @@
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { CredentialCipher } from "./ai/credential-cipher.js";
+import { AiService } from "./ai/service.js";
 import { createApp } from "./app.js";
 import { AuthService } from "./auth.js";
 import { AppDatabase } from "./db.js";
@@ -33,6 +35,11 @@ const articleFetchTimeoutMs = positiveInteger(
   20_000,
   "ARTICLE_FETCH_TIMEOUT_MS",
 );
+const aiRequestTimeoutMs = positiveInteger(
+  process.env.AI_REQUEST_TIMEOUT_MS,
+  60_000,
+  "AI_REQUEST_TIMEOUT_MS",
+);
 const staticDir = fileURLToPath(new URL("../client", import.meta.url));
 
 mkdirSync(dirname(databasePath), { recursive: true });
@@ -40,11 +47,16 @@ const database = new AppDatabase(databasePath, pollIntervalMinutes);
 const authService = new AuthService(database, pollIntervalMinutes);
 const extractionQueue = new ExtractionQueue(database, 2, articleFetchTimeoutMs);
 const refreshService = new FeedRefreshService(database, 3, feedFetchTimeoutMs);
+const aiService = new AiService(database, {
+  credentialCipher: CredentialCipher.fromHex(process.env.AI_CREDENTIALS_KEY),
+  requestTimeoutMs: aiRequestTimeoutMs,
+});
 const app = await createApp({
   database,
   authService,
   extractionQueue,
   refreshService,
+  aiService,
   feedDiscoveryTimeoutMs: feedFetchTimeoutMs,
   staticDir,
   logger: process.env.NODE_ENV === "production",

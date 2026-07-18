@@ -20,6 +20,8 @@ import {
   AppSkeleton,
   ArticleList,
   ArticleListSkeleton,
+  type ArticleSummaryViewState,
+  EMPTY_ARTICLE_SUMMARY_STATE,
   EmptyArticles,
   ExpandedStream,
   InlineError,
@@ -266,6 +268,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     initialRoute.kind === "article" ? initialRoute.articleId : null,
   );
   const [fullContentVisibleIds, setFullContentVisibleIds] = useState<Set<number>>(() => new Set());
+  const [articleSummaryStates, setArticleSummaryStates] = useState<
+    Map<number, ArticleSummaryViewState>
+  >(() => new Map());
   const [markReadPending, setMarkReadPending] = useState(false);
   const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -278,6 +283,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const fullContentVisibleIdsRef = useRef(new Set<number>());
   const fullContentLoadedIds = useRef(new Set<number>());
   const fullContentLoadingIds = useRef(new Set<number>());
+  const summaryLoadingIds = useRef(new Set<number>());
   const manuallyUnreadArticleIds = useRef(new Set<number>());
   const lastReaderRoute = useRef<ReaderRoute>(initialReaderRoute);
   const currentRoute = useRef<AppRoute>(initialRoute);
@@ -847,6 +853,88 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     [navigateToRoute],
   );
 
+  const patchArticleSummaryState = useCallback(
+    (articleId: number, change: Partial<ArticleSummaryViewState>) => {
+      setArticleSummaryStates((current) => {
+        const next = new Map(current);
+        next.set(articleId, {
+          ...(current.get(articleId) ?? EMPTY_ARTICLE_SUMMARY_STATE),
+          ...change,
+        });
+        return next;
+      });
+    },
+    [],
+  );
+
+  const generateArticleSummary = useCallback(
+    async (article: Article, regenerate: boolean) => {
+      if (summaryLoadingIds.current.has(article.id)) return;
+      const feature = bootstrap?.aiSettings.features.articleSummary;
+      const provider = feature
+        ? bootstrap?.aiSettings.providers.find((option) => option.id === feature.provider)
+        : null;
+      if (!bootstrap?.aiSettings.credentialStorageAvailable || !feature || !provider?.configured) {
+        patchArticleSummaryState(article.id, {
+          visible: true,
+          loading: false,
+          error: null,
+          configurationMissing: true,
+        });
+        return;
+      }
+
+      summaryLoadingIds.current.add(article.id);
+      patchArticleSummaryState(article.id, {
+        visible: true,
+        loading: true,
+        error: null,
+        configurationMissing: false,
+      });
+      try {
+        const summary = await api.summarizeArticle(article.id, regenerate);
+        setArticles((current) =>
+          current.map((item) => (item.id === article.id ? { ...item, aiSummary: summary } : item)),
+        );
+        patchArticleSummaryState(article.id, { loading: false });
+      } catch (caught) {
+        patchArticleSummaryState(article.id, {
+          loading: false,
+          error: errorMessage(caught),
+        });
+      } finally {
+        summaryLoadingIds.current.delete(article.id);
+      }
+    },
+    [bootstrap?.aiSettings, patchArticleSummaryState],
+  );
+
+  const toggleArticleSummary = useCallback(
+    (article: Article) => {
+      const state = articleSummaryStates.get(article.id) ?? EMPTY_ARTICLE_SUMMARY_STATE;
+      if (state.loading) return;
+      if (state.visible) {
+        patchArticleSummaryState(article.id, { visible: false });
+        return;
+      }
+      if (article.aiSummary) {
+        patchArticleSummaryState(article.id, {
+          visible: true,
+          error: null,
+          configurationMissing: false,
+        });
+        return;
+      }
+      void generateArticleSummary(article, false);
+    },
+    [articleSummaryStates, generateArticleSummary, patchArticleSummaryState],
+  );
+
+  const regenerateArticleSummary = useCallback(
+    (article: Article) => void generateArticleSummary(article, true),
+    [generateArticleSummary],
+  );
+
   const filterSelectedText = useCallback(
     (article: Article, text: string) => {
       const pattern = text.replace(/\s+/g, " ").trim();
@@ -1142,6 +1230,10 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           const articleVisible = view === "reader" && (readingMode === "expanded" || readerOpen);
           if (articleVisible && activeArticle) void toggleFullContent(activeArticle);
         },
+        m: () => {
+          const articleVisible = view === "reader" && (readingMode === "expanded" || readerOpen);
+          if (articleVisible && activeArticle) toggleArticleSummary(activeArticle);
+        },
         r: () => void refresh(),
         "[": () =>
           setArticleFontSize((current) => {
@@ -1190,6 +1282,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     routedArticleId,
     selectScope,
     showToast,
+    toggleArticleSummary,
     view,
   ]);
 
@@ -1325,6 +1418,12 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     fullContentVisible={
                       activeArticle ? fullContentVisibleIds.has(activeArticle.id) : false
                     }
+                    summaryState={
+                      activeArticle
+                        ? (articleSummaryStates.get(activeArticle.id) ??
+                          EMPTY_ARTICLE_SUMMARY_STATE)
+                        : EMPTY_ARTICLE_SUMMARY_STATE
+                    }
                     onBack={returnToArticleList}
                     onPrevious={() => moveArticle(-1)}
                     onNext={() => moveArticle(1)}
@@ -1336,6 +1435,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     }
                     onCopy={(article) => void copyArticleUrl(article)}
                     onToggleFullContent={(article) => void toggleFullContent(article)}
+                    onToggleSummary={toggleArticleSummary}
+                    onRegenerateSummary={regenerateArticleSummary}
+                    onOpenAiSettings={() => navigateTo("settings")}
                     onFilterSelection={filterSelectedText}
                   />
                 </>
@@ -1345,6 +1447,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   activeId={activeArticleId}
                   topAlignedId={expandedKeyboardTargetId}
                   fullContentVisibleIds={fullContentVisibleIds}
+                  summaryStates={articleSummaryStates}
                   markReadOnScroll={bootstrap.settings.markReadOnScroll}
                   hasMore={routedArticleId === null && nextCursor !== null}
                   loadingMore={articlesLoadingMore}
@@ -1362,6 +1465,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   }
                   onCopy={(article) => void copyArticleUrl(article)}
                   onToggleFullContent={(article) => void toggleFullContent(article)}
+                  onToggleSummary={toggleArticleSummary}
+                  onRegenerateSummary={regenerateArticleSummary}
+                  onOpenAiSettings={() => navigateTo("settings")}
                   onFilterSelection={filterSelectedText}
                 />
               )}
@@ -1393,6 +1499,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         ) : (
           <SettingsPage
             settings={bootstrap.settings}
+            aiSettings={bootstrap.aiSettings}
             theme={theme}
             fontSize={articleFontSize}
             onMenu={() => setNavOpen(true)}
@@ -1400,6 +1507,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
             onFontSize={setArticleFontSize}
             onSettings={(settings) =>
               setBootstrap((current) => (current ? { ...current, settings } : current))
+            }
+            onAiSettings={(aiSettings) =>
+              setBootstrap((current) => (current ? { ...current, aiSettings } : current))
             }
             onReload={loadBootstrap}
             showToast={showToast}

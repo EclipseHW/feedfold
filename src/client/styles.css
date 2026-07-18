@@ -1554,6 +1554,155 @@ kbd {
   }
 }
 
+.article-header:has(+ .article-ai-summary) {
+  margin-bottom: 18px;
+}
+
+.article-ai-summary {
+  margin-bottom: 32px;
+  padding: 15px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-secondary);
+}
+
+.article-ai-summary-heading,
+.article-ai-summary-heading > div,
+.article-summary-error,
+.article-summary-message {
+  display: flex;
+}
+
+.article-ai-summary-heading {
+  min-height: 30px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.article-ai-summary-heading > div {
+  align-items: center;
+  gap: 7px;
+  color: var(--accent);
+}
+
+.article-ai-summary-heading h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  letter-spacing: -0.01em;
+}
+
+.article-summary-regenerate {
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.article-summary-text {
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.65;
+}
+
+.article-summary-text p {
+  margin: 0 0 0.8em;
+}
+
+.article-summary-text p:last-child {
+  margin-bottom: 0;
+}
+
+.article-summary-text ul {
+  margin: 0.2em 0 0;
+  padding-left: 1.25em;
+}
+
+.article-summary-text li + li {
+  margin-top: 0.45em;
+}
+
+.article-summary-text li::marker {
+  color: var(--accent);
+}
+
+.article-summary-loading > span {
+  display: block;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.article-summary-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.article-summary-skeleton span {
+  width: 100%;
+  height: 9px;
+  border-radius: 3px;
+  background: var(--surface-active);
+  animation: skeleton-pulse 1.35s var(--ease-in-out) infinite alternate;
+}
+
+.article-summary-skeleton span:nth-child(2) {
+  width: 92%;
+}
+
+.article-summary-skeleton span:nth-child(3) {
+  width: 68%;
+}
+
+.article-summary-message {
+  align-items: flex-start;
+  flex-direction: column;
+}
+
+.article-summary-message strong,
+.article-summary-error strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.article-summary-message p,
+.article-summary-error p {
+  margin: 3px 0 10px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.article-summary-error {
+  align-items: flex-start;
+  gap: 9px;
+  margin-top: 13px;
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.article-summary-error > div {
+  min-width: 0;
+  flex: 1;
+}
+
+.article-summary-error p {
+  margin-bottom: 0;
+  overflow-wrap: anywhere;
+}
+
+.article-summary-error .secondary-button {
+  min-height: 30px;
+  flex: 0 0 auto;
+  padding-block: 4px;
+  color: var(--text);
+  font-size: 11px;
+}
+
 .article-media-player {
   width: 100%;
   aspect-ratio: 16 / 9;
@@ -3167,6 +3316,99 @@ kbd {
   border-radius: var(--radius-md);
   background: var(--surface);
 }
+
+.ai-settings-warning,
+.ai-settings-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  font-size: 11px;
+}
+
+.ai-settings-warning {
+  border-bottom: 1px solid var(--border);
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+
+.ai-settings-warning code {
+  color: inherit;
+  font-size: 0.95em;
+  font-weight: 650;
+}
+
+.ai-settings-error {
+  border-top: 1px solid var(--border);
+  background: var(--danger-surface);
+  color: var(--danger);
+}
+
+.ai-provider-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.ai-provider-control select {
+  min-width: 190px;
+  height: 38px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.ai-key-form {
+  display: flex;
+  width: min(100%, 620px);
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.ai-key-input {
+  position: relative;
+  min-width: 240px;
+  flex: 1;
+}
+
+.ai-key-input input {
+  width: 100%;
+  height: 38px;
+  padding: 7px 42px 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+}
+
+.ai-key-input input::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+
+.ai-key-input .icon-button {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  min-width: 36px;
+  min-height: 36px;
+  border: 0;
+}
+
+.ai-key-remove {
+  color: var(--danger);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ai-key-remove:hover:not(:disabled) {
+    color: var(--danger);
+  }
+}
+
 .settings-heading {
   align-items: flex-start;
   margin: 0;
@@ -3562,6 +3804,14 @@ kbd {
     flex-direction: column;
     gap: 12px;
   }
+  .ai-key-form {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  .ai-provider-control {
+    width: 100%;
+    justify-content: flex-start;
+  }
   .settings-actions {
     justify-content: flex-start;
   }
@@ -3691,6 +3941,15 @@ kbd {
   .article-header h2 {
     font-size: 24px;
   }
+  .article-ai-summary {
+    padding: 13px;
+  }
+  .article-ai-summary-heading {
+    align-items: flex-start;
+  }
+  .article-summary-error {
+    flex-wrap: wrap;
+  }
   .article-content blockquote.article-prose-quote {
     font-size: 1.02em;
   }
@@ -3705,6 +3964,24 @@ kbd {
   }
   .management-page {
     padding-inline: 13px;
+  }
+  .ai-key-form {
+    flex-wrap: wrap;
+  }
+  .ai-provider-control {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .ai-provider-control select {
+    width: 100%;
+  }
+  .ai-key-input {
+    min-width: 0;
+    flex-basis: 100%;
+  }
+  .ai-key-form > .primary-button,
+  .ai-key-form > .secondary-button {
+    flex: 1;
   }
   .page-header {
     margin-inline: -13px;
@@ -3874,7 +4151,8 @@ kbd {
   .spin,
   .skeleton-line,
   .skeleton-block,
-  .skeleton-toolbar {
+  .skeleton-toolbar,
+  .article-summary-skeleton span {
     animation: none;
   }
 
@@ -3914,7 +4192,8 @@ kbd {
   }
 }
 
-.reader-action-row .full-content-action .action-label {
+.reader-action-row .full-content-action .action-label,
+.reader-action-row .summary-action .action-label {
   display: none;
 }
 

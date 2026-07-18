@@ -21,6 +21,7 @@ function linkedArticle(): Article {
     contentSource: "article",
     extractionStatus: "complete",
     extractionError: null,
+    aiSummary: null,
     isRead: false,
     isStarred: false,
   };

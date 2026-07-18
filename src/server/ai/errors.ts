@@ -1,0 +1,24 @@
+export type AiErrorCode =
+  | "AI_NOT_CONFIGURED"
+  | "AI_KEY_MISSING"
+  | "AI_CREDENTIAL_STORAGE_UNAVAILABLE"
+  | "AI_CREDENTIAL_UNREADABLE"
+  | "AI_KEY_REJECTED"
+  | "AI_MODEL_UNAVAILABLE"
+  | "AI_RATE_LIMITED"
+  | "AI_PROVIDER_FAILED"
+  | "AI_PROVIDER_TIMEOUT"
+  | "AI_RESPONSE_REFUSED"
+  | "ARTICLE_HAS_NO_TEXT"
+  | "ARTICLE_CHANGED";
+
+export class AiError extends Error {
+  constructor(
+    readonly code: AiErrorCode,
+    readonly statusCode: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "AiError";
+  }
+}

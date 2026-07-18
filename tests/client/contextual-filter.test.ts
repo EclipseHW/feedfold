@@ -21,6 +21,7 @@ function article(id: number, contentHtml: string | null = null): Article {
     contentSource: contentHtml ? "article" : null,
     extractionStatus: contentHtml ? "complete" : "feed",
     extractionError: null,
+    aiSummary: null,
     isRead: false,
     isStarred: false,
   };
