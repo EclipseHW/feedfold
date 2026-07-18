@@ -46,15 +46,3 @@ export function extractHttpLinks(text: string): TextLink[] {
 
   return links;
 }
-
-export function supplementalHttpLinks(summary: string, articleUrl: string | null): TextLink[] {
-  const seen = new Set<string>();
-  const primaryUrl = normalizedHttpUrl(articleUrl);
-  if (primaryUrl) seen.add(primaryUrl);
-
-  return extractHttpLinks(summary).filter((link) => {
-    if (seen.has(link.href)) return false;
-    seen.add(link.href);
-    return true;
-  });
-}

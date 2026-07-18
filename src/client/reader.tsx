@@ -7,7 +7,6 @@ import {
   Circle,
   Copy,
   Download,
-  ExternalLink,
   FileText,
   Inbox,
   ListFilter,
@@ -20,7 +19,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import type { Article, ArticleState, ReadingMode } from "../shared/types";
 import { articleContentView } from "./article-content";
-import { extractHttpLinks, supplementalHttpLinks } from "./article-links";
+import { extractHttpLinks } from "./article-links";
 import {
   captureTextSelection,
   restoreTextSelection,
@@ -89,24 +88,6 @@ function LinkifiedText({ text }: { text: string }) {
   }
   if (cursor < text.length) nodes.push(text.slice(cursor));
   return <>{nodes}</>;
-}
-
-function ArticleFeedLinks({ article }: { article: Article }) {
-  const links = supplementalHttpLinks(article.summary, article.url);
-  if (links.length === 0) return null;
-
-  return (
-    <div className="article-feed-links">
-      <span>Feed links</span>
-      {links.map((link) => (
-        <a key={link.href} href={link.href} target="_blank" rel="noreferrer" title={link.href}>
-          <ExternalLink aria-hidden="true" size={13} />
-          {link.label}
-          <span className="sr-only"> (opens in a new tab)</span>
-        </a>
-      ))}
-    </div>
-  );
 }
 
 function useMarkReadOnScroll({
@@ -1000,7 +981,6 @@ function ArticleHeader({ article, id }: { article: Article; id: string }) {
           article.title
         )}
       </h2>
-      <ArticleFeedLinks article={article} />
     </header>
   );
 }

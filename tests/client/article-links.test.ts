@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractHttpLinks, supplementalHttpLinks } from "../../src/client/article-links.js";
+import { extractHttpLinks } from "../../src/client/article-links.js";
 
 describe("article summary links", () => {
   it("turns labelled absolute URLs from any feed summary into links", () => {
@@ -18,18 +18,6 @@ describe("article summary links", () => {
         href: "https://forum.example.test/thread?id=42",
         label: "Discussion URL",
         text: "https://forum.example.test/thread?id=42",
-      },
-    ]);
-  });
-
-  it("keeps secondary links when the primary article URL is already represented", () => {
-    const summary =
-      "Article: https://example.test/story Discussion: https://forum.example.test/thread Discussion mirror: https://forum.example.test/thread";
-
-    expect(supplementalHttpLinks(summary, "https://example.test/story")).toMatchObject([
-      {
-        href: "https://forum.example.test/thread",
-        label: "Discussion",
       },
     ]);
   });
