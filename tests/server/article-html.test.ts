@@ -109,4 +109,30 @@ native dev
 
     expect(cleanArticleHtml(html)).toBe(html);
   });
+
+  it("keeps commas inside responsive image URLs while resolving relative candidates", () => {
+    const webpCandidate =
+      "https://substackcdn.com/image/fetch/$s_!token!,w_424,c_limit,f_webp,q_auto:good/https%3A%2F%2Fmedia.example%2Fhero.png";
+    const imageCandidate =
+      "https://substackcdn.com/image/fetch/$s_!token!,w_424,c_limit,f_auto,q_auto:good/https%3A%2F%2Fmedia.example%2Fhero.png";
+    const fallback =
+      "https://substackcdn.com/image/fetch/$s_!token!,w_1456,c_limit,f_auto,q_auto:good/https%3A%2F%2Fmedia.example%2Fhero.png";
+    const html = cleanArticleHtml(
+      `<picture>
+         <source type="image/webp" srcset="${webpCandidate} 424w, /images/hero-848.webp 848w">
+         <img src="${fallback}" srcset="${imageCandidate} 424w, /images/hero-848.png 848w" alt="Hero">
+       </picture>`,
+      "https://publisher.example/p/article",
+    );
+    const body = articleBody(html);
+
+    expect(body.querySelector("source")?.getAttribute("srcset")).toBe(
+      `${webpCandidate} 424w, https://publisher.example/images/hero-848.webp 848w`,
+    );
+    expect(body.querySelector("img")?.getAttribute("srcset")).toBe(
+      `${imageCandidate} 424w, https://publisher.example/images/hero-848.png 848w`,
+    );
+    expect(body.querySelector("img")?.getAttribute("src")).toBe(fallback);
+    expect(html).not.toContain("https://publisher.example/p/w_424");
+  });
 });
