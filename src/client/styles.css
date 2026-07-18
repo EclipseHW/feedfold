@@ -1540,38 +1540,11 @@ kbd {
   text-decoration: none;
 }
 
-.article-feed-links {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-top: 16px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.article-feed-links a {
-  display: inline-flex;
-  max-width: 100%;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 7px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-hover);
-  color: var(--text-secondary);
-  text-decoration: none;
-}
-
 @media (hover: hover) and (pointer: fine) {
   .article-header h2 a:hover {
     color: var(--accent);
     text-decoration: underline;
     text-decoration-thickness: 0.07em;
-  }
-
-  .article-feed-links a:hover {
-    background: var(--surface-raised);
-    color: var(--accent);
   }
 }
 
