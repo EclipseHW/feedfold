@@ -178,4 +178,23 @@ describe("AI article summaries", () => {
       statusCode: 422,
     });
   });
+
+  it("stores any provider model ID entered by the user", () => {
+    const { database, readerId } = databaseWithUsers();
+    const cipher = CredentialCipher.fromHex(CREDENTIAL_KEY);
+    if (!cipher) throw new Error("Credential cipher was not created");
+    const service = new AiService(database, { credentialCipher: cipher });
+
+    const settings = service.setFeatureSetting(
+      readerId,
+      "article_summary",
+      "openai",
+      "my-team/custom-summary-model",
+    );
+
+    expect(settings.features.articleSummary).toEqual({
+      provider: "openai",
+      model: "my-team/custom-summary-model",
+    });
+  });
 });

@@ -1633,32 +1633,34 @@ function AiSettingsSection({
 }) {
   const initialFeature = aiSettings.features.articleSummary;
   const initialProvider = initialFeature?.provider ?? "gemini";
+  const initialModel =
+    initialFeature?.model ??
+    aiSettings.providers.find((provider) => provider.id === initialProvider)?.defaultModel ??
+    "";
   const [providerId, setProviderId] = useState<AiProvider>(initialProvider);
+  const [modelId, setModelId] = useState(initialModel);
   const [apiKey, setApiKey] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [savingFeature, setSavingFeature] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
   const [removingKey, setRemovingKey] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const modelInputRef = useRef<HTMLInputElement>(null);
   const keyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const feature = aiSettings.features.articleSummary;
     const nextProviderId = feature?.provider ?? "gemini";
-    setProviderId((current) => {
-      const currentProvider = aiSettings.providers.find((provider) => provider.id === current);
-      if (currentProvider?.configured && current !== feature?.provider) return current;
-      return nextProviderId;
-    });
+    const nextProvider = aiSettings.providers.find((provider) => provider.id === nextProviderId);
+    setProviderId(nextProviderId);
+    setModelId(feature?.model ?? nextProvider?.defaultModel ?? "");
   }, [aiSettings]);
 
   const provider = aiSettings.providers.find((option) => option.id === providerId);
   if (!provider) return null;
-  const modelId =
-    aiSettings.features.articleSummary?.provider === providerId
-      ? aiSettings.features.articleSummary.model
-      : provider.defaultModel;
-  const modelLabel = provider.models.find((model) => model.id === modelId)?.label;
+  const activeFeature = aiSettings.features.articleSummary;
+  const modelChanged =
+    activeFeature?.provider !== providerId || activeFeature?.model !== modelId.trim();
   const busy = savingFeature || savingKey || removingKey;
 
   const updateFeature = async (nextProvider: AiProvider, nextModel: string) => {
@@ -1668,10 +1670,10 @@ function AiSettingsSection({
       onAiSettings(
         await api.updateAiFeature("article_summary", {
           provider: nextProvider,
-          model: nextModel,
+          model: nextModel.trim(),
         }),
       );
-      showToast("Article summary provider saved");
+      showToast("Article summary model saved");
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -1683,20 +1685,26 @@ function AiSettingsSection({
     const nextProvider = aiSettings.providers.find((option) => option.id === nextProviderId);
     if (!nextProvider) return;
     setProviderId(nextProviderId);
+    setModelId(
+      activeFeature?.provider === nextProviderId ? activeFeature.model : nextProvider.defaultModel,
+    );
     setApiKey("");
     setShowKey(false);
     setError(null);
-    if (nextProvider.configured) {
-      void updateFeature(nextProviderId, nextProvider.defaultModel);
-      return;
-    }
-    window.requestAnimationFrame(() => keyInputRef.current?.focus());
+    window.requestAnimationFrame(() => modelInputRef.current?.focus());
+  };
+
+  const saveModel = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!modelId.trim()) return;
+    await updateFeature(providerId, modelId);
   };
 
   const saveKey = async (event: FormEvent) => {
     event.preventDefault();
     const nextKey = apiKey.trim();
-    if (!nextKey) return;
+    const nextModel = modelId.trim();
+    if (!nextKey || !nextModel) return;
     setSavingKey(true);
     setError(null);
     try {
@@ -1704,7 +1712,7 @@ function AiSettingsSection({
       try {
         const updated = await api.updateAiFeature("article_summary", {
           provider: providerId,
-          model: modelId,
+          model: nextModel,
         });
         onAiSettings(updated);
         setApiKey("");
@@ -1775,10 +1783,7 @@ function AiSettingsSection({
       <div className="setting-row">
         <label htmlFor="ai-summary-provider">
           <strong>Provider</strong>
-          <p>
-            Used when a summary is generated or regenerated.
-            {modelLabel ? ` Recommended model: ${modelLabel}.` : ""}
-          </p>
+          <p>Used when a summary is generated or regenerated.</p>
         </label>
         <div className="ai-provider-control">
           <select
@@ -1794,17 +1799,47 @@ function AiSettingsSection({
               </option>
             ))}
           </select>
-          {provider.configured && aiSettings.features.articleSummary?.provider !== providerId ? (
-            <button
-              className="secondary-button"
-              type="button"
-              disabled={busy || !aiSettings.credentialStorageAvailable}
-              onClick={() => void updateFeature(providerId, provider.defaultModel)}
-            >
-              Use provider
-            </button>
-          ) : null}
         </div>
+      </div>
+
+      <div className="setting-row">
+        <label htmlFor="ai-summary-model">
+          <strong>Model</strong>
+          <p id="ai-summary-model-help">
+            Enter the exact {provider.label} model ID. Default: <code>{provider.defaultModel}</code>
+            .
+          </p>
+        </label>
+        <form className="ai-model-form" onSubmit={(event) => void saveModel(event)}>
+          <input
+            ref={modelInputRef}
+            id="ai-summary-model"
+            type="text"
+            value={modelId}
+            placeholder={provider.defaultModel}
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            maxLength={200}
+            required
+            aria-describedby="ai-summary-model-help"
+            disabled={busy || !aiSettings.credentialStorageAvailable}
+            onChange={(event) => {
+              setModelId(event.target.value);
+              setError(null);
+            }}
+          />
+          <button
+            className="secondary-button"
+            type="submit"
+            disabled={
+              !modelId.trim() || !modelChanged || busy || !aiSettings.credentialStorageAvailable
+            }
+          >
+            {savingFeature ? <LoaderCircle className="spin" aria-hidden="true" size={15} /> : null}
+            Save model
+          </button>
+        </form>
       </div>
 
       <div className="setting-row ai-key-row">
@@ -1855,7 +1890,9 @@ function AiSettingsSection({
           <button
             className="primary-button"
             type="submit"
-            disabled={!apiKey.trim() || busy || !aiSettings.credentialStorageAvailable}
+            disabled={
+              !apiKey.trim() || !modelId.trim() || busy || !aiSettings.credentialStorageAvailable
+            }
           >
             {savingKey ? <LoaderCircle className="spin" aria-hidden="true" size={15} /> : null}
             {provider.configured ? "Replace key" : "Save key"}
