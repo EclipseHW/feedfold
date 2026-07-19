@@ -30,6 +30,9 @@
   --z-context-menu: 40;
   --z-dialog: 50;
   --z-toast: 60;
+  --duration-fast: 140ms;
+  --duration-surface: 180ms;
+  --duration-reduced: 200ms;
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
   --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
@@ -222,10 +225,10 @@ kbd {
   font-weight: 600;
   text-decoration: none;
   transition:
-    transform 140ms var(--ease-out),
-    background-color 140ms ease,
-    border-color 140ms ease,
-    color 140ms ease;
+    transform var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) ease,
+    border-color var(--duration-fast) ease,
+    color var(--duration-fast) ease;
 }
 
 .primary-button {
@@ -273,16 +276,16 @@ kbd {
     background: var(--surface-hover);
     color: var(--text);
   }
+}
 
-  .primary-button:active:not(:disabled, :focus-visible),
-  .secondary-button:active:not(:disabled, :focus-visible),
-  .quiet-button:active:not(:disabled, :focus-visible) {
-    transform: scale(0.97);
-  }
+.primary-button:active:not(:disabled, :focus-visible),
+.secondary-button:active:not(:disabled, :focus-visible),
+.quiet-button:active:not(:disabled, :focus-visible) {
+  transform: scale(0.97);
+}
 
-  .icon-button:active:not(:disabled, :focus-visible) {
-    transform: scale(0.95);
-  }
+.icon-button:active:not(:disabled, :focus-visible) {
+  transform: scale(0.95);
 }
 
 .menu-button,
@@ -450,7 +453,7 @@ kbd {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
-  transition: transform 140ms var(--ease-out);
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 .tree-row {
@@ -468,7 +471,7 @@ kbd {
   border: 0;
   background: transparent;
   color: var(--muted);
-  transition: transform 140ms var(--ease-out);
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 .tree-toggle:disabled {
@@ -544,11 +547,11 @@ kbd {
     background: var(--surface-hover);
     color: var(--text);
   }
+}
 
-  .tree-toggle:active:not(:disabled, :focus-visible),
-  .sidebar-section-heading button:active:not(:focus-visible) {
-    transform: scale(0.9);
-  }
+.tree-toggle:active:not(:disabled, :focus-visible),
+.sidebar-section-heading button:active:not(:focus-visible) {
+  transform: scale(0.95);
 }
 
 .sidebar-footer {
@@ -662,8 +665,8 @@ kbd {
   color: var(--accent);
   font-weight: 650;
   transition:
-    transform 140ms var(--ease-out),
-    color 140ms ease;
+    transform var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) ease;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -672,10 +675,10 @@ kbd {
     text-decoration: underline;
     text-underline-offset: 2px;
   }
+}
 
-  .auth-switch button:active:not(:disabled, :focus-visible) {
-    transform: scale(0.97);
-  }
+.auth-switch button:active:not(:disabled, :focus-visible) {
+  transform: scale(0.97);
 }
 
 .session-loading {
@@ -749,8 +752,8 @@ kbd {
   color: var(--muted);
   outline: 1px solid transparent;
   transition:
-    border-color 140ms ease,
-    outline-color 140ms ease;
+    border-color var(--duration-fast) ease,
+    outline-color var(--duration-fast) ease;
 }
 
 .search-form:focus-within {
@@ -799,7 +802,7 @@ kbd {
 .segmented-control button,
 .view-switcher button,
 .theme-options button {
-  transition: transform 140ms var(--ease-out);
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 .toolbar-actions {
@@ -817,7 +820,7 @@ kbd {
   border: 1px solid var(--border);
   border-radius: 7px;
   background: var(--bg);
-  transition: border-color 140ms ease;
+  transition: border-color var(--duration-fast) ease;
 }
 
 .mark-read-split-button:focus-within {
@@ -857,8 +860,14 @@ kbd {
   transform: translateY(0) scale(1);
   transform-origin: top right;
   transition:
-    opacity 140ms var(--ease-out),
-    transform 140ms var(--ease-out);
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.mark-read-menu[data-state="closed"] {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+  pointer-events: none;
 }
 
 .mark-read-menu > p {
@@ -883,8 +892,8 @@ kbd {
   font-weight: 550;
   text-align: left;
   transition:
-    background-color 140ms ease,
-    color 140ms ease;
+    background-color var(--duration-fast) ease,
+    color var(--duration-fast) ease;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -894,7 +903,7 @@ kbd {
 }
 
 @starting-style {
-  .mark-read-menu {
+  .mark-read-menu[data-state="open"] {
     opacity: 0;
     transform: translateY(-4px) scale(0.98);
   }
@@ -952,13 +961,13 @@ kbd {
   .theme-options button:hover {
     color: var(--text);
   }
+}
 
-  .search-form button:active:not(:focus-visible),
-  .segmented-control button:active:not(:focus-visible),
-  .view-switcher button:active:not(:focus-visible),
-  .theme-options button:active:not(:focus-visible) {
-    transform: scale(0.96);
-  }
+.search-form button:active:not(:focus-visible),
+.segmented-control button:active:not(:focus-visible),
+.view-switcher button:active:not(:focus-visible),
+.theme-options button:active:not(:focus-visible) {
+  transform: scale(0.95);
 }
 
 .reader-toolbar.is-reading-article {
@@ -1039,9 +1048,9 @@ kbd {
   font-size: 12px;
   font-weight: 600;
   transition:
-    transform 140ms var(--ease-out),
-    background-color 140ms ease,
-    color 140ms ease;
+    transform var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) ease,
+    color var(--duration-fast) ease;
 }
 
 .article-list-summary {
@@ -1290,7 +1299,7 @@ kbd {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
-  transition: transform 140ms var(--ease-out);
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1319,11 +1328,11 @@ kbd {
   .article-list-summary-text a:hover {
     color: var(--accent);
   }
+}
 
-  .list-read-button:active:not(:disabled, :focus-visible),
-  .list-star-button:active:not(:disabled, :focus-visible) {
-    transform: scale(0.9);
-  }
+.list-read-button:active:not(:disabled, :focus-visible),
+.list-star-button:active:not(:disabled, :focus-visible) {
+  transform: scale(0.95);
 }
 
 .reader-pane {
@@ -1383,7 +1392,7 @@ kbd {
   background: transparent;
   color: var(--text-secondary);
   font-size: 12px;
-  transition: transform 140ms var(--ease-out);
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 :where(.reader-action-row) .article-actions {
@@ -1406,14 +1415,11 @@ kbd {
     background: var(--surface-hover);
     color: var(--text);
   }
+}
 
-  .reader-back-button:active:not(:disabled, :focus-visible) {
-    transform: scale(0.97);
-  }
-
-  .article-actions button:active:not(:disabled, :focus-visible) {
-    transform: scale(0.94);
-  }
+.reader-back-button:active:not(:disabled, :focus-visible),
+.article-actions button:active:not(:disabled, :focus-visible) {
+  transform: scale(0.95);
 }
 
 .list-star-button.is-starred,
@@ -1465,14 +1471,26 @@ kbd {
   background: var(--surface-raised);
   box-shadow: 0 4px 8px oklch(0 0 0 / 0.3);
   opacity: 1;
-  transform: translate(-50%, calc(-100% - 8px));
+  transform: translate(-50%, calc(-100% - 8px)) scale(1);
+  transform-origin: center bottom;
   transition:
-    opacity 120ms var(--ease-out),
-    transform 120ms var(--ease-out);
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .article-selection-menu[data-placement="below"] {
-  transform: translate(-50%, 8px);
+  transform: translate(-50%, 8px) scale(1);
+  transform-origin: center top;
+}
+
+.article-selection-menu[data-state="closed"] {
+  opacity: 0;
+  transform: translate(-50%, calc(-100% - 4px)) scale(0.96);
+  pointer-events: none;
+}
+
+.article-selection-menu[data-placement="below"][data-state="closed"] {
+  transform: translate(-50%, 4px) scale(0.96);
 }
 
 .article-selection-menu button {
@@ -1497,12 +1515,12 @@ kbd {
 }
 
 @starting-style {
-  .article-selection-menu {
+  .article-selection-menu[data-state="open"] {
     opacity: 0;
     transform: translate(-50%, calc(-100% - 4px)) scale(0.96);
   }
 
-  .article-selection-menu[data-placement="below"] {
+  .article-selection-menu[data-placement="below"][data-state="open"] {
     transform: translate(-50%, 4px) scale(0.96);
   }
 }
@@ -2164,6 +2182,21 @@ kbd {
   color: var(--muted);
 }
 
+.inline-state.empty-state {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    transform var(--duration-surface) var(--ease-out);
+}
+
+@starting-style {
+  .inline-state.empty-state {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
+}
+
 .error-state > svg {
   color: var(--danger);
 }
@@ -2252,14 +2285,14 @@ kbd {
   opacity: 0;
   transform: translateY(6px) scale(0.98);
   transition:
-    opacity 140ms var(--ease-out),
-    transform 140ms var(--ease-out);
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .toast > span[data-state="open"] {
   opacity: 1;
   transform: translateY(0) scale(1);
-  transition-duration: 180ms;
+  transition-duration: var(--duration-surface);
 }
 
 @starting-style {
@@ -2485,7 +2518,7 @@ kbd {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--muted);
-  transition: transform 140ms var(--ease-out);
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -2502,10 +2535,10 @@ kbd {
   .row-actions .danger-action:hover:not(:disabled) {
     color: var(--danger);
   }
+}
 
-  .row-actions button:active:not(:disabled, :focus-visible) {
-    transform: scale(0.9);
-  }
+.row-actions button:active:not(:disabled, :focus-visible) {
+  transform: scale(0.95);
 }
 
 .section-empty,
@@ -2549,6 +2582,26 @@ kbd {
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
   background: var(--surface);
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transform-origin: top right;
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    transform var(--duration-surface) var(--ease-out);
+}
+
+.inline-editor[data-motion-state="closed"] {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+  pointer-events: none;
+  transition-duration: var(--duration-fast);
+}
+
+@starting-style {
+  .inline-editor[data-motion-state="open"] {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
 }
 
 .inline-editor-heading {
@@ -2616,11 +2669,24 @@ kbd {
   color: var(--danger);
 }
 
+.feed-discovery-result {
+  display: grid;
+}
+
+.feed-discovery-result > * {
+  min-width: 0;
+  grid-area: 1 / 1;
+}
+
 .feed-preview-loading,
 .feed-confirmation-form {
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px solid var(--border);
+  opacity: 1;
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    transform var(--duration-surface) var(--ease-out);
 }
 
 .feed-preview-loading {
@@ -2628,6 +2694,40 @@ kbd {
   gap: 13px;
   color: var(--text-secondary);
   font-size: 12px;
+  transform: translateY(0);
+  transform-origin: top center;
+}
+
+.feed-preview-loading[data-motion-state="closed"] {
+  opacity: 0;
+  transform: translateY(-4px);
+  pointer-events: none;
+  transition-duration: var(--duration-fast);
+}
+
+.feed-confirmation-form {
+  background: var(--surface);
+  transform: translateY(0) scale(1);
+  transform-origin: top center;
+}
+
+.feed-confirmation-form[data-motion-state="closed"] {
+  opacity: 0;
+  transform: translateY(4px) scale(0.98);
+  pointer-events: none;
+  transition-duration: var(--duration-fast);
+}
+
+@starting-style {
+  .feed-preview-loading[data-motion-state="open"] {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+
+  .feed-confirmation-form[data-motion-state="open"] {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+  }
 }
 
 .feed-preview-loading-lines {
@@ -2994,9 +3094,9 @@ kbd {
   color: var(--text-secondary);
   cursor: pointer;
   transition:
-    transform 140ms var(--ease-out),
-    background-color 140ms ease,
-    border-color 140ms ease;
+    transform var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) ease,
+    border-color var(--duration-fast) ease;
 }
 
 .rule-action-option.is-selected {
@@ -3058,10 +3158,10 @@ kbd {
     border-color: var(--accent);
     background: var(--accent-surface);
   }
+}
 
-  .rule-action-option:active {
-    transform: scale(0.99);
-  }
+.rule-action-option:active {
+  transform: scale(0.99);
 }
 
 .field {
@@ -3281,7 +3381,7 @@ kbd {
   border-radius: 50%;
   background: var(--muted);
   transition:
-    transform 160ms var(--ease-out),
+    transform 160ms var(--ease-in-out),
     background-color 160ms ease;
 }
 
@@ -3488,7 +3588,7 @@ kbd {
   border: 0;
   background: transparent;
   color: var(--text-secondary);
-  transition: transform 140ms var(--ease-out);
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -3496,10 +3596,10 @@ kbd {
     background: var(--surface-hover);
     color: var(--text);
   }
+}
 
-  .font-stepper button:active:not(:disabled, :focus-visible) {
-    transform: scale(0.92);
-  }
+.font-stepper button:active:not(:disabled, :focus-visible) {
+  transform: scale(0.95);
 }
 .font-stepper output {
   min-width: 54px;
@@ -3570,10 +3670,10 @@ kbd {
   opacity: 0;
   transform: scale(0.98);
   transition:
-    opacity 180ms var(--ease-out),
-    transform 180ms var(--ease-out),
-    display 180ms allow-discrete,
-    overlay 180ms allow-discrete;
+    opacity var(--duration-surface) var(--ease-out),
+    transform var(--duration-surface) var(--ease-out),
+    display var(--duration-surface) allow-discrete,
+    overlay var(--duration-surface) allow-discrete;
 }
 
 .shortcut-dialog[open] {
@@ -3585,9 +3685,9 @@ kbd {
   background: oklch(0 0 0 / 0.7);
   opacity: 0;
   transition:
-    opacity 180ms var(--ease-out),
-    display 180ms allow-discrete,
-    overlay 180ms allow-discrete;
+    opacity var(--duration-surface) var(--ease-out),
+    display var(--duration-surface) allow-discrete,
+    overlay var(--duration-surface) allow-discrete;
 }
 
 .shortcut-dialog[open]::backdrop {
@@ -4197,23 +4297,124 @@ kbd {
     animation: none;
   }
 
-  .nav-item kbd,
-  .switch span,
-  .rule-action-option,
-  .sidebar,
-  .nav-scrim,
-  .article-selection-menu,
-  .mark-read-menu,
-  .toast > span,
-  .shortcut-dialog,
-  .shortcut-dialog::backdrop {
+  .nav-item kbd {
+    transition: opacity var(--duration-reduced) ease;
+  }
+
+  .switch span {
+    transition: background-color var(--duration-reduced) ease;
+  }
+
+  .rule-action-option {
+    transition:
+      background-color var(--duration-reduced) ease,
+      border-color var(--duration-reduced) ease;
+  }
+
+  .sidebar {
     transition: none;
   }
 
+  .nav-scrim {
+    transition:
+      opacity var(--duration-reduced) ease,
+      visibility var(--duration-reduced);
+  }
+
+  .inline-state.empty-state,
+  .inline-editor,
+  .inline-editor[data-motion-state="closed"],
+  .feed-preview-loading,
+  .feed-preview-loading[data-motion-state="closed"],
+  .feed-confirmation-form,
+  .feed-confirmation-form[data-motion-state="closed"],
+  .article-selection-menu,
+  .mark-read-menu,
   .toast > span,
+  .toast > span[data-state="open"] {
+    transition: opacity var(--duration-reduced) ease;
+  }
+
+  .shortcut-dialog {
+    transition:
+      opacity var(--duration-reduced) ease,
+      display var(--duration-reduced) allow-discrete,
+      overlay var(--duration-reduced) allow-discrete;
+  }
+
+  .shortcut-dialog::backdrop {
+    transition:
+      opacity var(--duration-reduced) ease,
+      display var(--duration-reduced) allow-discrete,
+      overlay var(--duration-reduced) allow-discrete;
+  }
+
+  .inline-state.empty-state,
+  .inline-editor,
+  .inline-editor[data-motion-state="closed"],
+  .feed-preview-loading,
+  .feed-preview-loading[data-motion-state="closed"],
+  .feed-confirmation-form,
+  .feed-confirmation-form[data-motion-state="closed"],
+  .toast > span,
+  .toast > span[data-state="open"],
   .shortcut-dialog,
   .shortcut-dialog[open] {
     transform: none;
+  }
+
+  .mark-read-menu[data-state="closed"] {
+    transform: translateY(0) scale(1);
+  }
+
+  .article-selection-menu[data-state="closed"] {
+    transform: translate(-50%, calc(-100% - 8px)) scale(1);
+  }
+
+  .article-selection-menu[data-placement="below"][data-state="closed"] {
+    transform: translate(-50%, 8px) scale(1);
+  }
+
+  .primary-button:active:not(:disabled, :focus-visible),
+  .secondary-button:active:not(:disabled, :focus-visible),
+  .quiet-button:active:not(:disabled, :focus-visible),
+  .icon-button:active:not(:disabled, :focus-visible),
+  .tree-toggle:active:not(:disabled, :focus-visible),
+  .sidebar-section-heading button:active:not(:focus-visible),
+  .auth-switch button:active:not(:disabled, :focus-visible),
+  .search-form button:active:not(:focus-visible),
+  .segmented-control button:active:not(:focus-visible),
+  .view-switcher button:active:not(:focus-visible),
+  .theme-options button:active:not(:focus-visible),
+  .list-read-button:active:not(:disabled, :focus-visible),
+  .list-star-button:active:not(:disabled, :focus-visible),
+  .reader-back-button:active:not(:disabled, :focus-visible),
+  .article-actions button:active:not(:disabled, :focus-visible),
+  .row-actions button:active:not(:disabled, :focus-visible),
+  .rule-action-option:active,
+  .font-stepper button:active:not(:disabled, :focus-visible) {
+    transform: none;
+  }
+
+  @starting-style {
+    .inline-state.empty-state,
+    .inline-editor[data-motion-state="open"],
+    .feed-preview-loading[data-motion-state="open"],
+    .feed-confirmation-form[data-motion-state="open"] {
+      transform: none;
+    }
+
+    .mark-read-menu[data-state="open"] {
+      transform: translateY(0) scale(1);
+    }
+
+    .article-selection-menu[data-state="open"] {
+      transform: translate(-50%, calc(-100% - 8px)) scale(1);
+    }
+
+    .article-selection-menu[data-placement="below"][data-state="open"] {
+      transform: translate(-50%, 8px) scale(1);
+    }
   }
 }
 

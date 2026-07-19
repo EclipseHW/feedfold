@@ -15,6 +15,7 @@ import { fullContentToggleAction } from "./article-content";
 import { LoginPage, SessionLoading } from "./auth";
 import { articlesWithContextReturn, type ContextArticleReturn } from "./contextual-filter";
 import { FeedsPage, type RuleFormDraft, RulesPage, SettingsPage, ShortcutHelp } from "./management";
+import { motionExitDuration } from "./motion";
 import { type AppView, ReaderToolbar, Sidebar } from "./navigation";
 import {
   AppSkeleton,
@@ -42,7 +43,6 @@ type Theme = "dark" | "light";
 const ARTICLE_FONT_MIN = 15;
 const ARTICLE_FONT_MAX = 23;
 const ARTICLE_FONT_DEFAULT = 18;
-const TOAST_EXIT_MS = 140;
 const FILTER_RULE_NAME_TEXT_LIMIT = 72;
 const APP_BASE_PATH = import.meta.env.BASE_URL;
 
@@ -376,7 +376,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     setToast({ message, visible: true });
     toastTimer.current = window.setTimeout(() => {
       setToast((current) => (current ? { ...current, visible: false } : current));
-      toastExitTimer.current = window.setTimeout(() => setToast(null), TOAST_EXIT_MS);
+      toastExitTimer.current = window.setTimeout(() => setToast(null), motionExitDuration());
     }, 2800);
   }, []);
 

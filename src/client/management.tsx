@@ -42,6 +42,7 @@ import type {
   RuleField,
 } from "../shared/types";
 import { api, appUrl, errorMessage, type RuleInput } from "./api";
+import { type MotionState, useMotionPresence } from "./motion";
 
 type Theme = "dark" | "light";
 
@@ -208,7 +209,15 @@ export function FeedsPage({
   showToast: (message: string) => void;
 }) {
   const [addFeedOpen, setAddFeedOpen] = useState(bootstrap.feeds.length === 0);
+  const [addFeedSession, setAddFeedSession] = useState(0);
   const [addFolderOpen, setAddFolderOpen] = useState(false);
+  const addFeedPresence = useMotionPresence(addFeedOpen);
+  const addFeedTriggerRef = useRef<HTMLButtonElement>(null);
+
+  const closeAddFeed = () => {
+    addFeedTriggerRef.current?.focus();
+    setAddFeedOpen(false);
+  };
 
   return (
     <div className="management-page">
@@ -228,9 +237,17 @@ export function FeedsPage({
               Export OPML
             </a>
             <button
+              ref={addFeedTriggerRef}
               className="primary-button"
               type="button"
-              onClick={() => setAddFeedOpen((current) => !current)}
+              onClick={() => {
+                if (addFeedOpen) {
+                  setAddFeedOpen(false);
+                  return;
+                }
+                setAddFeedSession((current) => current + 1);
+                setAddFeedOpen(true);
+              }}
             >
               <Plus aria-hidden="true" size={16} />
               Add feed
@@ -239,14 +256,16 @@ export function FeedsPage({
         }
       />
 
-      {addFeedOpen ? (
+      {addFeedPresence.present ? (
         <AddFeedForm
+          key={addFeedSession}
           feeds={bootstrap.feeds}
           folders={bootstrap.folders}
-          onCancel={() => setAddFeedOpen(false)}
+          motionState={addFeedPresence.state}
+          onCancel={closeAddFeed}
           onSaved={async (feed) => {
             showToast(`Added ${feed.title}`);
-            setAddFeedOpen(false);
+            closeAddFeed();
             await onReload();
           }}
         />
@@ -368,11 +387,13 @@ export function FeedsPage({
 function AddFeedForm({
   feeds,
   folders,
+  motionState,
   onCancel,
   onSaved,
 }: {
   feeds: Feed[];
   folders: Folder[];
+  motionState: MotionState;
   onCancel: () => void;
   onSaved: (feed: Feed) => Promise<void> | void;
 }) {
@@ -384,10 +405,35 @@ function AddFeedForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const previewHeadingRef = useRef<HTMLHeadingElement>(null);
-  const existingFeed = preview ? feeds.find((feed) => feed.feedUrl === preview.feedUrl) : undefined;
+  const previewFocusFrame = useRef<number | null>(null);
+  const motionStateRef = useRef(motionState);
+  const loadingPresence = useMotionPresence(discovering);
+  const previewPresence = useMotionPresence(preview !== null);
+  const retainedPreview = useRef<FeedPreview | null>(preview);
+  motionStateRef.current = motionState;
+  if (preview) retainedPreview.current = preview;
+  const displayedPreview = preview ?? retainedPreview.current;
+  const showLoadingSurface = loadingPresence.present && error === null;
+  const showPreviewSurface = previewPresence.present && displayedPreview !== null && error === null;
+  const existingFeed = displayedPreview
+    ? feeds.find((feed) => feed.feedUrl === displayedPreview.feedUrl)
+    : undefined;
+
+  useEffect(
+    () => () => {
+      if (previewFocusFrame.current !== null) {
+        window.cancelAnimationFrame(previewFocusFrame.current);
+      }
+    },
+    [],
+  );
 
   const discover = async (event: FormEvent) => {
     event.preventDefault();
+    if (previewFocusFrame.current !== null) {
+      window.cancelAnimationFrame(previewFocusFrame.current);
+      previewFocusFrame.current = null;
+    }
     setDiscovering(true);
     setError(null);
     setPreview(null);
@@ -395,7 +441,10 @@ function AddFeedForm({
       const result = await api.discoverFeed(sourceUrl.trim());
       setPreview(result);
       setTitle(result.title);
-      requestAnimationFrame(() => previewHeadingRef.current?.focus());
+      previewFocusFrame.current = window.requestAnimationFrame(() => {
+        previewFocusFrame.current = null;
+        if (motionStateRef.current === "open") previewHeadingRef.current?.focus();
+      });
     } catch (error) {
       setError(errorMessage(error));
     } finally {
@@ -424,7 +473,12 @@ function AddFeedForm({
   };
 
   return (
-    <div className="inline-editor add-feed-panel" aria-busy={discovering || saving}>
+    <div
+      className="inline-editor add-feed-panel"
+      data-motion-state={motionState}
+      aria-busy={discovering || saving}
+      inert={motionState === "closed"}
+    >
       <div className="inline-editor-heading">
         <div>
           <h2>Add a feed</h2>
@@ -483,165 +537,194 @@ function AddFeedForm({
         </div>
       ) : null}
 
-      {discovering ? (
-        <div className="feed-preview-loading" role="status">
-          <span>Looking for a published feed and loading recent entries…</span>
-          <div className="feed-preview-loading-lines" aria-hidden="true">
-            <div className="skeleton-line wide" />
-            <div className="skeleton-line" />
-            <div className="skeleton-line short" />
-          </div>
-        </div>
-      ) : null}
-
-      {preview ? (
-        <form className="feed-confirmation-form" onSubmit={(event) => void save(event)}>
-          <section className="feed-preview" aria-labelledby="feed-preview-heading">
-            <div className="feed-preview-header">
-              <div className="feed-preview-mark" aria-hidden="true">
-                <Rss size={20} />
+      {showLoadingSurface || showPreviewSurface ? (
+        <div className="feed-discovery-result">
+          {showLoadingSurface ? (
+            <div
+              className="feed-preview-loading"
+              data-motion-state={loadingPresence.state}
+              role="status"
+              inert={loadingPresence.state === "closed"}
+            >
+              <span>Looking for a published feed and loading recent entries…</span>
+              <div className="feed-preview-loading-lines" aria-hidden="true">
+                <div className="skeleton-line wide" />
+                <div className="skeleton-line" />
+                <div className="skeleton-line short" />
               </div>
-              <div className="feed-preview-title-copy">
-                <h3 id="feed-preview-heading" ref={previewHeadingRef} tabIndex={-1}>
-                  {preview.title}
-                </h3>
-                <div className="feed-preview-links">
-                  {preview.siteUrl ? (
-                    <a href={preview.siteUrl} target="_blank" rel="noreferrer">
-                      {feedHost(preview.siteUrl)}
-                      <ExternalLink aria-hidden="true" size={12} />
-                    </a>
-                  ) : (
-                    <span>{feedHost(preview.feedUrl)}</span>
-                  )}
-                  <span aria-hidden="true">·</span>
-                  <a href={preview.feedUrl} target="_blank" rel="noreferrer">
-                    Feed source
-                    <ExternalLink aria-hidden="true" size={12} />
-                  </a>
-                </div>
-              </div>
-              <span className="feed-found-badge">
-                <CheckCircle2 aria-hidden="true" size={14} />
-                Ready to add
-              </span>
             </div>
+          ) : null}
 
-            <div className="feed-preview-list-heading">
-              <h4>Recent entries</h4>
-              <span>
-                {preview.totalArticles} {preview.totalArticles === 1 ? "entry" : "entries"} in this
-                feed
-              </span>
-            </div>
-            {preview.articles.length > 0 ? (
-              <ol className="feed-preview-articles">
-                {preview.articles.map((article) => (
-                  <li
-                    className={
-                      article.imageUrl ? "feed-preview-article has-image" : "feed-preview-article"
-                    }
-                    key={`${article.url ?? ""}\u0000${article.publishedAt ?? ""}\u0000${article.title}`}
-                  >
-                    {article.imageUrl ? <img src={article.imageUrl} alt="" loading="lazy" /> : null}
-                    <div>
-                      {article.url ? (
-                        <a
-                          className="feed-preview-article-title"
-                          href={article.url}
-                          target="_blank"
-                          rel="noreferrer"
-                        >
-                          {article.title}
+          {showPreviewSurface ? (
+            <form
+              className="feed-confirmation-form"
+              data-motion-state={previewPresence.state}
+              inert={previewPresence.state === "closed"}
+              onSubmit={(event) => void save(event)}
+            >
+              <section className="feed-preview" aria-labelledby="feed-preview-heading">
+                <div className="feed-preview-header">
+                  <div className="feed-preview-mark" aria-hidden="true">
+                    <Rss size={20} />
+                  </div>
+                  <div className="feed-preview-title-copy">
+                    <h3 id="feed-preview-heading" ref={previewHeadingRef} tabIndex={-1}>
+                      {displayedPreview.title}
+                    </h3>
+                    <div className="feed-preview-links">
+                      {displayedPreview.siteUrl ? (
+                        <a href={displayedPreview.siteUrl} target="_blank" rel="noreferrer">
+                          {feedHost(displayedPreview.siteUrl)}
                           <ExternalLink aria-hidden="true" size={12} />
                         </a>
                       ) : (
-                        <strong className="feed-preview-article-title">{article.title}</strong>
+                        <span>{feedHost(displayedPreview.feedUrl)}</span>
                       )}
-                      {article.author || article.publishedAt ? (
-                        <div className="feed-preview-article-meta">
-                          {article.author ? <span>{article.author}</span> : null}
-                          {article.author && article.publishedAt ? (
-                            <span aria-hidden="true">·</span>
-                          ) : null}
-                          {article.publishedAt ? (
-                            <time dateTime={article.publishedAt}>
-                              {formatPreviewDate(article.publishedAt)}
-                            </time>
-                          ) : null}
-                        </div>
-                      ) : null}
-                      {article.summary ? <p>{article.summary}</p> : null}
+                      <span aria-hidden="true">·</span>
+                      <a href={displayedPreview.feedUrl} target="_blank" rel="noreferrer">
+                        Feed source
+                        <ExternalLink aria-hidden="true" size={12} />
+                      </a>
                     </div>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <p className="feed-preview-empty">
-                This feed does not currently publish any entries.
-              </p>
-            )}
-          </section>
+                  </div>
+                  <span className="feed-found-badge">
+                    <CheckCircle2 aria-hidden="true" size={14} />
+                    Ready to add
+                  </span>
+                </div>
 
-          <div className="feed-confirmation-settings">
-            <label className="field">
-              <span>Name</span>
-              <input
-                value={title}
-                disabled={saving}
-                onChange={(event) => setTitle(event.target.value)}
-              />
-              <small>Keep the published title or choose your own.</small>
-            </label>
-            <label className="field">
-              <span>Folder</span>
-              <select
-                value={folderId ?? ""}
-                disabled={saving}
-                onChange={(event) =>
-                  setFolderId(event.target.value ? Number(event.target.value) : null)
-                }
-              >
-                <option value="">No folder</option>
-                {folders.map((folder) => (
-                  <option key={folder.id} value={folder.id}>
-                    {folder.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          </div>
+                <div className="feed-preview-list-heading">
+                  <h4>Recent entries</h4>
+                  <span>
+                    {displayedPreview.totalArticles}{" "}
+                    {displayedPreview.totalArticles === 1 ? "entry" : "entries"} in this feed
+                  </span>
+                </div>
+                {displayedPreview.articles.length > 0 ? (
+                  <ol className="feed-preview-articles">
+                    {displayedPreview.articles.map((article) => (
+                      <li
+                        className={
+                          article.imageUrl
+                            ? "feed-preview-article has-image"
+                            : "feed-preview-article"
+                        }
+                        key={`${article.url ?? ""}\u0000${article.publishedAt ?? ""}\u0000${article.title}`}
+                      >
+                        {article.imageUrl ? (
+                          <img src={article.imageUrl} alt="" loading="lazy" />
+                        ) : null}
+                        <div>
+                          {article.url ? (
+                            <a
+                              className="feed-preview-article-title"
+                              href={article.url}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              {article.title}
+                              <ExternalLink aria-hidden="true" size={12} />
+                            </a>
+                          ) : (
+                            <strong className="feed-preview-article-title">{article.title}</strong>
+                          )}
+                          {article.author || article.publishedAt ? (
+                            <div className="feed-preview-article-meta">
+                              {article.author ? <span>{article.author}</span> : null}
+                              {article.author && article.publishedAt ? (
+                                <span aria-hidden="true">·</span>
+                              ) : null}
+                              {article.publishedAt ? (
+                                <time dateTime={article.publishedAt}>
+                                  {formatPreviewDate(article.publishedAt)}
+                                </time>
+                              ) : null}
+                            </div>
+                          ) : null}
+                          {article.summary ? <p>{article.summary}</p> : null}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <p className="feed-preview-empty">
+                    This feed does not currently publish any entries.
+                  </p>
+                )}
+              </section>
 
-          {existingFeed ? (
-            <p className="feed-existing-notice" role="status">
-              <CheckCircle2 aria-hidden="true" size={16} />
-              Already subscribed as <strong>{existingFeed.title}</strong>.
-            </p>
+              <div className="feed-confirmation-settings">
+                <label className="field">
+                  <span>Name</span>
+                  <input
+                    value={title}
+                    disabled={saving}
+                    onChange={(event) => setTitle(event.target.value)}
+                  />
+                  <small>Keep the published title or choose your own.</small>
+                </label>
+                <label className="field">
+                  <span>Folder</span>
+                  <select
+                    value={folderId ?? ""}
+                    disabled={saving}
+                    onChange={(event) =>
+                      setFolderId(event.target.value ? Number(event.target.value) : null)
+                    }
+                  >
+                    <option value="">No folder</option>
+                    {folders.map((folder) => (
+                      <option key={folder.id} value={folder.id}>
+                        {folder.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              {existingFeed ? (
+                <p className="feed-existing-notice" role="status">
+                  <CheckCircle2 aria-hidden="true" size={16} />
+                  Already subscribed as <strong>{existingFeed.title}</strong>.
+                </p>
+              ) : null}
+
+              <div className="form-actions">
+                <button
+                  className="secondary-button"
+                  type="button"
+                  onClick={onCancel}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={saving || !!existingFeed}
+                >
+                  {saving ? (
+                    <LoaderCircle className="spin" aria-hidden="true" size={16} />
+                  ) : existingFeed ? (
+                    <Check aria-hidden="true" size={16} />
+                  ) : (
+                    <Plus aria-hidden="true" size={16} />
+                  )}
+                  {saving ? "Adding feed" : existingFeed ? "Already added" : "Add feed"}
+                </button>
+              </div>
+            </form>
           ) : null}
+        </div>
+      ) : null}
 
-          <div className="form-actions">
-            <button className="secondary-button" type="button" onClick={onCancel} disabled={saving}>
-              Cancel
-            </button>
-            <button className="primary-button" type="submit" disabled={saving || !!existingFeed}>
-              {saving ? (
-                <LoaderCircle className="spin" aria-hidden="true" size={16} />
-              ) : existingFeed ? (
-                <Check aria-hidden="true" size={16} />
-              ) : (
-                <Plus aria-hidden="true" size={16} />
-              )}
-              {saving ? "Adding feed" : existingFeed ? "Already added" : "Add feed"}
-            </button>
-          </div>
-        </form>
-      ) : (
+      {!previewPresence.present ? (
         <div className="form-actions add-feed-initial-actions">
           <button className="secondary-button" type="button" onClick={onCancel}>
             Cancel
           </button>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -1034,7 +1117,18 @@ export function RulesPage({
   showToast: (message: string) => void;
 }) {
   const [formOpen, setFormOpen] = useState(draft !== null);
+  const [formSession, setFormSession] = useState(0);
   const [editing, setEditing] = useState<Rule | null>(null);
+  const formPresence = useMotionPresence(formOpen);
+  const addRuleTriggerRef = useRef<HTMLButtonElement>(null);
+  const ruleFormOpenerRef = useRef<HTMLButtonElement | null>(null);
+  const retainedRuleForm = useRef<{ editing: Rule | null; draft: RuleFormDraft | null }>({
+    editing,
+    draft,
+  });
+  if (formOpen) retainedRuleForm.current = { editing, draft };
+  const displayedEditing = formOpen ? editing : retainedRuleForm.current.editing;
+  const displayedDraft = formOpen ? draft : retainedRuleForm.current.draft;
 
   return (
     <div className="management-page">
@@ -1044,11 +1138,14 @@ export function RulesPage({
         onMenu={onMenu}
         actions={
           <button
+            ref={addRuleTriggerRef}
             className="primary-button"
             type="button"
-            onClick={() => {
+            onClick={(event) => {
+              ruleFormOpenerRef.current = event.currentTarget;
               onClearDraft();
               setEditing(null);
+              setFormSession((current) => current + 1);
               setFormOpen(true);
             }}
           >
@@ -1058,26 +1155,41 @@ export function RulesPage({
         }
       />
 
-      {formOpen ? (
+      {formPresence.present ? (
         <RuleForm
-          key={editing ? `rule-${editing.id}` : draft ? `draft-${draft.id}` : "new-rule"}
+          key={`${
+            displayedEditing
+              ? `rule-${displayedEditing.id}`
+              : displayedDraft
+                ? `draft-${displayedDraft.id}`
+                : "new-rule"
+          }-${formSession}`}
           bootstrap={bootstrap}
-          initial={editing ?? undefined}
-          preset={editing ? undefined : (draft ?? undefined)}
+          initial={displayedEditing ?? undefined}
+          preset={displayedEditing ? undefined : (displayedDraft ?? undefined)}
+          motionState={formPresence.state}
           onCancel={() => {
             const returnDraft = editing ? null : draft;
             onClearDraft();
             setFormOpen(false);
-            setEditing(null);
-            if (returnDraft) onReturnToArticle(returnDraft);
+            if (returnDraft) {
+              setEditing(null);
+              onReturnToArticle(returnDraft);
+              return;
+            }
+            ruleFormOpenerRef.current?.focus();
           }}
           onSaved={async (rule) => {
             const returnDraft = editing ? null : draft;
             showToast(editing ? `Saved ${rule.name}` : `Added ${rule.name}`);
             onClearDraft();
             setFormOpen(false);
-            setEditing(null);
-            if (returnDraft) onReturnToArticle(returnDraft);
+            if (returnDraft) {
+              setEditing(null);
+              onReturnToArticle(returnDraft);
+            } else {
+              addRuleTriggerRef.current?.focus();
+            }
             await onReload();
           }}
           showToast={showToast}
@@ -1115,9 +1227,11 @@ export function RulesPage({
             <button
               className="secondary-button"
               type="button"
-              onClick={() => {
+              onClick={(event) => {
+                ruleFormOpenerRef.current = event.currentTarget;
                 onClearDraft();
                 setEditing(null);
+                setFormSession((current) => current + 1);
                 setFormOpen(true);
               }}
             >
@@ -1145,9 +1259,11 @@ export function RulesPage({
                     key={rule.id}
                     rule={rule}
                     bootstrap={bootstrap}
-                    onEdit={() => {
+                    onEdit={(trigger) => {
+                      ruleFormOpenerRef.current = trigger;
                       onClearDraft();
                       setEditing(rule);
+                      setFormSession((current) => current + 1);
                       setFormOpen(true);
                       window.scrollTo({ top: 0 });
                     }}
@@ -1174,6 +1290,7 @@ function RuleForm({
   bootstrap,
   initial,
   preset,
+  motionState,
   onCancel,
   onSaved,
   showToast,
@@ -1181,6 +1298,7 @@ function RuleForm({
   bootstrap: BootstrapData;
   initial?: Rule;
   preset?: RuleFormDraft;
+  motionState: MotionState;
   onCancel: () => void;
   onSaved: (rule: Rule) => Promise<void> | void;
   showToast: (message: string) => void;
@@ -1260,7 +1378,12 @@ function RuleForm({
   };
 
   return (
-    <form className="inline-editor rule-form" onSubmit={(event) => void submit(event)}>
+    <form
+      className="inline-editor rule-form"
+      data-motion-state={motionState}
+      inert={motionState === "closed"}
+      onSubmit={(event) => void submit(event)}
+    >
       <div className="inline-editor-heading">
         <div>
           <h2>{initial ? "Edit rule" : preset ? "Filter selected text" : "Add rule"}</h2>
@@ -1519,7 +1642,7 @@ function RuleRow({
 }: {
   rule: Rule;
   bootstrap: BootstrapData;
-  onEdit: () => void;
+  onEdit: (trigger: HTMLButtonElement) => void;
   onReload: () => Promise<void> | void;
   showToast: (message: string) => void;
 }) {
@@ -1605,7 +1728,11 @@ function RuleRow({
         <span className="numeric-cell">{rule.matchedCount}</span>
       </td>
       <td className="row-actions">
-        <button type="button" onClick={onEdit} aria-label={`Edit ${rule.name}`}>
+        <button
+          type="button"
+          onClick={(event) => onEdit(event.currentTarget)}
+          aria-label={`Edit ${rule.name}`}
+        >
           <Edit3 aria-hidden="true" size={15} />
         </button>
         <button
