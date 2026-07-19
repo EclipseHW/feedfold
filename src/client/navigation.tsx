@@ -45,6 +45,7 @@ import type {
   SessionUser,
 } from "../shared/types";
 import { MARK_READ_AGE_DAYS } from "../shared/types";
+import { useMotionPresence } from "./motion";
 
 export type AppView = "reader" | "feeds" | "rules" | "settings";
 
@@ -651,10 +652,10 @@ function MarkReadSplitButton({
   const controlRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuPresence = useMotionPresence(menuOpen);
 
   const closeMenu = useCallback((restoreFocus = false) => {
     setMenuOpen(false);
-    setMenuPosition(null);
     if (restoreFocus) triggerRef.current?.focus();
   }, []);
 
@@ -715,6 +716,10 @@ function MarkReadSplitButton({
     if (disabled && menuOpen) closeMenu();
   }, [closeMenu, disabled, menuOpen]);
 
+  useEffect(() => {
+    if (!menuPresence.present) setMenuPosition(null);
+  }, [menuPresence.present]);
+
   const moveMenuFocus = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (!menuRef.current) return;
     const items = [...menuRef.current.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')];
@@ -758,14 +763,16 @@ function MarkReadSplitButton({
       >
         <ChevronDown aria-hidden="true" size={16} />
       </button>
-      {menuOpen && menuPosition
+      {menuPresence.present && menuPosition
         ? createPortal(
             <div
               ref={menuRef}
               id={MARK_READ_MENU_ID}
               className="mark-read-menu"
+              data-state={menuPresence.state}
               role="menu"
               aria-labelledby={MARK_READ_MENU_HEADING_ID}
+              inert={menuPresence.state === "closed"}
               style={menuPosition}
               onKeyDown={moveMenuFocus}
             >

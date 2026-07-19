@@ -21,6 +21,7 @@ import { createPortal } from "react-dom";
 import type { Article, ArticleState, ReadingMode } from "../shared/types";
 import { articleContentView } from "./article-content";
 import { extractHttpLinks } from "./article-links";
+import { useMotionPresence } from "./motion";
 import {
   captureTextSelection,
   restoreTextSelection,
@@ -934,6 +935,10 @@ function ArticleDocument({
   const documentRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
+  const selectionMenuPresence = useMotionPresence(selectionMenu !== null);
+  const retainedSelectionMenu = useRef<SelectionMenuState | null>(selectionMenu);
+  if (selectionMenu) retainedSelectionMenu.current = selectionMenu;
+  const displayedSelectionMenu = selectionMenu ?? retainedSelectionMenu.current;
 
   const showSelectionMenu = useCallback(() => {
     const root = documentRef.current;
@@ -1033,15 +1038,17 @@ function ArticleDocument({
           onToggleFullContent={onToggleFullContent}
         />
       </div>
-      {selectionMenu
+      {selectionMenuPresence.present && displayedSelectionMenu
         ? createPortal(
             <div
               ref={menuRef}
               className="article-selection-menu"
               role="menu"
               aria-label="Selected text actions"
-              data-placement={selectionMenu.placement}
-              style={{ left: selectionMenu.left, top: selectionMenu.top }}
+              data-placement={displayedSelectionMenu.placement}
+              data-state={selectionMenuPresence.state}
+              inert={selectionMenuPresence.state === "closed"}
+              style={{ left: displayedSelectionMenu.left, top: displayedSelectionMenu.top }}
             >
               <button
                 type="button"
@@ -1049,7 +1056,7 @@ function ArticleDocument({
                 aria-label="Filter selected text"
                 onPointerDown={(event) => event.preventDefault()}
                 onClick={() => {
-                  const { text } = selectionMenu;
+                  const { text } = displayedSelectionMenu;
                   setSelectionMenu(null);
                   onFilterSelection(article, text);
                 }}
