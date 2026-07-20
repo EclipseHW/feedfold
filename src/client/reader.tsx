@@ -54,6 +54,10 @@ function articleDate(article: Article): string {
   return formatRelativeDate(article.publishedAt ?? article.discoveredAt);
 }
 
+function articleLabel(article: Article): string {
+  return article.title || article.summary || "article";
+}
+
 function formatViewCount(value: number): string {
   return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(
     value,
@@ -515,7 +519,7 @@ export function ArticleList({
               aria-current={article.id === activeId ? "true" : undefined}
               onClick={() => onOpen(article)}
             >
-              <span className="sr-only">Open {article.title}</span>
+              <span className="sr-only">Open {articleLabel(article)}</span>
             </button>
             <div className="article-card-content">
               {article.imageUrl ? (
@@ -546,9 +550,9 @@ export function ArticleList({
                       <span className="sr-only">Unread: </span>
                     </span>
                   ) : null}
-                  {article.title}
+                  {article.title || article.summary}
                 </span>
-                {article.summary ? (
+                {article.title && article.summary ? (
                   <span className="article-list-summary-text">
                     <LinkifiedText text={article.summary} />
                   </span>
@@ -560,7 +564,9 @@ export function ArticleList({
                 className="list-read-button"
                 type="button"
                 aria-label={
-                  article.isRead ? `Mark ${article.title} unread` : `Mark ${article.title} read`
+                  article.isRead
+                    ? `Mark ${articleLabel(article)} unread`
+                    : `Mark ${articleLabel(article)} read`
                 }
                 title={article.isRead ? "Mark unread" : "Mark read"}
                 onClick={() => onToggleRead(article)}
@@ -575,7 +581,9 @@ export function ArticleList({
                 className={`list-star-button${article.isStarred ? " is-starred" : ""}`}
                 type="button"
                 aria-label={
-                  article.isStarred ? `Remove star from ${article.title}` : `Star ${article.title}`
+                  article.isStarred
+                    ? `Remove star from ${articleLabel(article)}`
+                    : `Star ${articleLabel(article)}`
                 }
                 title={article.isStarred ? "Remove star" : "Star"}
                 aria-pressed={article.isStarred}
@@ -1260,7 +1268,7 @@ function ArticleHeader({
   onUnsubscribe: (article: Article) => void;
 }) {
   return (
-    <header className="article-header">
+    <header className="article-header" id={id}>
       <div className="article-source-row">
         <ArticleSourceMenu article={article} onUnsubscribe={onUnsubscribe} />
         <span aria-hidden="true">·</span>
@@ -1286,16 +1294,18 @@ function ArticleHeader({
           </>
         ) : null}
       </div>
-      <h2 id={id}>
-        {article.url ? (
-          <a href={article.url} target="_blank" rel="noreferrer">
-            {article.title}
-            <span className="sr-only"> (opens in a new tab)</span>
-          </a>
-        ) : (
-          article.title
-        )}
-      </h2>
+      {article.title ? (
+        <h2>
+          {article.url ? (
+            <a href={article.url} target="_blank" rel="noreferrer">
+              {article.title}
+              <span className="sr-only"> (opens in a new tab)</span>
+            </a>
+          ) : (
+            article.title
+          )}
+        </h2>
+      ) : null}
     </header>
   );
 }

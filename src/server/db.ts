@@ -648,6 +648,27 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    sql: `
+      UPDATE articles
+      SET title = '', content_revision = content_revision + 1
+      WHERE title <> ''
+        AND feed_id IN (
+          SELECT id FROM feeds
+          WHERE lower(feed_url) LIKE 'https://nitter.net/%'
+             OR lower(feed_url) LIKE 'http://nitter.net/%'
+             OR lower(feed_url) LIKE 'https://t.me/%'
+             OR lower(feed_url) LIKE 'http://t.me/%'
+        );
+
+      UPDATE feeds
+      SET etag = NULL, last_modified = NULL, next_poll_at = NULL
+      WHERE lower(feed_url) LIKE 'https://nitter.net/%'
+         OR lower(feed_url) LIKE 'http://nitter.net/%'
+         OR lower(feed_url) LIKE 'https://t.me/%'
+         OR lower(feed_url) LIKE 'http://t.me/%';
+    `,
+  },
 ];
 
 function now(): string {

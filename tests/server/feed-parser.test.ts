@@ -5,6 +5,28 @@ import {
 } from "../../src/server/feed-parser.js";
 
 describe("feed normalization", () => {
+  it("preserves titleless entries without promoting their body to a headline", () => {
+    const rss = parseAndNormalizeFeed(
+      `<?xml version="1.0"?><rss version="2.0"><channel>
+        <title>Posts</title><link>https://example.test/</link><description>Posts</description>
+        <item><guid>one</guid><description><![CDATA[<p>The complete post body.</p>]]></description></item>
+      </channel></rss>`,
+      "https://example.test/rss.xml",
+    );
+    const nitter = parseAndNormalizeFeed(
+      `<?xml version="1.0"?><rss version="2.0"><channel>
+        <title>person / @person</title><link>https://nitter.net/person</link>
+        <description>Twitter feed</description><item><guid>two</guid>
+        <title>The complete tweet body.</title>
+        <description><![CDATA[<p>The complete tweet body.</p>]]></description></item>
+      </channel></rss>`,
+      "https://nitter.net/person/rss",
+    );
+
+    expect(rss.articles[0]).toMatchObject({ title: "", summary: "The complete post body." });
+    expect(nitter.articles[0]).toMatchObject({ title: "", summary: "The complete tweet body." });
+  });
+
   it("normalizes RSS, Atom, and JSON Feed into the same article contract", () => {
     const rss = parseAndNormalizeFeed(
       `<?xml version="1.0"?><rss version="2.0"><channel>

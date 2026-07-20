@@ -106,7 +106,7 @@ function article(
 
   return {
     externalId,
-    title: summary.slice(0, 160) || `${channelTitle} post ${postId}`,
+    title: "",
     url: postUrl,
     author: channelTitle,
     publishedAt: date(message.querySelector("time[datetime]")?.getAttribute("datetime") ?? null),
