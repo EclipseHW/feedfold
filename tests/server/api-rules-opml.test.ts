@@ -376,6 +376,52 @@ describe("live API, OPML, and filtering rules", () => {
     expect(
       (
         await app.inject({
+          method: "DELETE",
+          url: `/api/feeds/${partnerFeed.id}`,
+          headers: { cookie: readerCookie },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "DELETE",
+          url: `/api/feeds/${readerFeed.id}`,
+          headers: { cookie: readerCookie },
+        })
+      ).statusCode,
+    ).toBe(204);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: `/api/articles/${articleId}`,
+          headers: { cookie: readerCookie },
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/bootstrap",
+          headers: { cookie: readerCookie },
+        })
+      ).json(),
+    ).toMatchObject({ counts: { all: 0 }, feeds: [] });
+    expect(
+      (
+        await app.inject({
+          method: "GET",
+          url: "/api/bootstrap",
+          headers: { cookie: partnerCookie },
+        })
+      ).json(),
+    ).toMatchObject({ feeds: [{ id: partnerFeed.id, title: "Partner copy" }] });
+
+    expect(
+      (
+        await app.inject({
           method: "POST",
           url: "/api/auth/logout",
           headers: { cookie: readerCookie },

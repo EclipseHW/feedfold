@@ -4,6 +4,7 @@ import {
   ArrowRight,
   BookOpen,
   CheckCircle2,
+  ChevronDown,
   Circle,
   Copy,
   Download,
@@ -918,6 +919,7 @@ function ArticleDocument({
   titleId,
   fullContentVisible,
   summaryState,
+  onUnsubscribe,
   onToggleFullContent,
   onRegenerateSummary,
   onOpenAiSettings,
@@ -927,6 +929,7 @@ function ArticleDocument({
   titleId: string;
   fullContentVisible: boolean;
   summaryState: ArticleSummaryViewState;
+  onUnsubscribe: (article: Article) => void;
   onToggleFullContent: (article: Article) => void;
   onRegenerateSummary: (article: Article) => void;
   onOpenAiSettings: () => void;
@@ -1025,7 +1028,7 @@ function ArticleDocument({
   return (
     <>
       <div ref={documentRef} className="article-document">
-        <ArticleHeader article={article} id={titleId} />
+        <ArticleHeader article={article} id={titleId} onUnsubscribe={onUnsubscribe} />
         <ArticleSummaryPanel
           article={article}
           state={summaryState}
@@ -1082,6 +1085,7 @@ export function ReaderPane({
   onMarkUnread,
   onToggleStar,
   onCopy,
+  onUnsubscribe,
   onToggleFullContent,
   onToggleSummary,
   onRegenerateSummary,
@@ -1097,6 +1101,7 @@ export function ReaderPane({
   onMarkUnread: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
+  onUnsubscribe: (article: Article) => void;
   onToggleFullContent: (article: Article) => void;
   onToggleSummary: (article: Article) => void;
   onRegenerateSummary: (article: Article) => void;
@@ -1143,6 +1148,7 @@ export function ReaderPane({
         titleId={`article-${article.id}-title`}
         fullContentVisible={fullContentVisible}
         summaryState={summaryState}
+        onUnsubscribe={onUnsubscribe}
         onToggleFullContent={onToggleFullContent}
         onRegenerateSummary={onRegenerateSummary}
         onOpenAiSettings={onOpenAiSettings}
@@ -1152,11 +1158,107 @@ export function ReaderPane({
   );
 }
 
-function ArticleHeader({ article, id }: { article: Article; id: string }) {
+function ArticleSourceMenu({
+  article,
+  onUnsubscribe,
+}: {
+  article: Article;
+  onUnsubscribe: (article: Article) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const focusMenuOnOpen = useRef(false);
+  const menuId = `article-${article.id}-source-menu`;
+  const anchorName = `--article-${article.id}-source`;
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        className="article-source-trigger"
+        type="button"
+        aria-label={`${article.feedTitle} feed actions`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+        popoverTarget={menuId}
+        style={{ anchorName }}
+        onPointerDown={() => {
+          focusMenuOnOpen.current = false;
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && open) {
+            event.preventDefault();
+            event.stopPropagation();
+            menuRef.current?.hidePopover();
+            triggerRef.current?.focus();
+            return;
+          }
+          if (["ArrowDown", "Enter", " "].includes(event.key)) {
+            focusMenuOnOpen.current = true;
+          }
+          if (event.key !== "ArrowDown") return;
+          event.preventDefault();
+          menuRef.current?.showPopover();
+        }}
+      >
+        <span>{article.feedTitle}</span>
+        <ChevronDown aria-hidden="true" size={15} />
+      </button>
+      <div
+        ref={menuRef}
+        id={menuId}
+        className="article-source-menu"
+        popover="auto"
+        role="menu"
+        aria-label={`${article.feedTitle} feed actions`}
+        style={{ positionAnchor: anchorName }}
+        onToggle={(event) => {
+          const nextOpen = event.currentTarget.matches(":popover-open");
+          setOpen(nextOpen);
+          if (!nextOpen || !focusMenuOnOpen.current) return;
+          window.requestAnimationFrame(() => {
+            menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+          });
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Escape") return;
+          event.preventDefault();
+          event.stopPropagation();
+          menuRef.current?.hidePopover();
+          triggerRef.current?.focus();
+        }}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            menuRef.current?.hidePopover();
+            triggerRef.current?.focus();
+            onUnsubscribe(article);
+          }}
+        >
+          Unsubscribe
+        </button>
+      </div>
+    </>
+  );
+}
+
+function ArticleHeader({
+  article,
+  id,
+  onUnsubscribe,
+}: {
+  article: Article;
+  id: string;
+  onUnsubscribe: (article: Article) => void;
+}) {
   return (
     <header className="article-header">
       <div className="article-source-row">
-        <span>{article.feedTitle}</span>
+        <ArticleSourceMenu article={article} onUnsubscribe={onUnsubscribe} />
         <span aria-hidden="true">·</span>
         <time dateTime={article.publishedAt ?? article.discoveredAt}>{articleDate(article)}</time>
         {article.media ? (
@@ -1332,6 +1434,7 @@ export function ExpandedStream({
   onMarkUnread,
   onToggleStar,
   onCopy,
+  onUnsubscribe,
   onToggleFullContent,
   onToggleSummary,
   onRegenerateSummary,
@@ -1352,6 +1455,7 @@ export function ExpandedStream({
   onMarkUnread: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
+  onUnsubscribe: (article: Article) => void;
   onToggleFullContent: (article: Article) => void;
   onToggleSummary: (article: Article) => void;
   onRegenerateSummary: (article: Article) => void;
@@ -1396,6 +1500,7 @@ export function ExpandedStream({
             titleId={`expanded-${article.id}-title`}
             fullContentVisible={fullContentVisibleIds.has(article.id)}
             summaryState={summaryStates.get(article.id) ?? EMPTY_ARTICLE_SUMMARY_STATE}
+            onUnsubscribe={onUnsubscribe}
             onToggleFullContent={onToggleFullContent}
             onRegenerateSummary={onRegenerateSummary}
             onOpenAiSettings={onOpenAiSettings}
