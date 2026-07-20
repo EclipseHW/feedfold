@@ -1109,7 +1109,7 @@ kbd {
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted);
   font-size: 12px;
   font-weight: 600;
   transition:
@@ -1455,7 +1455,7 @@ kbd {
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--muted);
   font-size: 12px;
   transition: transform var(--duration-fast) var(--ease-out);
 }
@@ -1479,29 +1479,24 @@ kbd {
 
 .reader-back-button:active:not(:disabled, :focus-visible),
 .article-actions button:active:not(:disabled, :focus-visible) {
-  transform: scale(0.95);
+  transform: scale(0.97);
 }
 
-.list-star-button.is-starred,
-.article-actions button.is-starred {
+.list-star-button.is-starred {
   color: var(--warning);
 }
 
-.article-actions .read-state-action[aria-pressed="false"] {
-  color: var(--accent);
-}
-
+.article-actions button[aria-pressed="true"],
 .article-actions .summary-action[aria-expanded="true"] {
-  color: var(--accent);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+  color: var(--text);
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .article-actions button.is-starred:hover:not(:disabled) {
-    color: var(--warning);
-  }
-
+  .article-actions button[aria-pressed="true"]:hover:not(:disabled),
   .article-actions .summary-action[aria-expanded="true"]:hover:not(:disabled) {
-    color: var(--accent);
+    background: color-mix(in srgb, var(--text) 12%, transparent);
+    color: var(--text);
   }
 }
 
