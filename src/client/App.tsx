@@ -803,6 +803,17 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     [showToast],
   );
 
+  const openArticleSource = useCallback(
+    (article: Article | null) => {
+      if (!article?.url) {
+        showToast("This article has no source URL");
+        return;
+      }
+      window.open(article.url, "_blank", "noopener,noreferrer");
+    },
+    [showToast],
+  );
+
   const toggleFullContent = useCallback(
     async (article: Article) => {
       if (!article.url || article.media) return;
@@ -1256,6 +1267,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           }
         },
         c: () => void copyArticleUrl(activeArticle),
+        o: () => openArticleSource(activeArticle),
         w: () => {
           const articleVisible = view === "reader" && (readingMode === "expanded" || readerOpen);
           if (articleVisible && activeArticle) void toggleFullContent(activeArticle);
@@ -1302,6 +1314,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     bootstrap?.settings.singleKeyShortcuts,
     changeArticleState,
     copyArticleUrl,
+    openArticleSource,
     toggleFullContent,
     readerOpen,
     readingMode,
@@ -1464,6 +1477,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                       void changeArticleState(article, { isStarred: !article.isStarred })
                     }
                     onCopy={(article) => void copyArticleUrl(article)}
+                    onOpenSource={openArticleSource}
                     onUnsubscribe={(article) => void unsubscribeFromFeed(article)}
                     onToggleFullContent={(article) => void toggleFullContent(article)}
                     onToggleSummary={toggleArticleSummary}
@@ -1495,6 +1509,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     void changeArticleState(article, { isStarred: !article.isStarred })
                   }
                   onCopy={(article) => void copyArticleUrl(article)}
+                  onOpenSource={openArticleSource}
                   onUnsubscribe={(article) => void unsubscribeFromFeed(article)}
                   onToggleFullContent={(article) => void toggleFullContent(article)}
                   onToggleSummary={toggleArticleSummary}

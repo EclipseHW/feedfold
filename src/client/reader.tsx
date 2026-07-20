@@ -8,6 +8,7 @@ import {
   Circle,
   Copy,
   Download,
+  ExternalLink,
   FileText,
   Inbox,
   ListFilter,
@@ -637,6 +638,7 @@ interface ArticleActionsProps {
   onToggleRead: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
+  onOpenSource: (article: Article) => void;
   onToggleFullContent: (article: Article) => void;
   onToggleSummary: (article: Article) => void;
 }
@@ -650,6 +652,7 @@ function ArticleActions({
   onToggleRead,
   onToggleStar,
   onCopy,
+  onOpenSource,
   onToggleFullContent,
   onToggleSummary,
 }: ArticleActionsProps) {
@@ -780,6 +783,14 @@ function ArticleActions({
         data-tooltip="Copy article URL (C)"
       >
         <Copy aria-hidden="true" size={16} />
+      </button>
+      <button
+        type="button"
+        onClick={() => onOpenSource(article)}
+        aria-label="Open article source (O)"
+        data-tooltip="Open article source (O)"
+      >
+        <ExternalLink aria-hidden="true" size={16} />
       </button>
     </div>
   );
@@ -1092,6 +1103,7 @@ export function ReaderPane({
   onToggleRead,
   onToggleStar,
   onCopy,
+  onOpenSource,
   onUnsubscribe,
   onToggleFullContent,
   onToggleSummary,
@@ -1108,6 +1120,7 @@ export function ReaderPane({
   onToggleRead: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
+  onOpenSource: (article: Article) => void;
   onUnsubscribe: (article: Article) => void;
   onToggleFullContent: (article: Article) => void;
   onToggleSummary: (article: Article) => void;
@@ -1150,6 +1163,7 @@ export function ReaderPane({
             onToggleRead={onToggleRead}
             onToggleStar={onToggleStar}
             onCopy={onCopy}
+            onOpenSource={onOpenSource}
             onToggleFullContent={onToggleFullContent}
             onToggleSummary={onToggleSummary}
           />
@@ -1448,6 +1462,7 @@ export function ExpandedStream({
   onToggleRead,
   onToggleStar,
   onCopy,
+  onOpenSource,
   onUnsubscribe,
   onToggleFullContent,
   onToggleSummary,
@@ -1469,6 +1484,7 @@ export function ExpandedStream({
   onToggleRead: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
+  onOpenSource: (article: Article) => void;
   onUnsubscribe: (article: Article) => void;
   onToggleFullContent: (article: Article) => void;
   onToggleSummary: (article: Article) => void;
@@ -1505,6 +1521,7 @@ export function ExpandedStream({
               onToggleRead={onToggleRead}
               onToggleStar={onToggleStar}
               onCopy={onCopy}
+              onOpenSource={onOpenSource}
               onToggleFullContent={onToggleFullContent}
               onToggleSummary={onToggleSummary}
             />
