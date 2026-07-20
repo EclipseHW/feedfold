@@ -1550,13 +1550,13 @@ kbd {
 }
 
 .article-header h2 {
-  max-width: 26ch;
   margin: 13px 0 0;
   color: var(--text);
   font-size: 32px;
   font-weight: 720;
   letter-spacing: -0.025em;
   line-height: 1.16;
+  text-wrap: balance;
 }
 
 .article-header h2 a {
