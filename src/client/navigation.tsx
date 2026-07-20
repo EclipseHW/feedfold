@@ -171,7 +171,7 @@ export function Sidebar({
         </button>
       </div>
 
-      <nav className="sidebar-scroll">
+      <nav className="sidebar-navigation">
         <ul className="nav-list quick-links">
           <li>
             <button
@@ -235,48 +235,50 @@ export function Sidebar({
           </li>
         </ul>
 
-        <div className="sidebar-section-heading">
-          <span>Feeds</span>
-          <button
-            type="button"
-            onClick={() => onNavigate("feeds")}
-            aria-label="Manage folders"
-            title="Manage folders"
-          >
-            <Plus aria-hidden="true" size={15} />
-          </button>
-        </div>
+        <div className="sidebar-scroll">
+          <div className="sidebar-section-heading">
+            <span>Feeds</span>
+            <button
+              type="button"
+              onClick={() => onNavigate("feeds")}
+              aria-label="Manage folders"
+              title="Manage folders"
+            >
+              <Plus aria-hidden="true" size={15} />
+            </button>
+          </div>
 
-        {bootstrap.feeds.length === 0 ? (
-          <button className="sidebar-empty" type="button" onClick={() => onNavigate("feeds")}>
-            <Plus aria-hidden="true" size={15} />
-            Add your first feed
-          </button>
-        ) : (
-          <ul className="folder-tree">
-            {rootFolders.map((folder) => (
-              <SidebarFolder
-                key={folder.id}
-                folder={folder}
-                folders={bootstrap.folders}
-                feeds={bootstrap.feeds}
-                selectedFeedId={selectedFeedId}
-                selectedFolderId={selectedFolderId}
-                selectedFolderPathIds={selectedFolderPathIds}
-                currentView={currentView}
-                onSelectScope={onSelectScope}
-              />
-            ))}
-            {uncategorized.map((feed) => (
-              <SidebarFeed
-                key={feed.id}
-                feed={feed}
-                selected={currentView === "reader" && selectedFeedId === feed.id}
-                onSelect={() => onSelectScope(feed.id, null)}
-              />
-            ))}
-          </ul>
-        )}
+          {bootstrap.feeds.length === 0 ? (
+            <button className="sidebar-empty" type="button" onClick={() => onNavigate("feeds")}>
+              <Plus aria-hidden="true" size={15} />
+              Add your first feed
+            </button>
+          ) : (
+            <ul className="folder-tree">
+              {rootFolders.map((folder) => (
+                <SidebarFolder
+                  key={folder.id}
+                  folder={folder}
+                  folders={bootstrap.folders}
+                  feeds={bootstrap.feeds}
+                  selectedFeedId={selectedFeedId}
+                  selectedFolderId={selectedFolderId}
+                  selectedFolderPathIds={selectedFolderPathIds}
+                  currentView={currentView}
+                  onSelectScope={onSelectScope}
+                />
+              ))}
+              {uncategorized.map((feed) => (
+                <SidebarFeed
+                  key={feed.id}
+                  feed={feed}
+                  selected={currentView === "reader" && selectedFeedId === feed.id}
+                  onSelect={() => onSelectScope(feed.id, null)}
+                />
+              ))}
+            </ul>
+          )}
+        </div>
       </nav>
 
       <div className="sidebar-footer">

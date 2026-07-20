@@ -364,11 +364,11 @@ kbd {
   margin-left: auto;
 }
 
-.sidebar-scroll {
+.sidebar-navigation {
+  display: flex;
   min-height: 0;
   flex: 1;
-  overflow: auto;
-  padding: 4px 9px 12px;
+  flex-direction: column;
 }
 
 .nav-list,
@@ -379,8 +379,17 @@ kbd {
 }
 
 .quick-links {
+  flex: 0 0 auto;
+  margin: 4px 9px 0;
   padding-bottom: 12px;
   border-bottom: 1px solid var(--border);
+}
+
+.sidebar-scroll {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding: 0 9px 12px;
 }
 
 .nav-item {
