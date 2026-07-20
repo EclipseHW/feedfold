@@ -2,6 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { discoverFeed, FeedDiscoveryError } from "../../src/server/feed-discovery.js";
+import { nitterFeedUrl } from "../../src/server/feed-http.js";
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -28,6 +29,18 @@ function rss(baseUrl: string): string {
 }
 
 describe("feed discovery", () => {
+  it("turns supported Nitter timelines into their published RSS endpoints", () => {
+    expect(nitterFeedUrl("https://nitter.net/banteg")).toBe("https://nitter.net/banteg/rss");
+    expect(nitterFeedUrl("https://nitter.net/banteg/rss#latest")).toBe(
+      "https://nitter.net/banteg/rss",
+    );
+    expect(nitterFeedUrl("https://nitter.net/banteg/media?filter=videos")).toBe(
+      "https://nitter.net/banteg/media/rss?filter=videos",
+    );
+    expect(nitterFeedUrl("https://nitter.net/banteg/status/123")).toBeNull();
+    expect(nitterFeedUrl("https://x.com/banteg")).toBeNull();
+  });
+
   it("previews direct feeds and detects feeds from both linked pages and site roots", async () => {
     let baseUrl = "";
     const requestedPaths: string[] = [];
