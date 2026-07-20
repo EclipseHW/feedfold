@@ -4,6 +4,7 @@ import sanitizeHtml from "sanitize-html";
 import { firstSafeImageUrl } from "./article-image.js";
 import { youtubeMediaFromUrl } from "./article-media.js";
 import type { ParsedArticle, ParsedFeed } from "./db.js";
+import { nitterFeedUrl } from "./feed-http.js";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -91,6 +92,7 @@ function authorNames(value: unknown): string | null {
 function normalizeRss(feed: UnknownRecord, feedUrl: string): ParsedFeed {
   const title = string(feed.title) ?? feedUrl;
   const siteUrl = url(feed.link, feedUrl);
+  const titlesArePostText = nitterFeedUrl(feedUrl) !== null;
   const articles = records(feed.items).map((item): ParsedArticle => {
     const dc = record(item.dc);
     const content = record(item.content);
@@ -107,8 +109,7 @@ function normalizeRss(feed: UnknownRecord, feedUrl: string): ParsedFeed {
       string(dc.description) ??
       feedContentHtml;
     const guid = nestedString(item.guid, "value");
-    const itemTitle =
-      string(item.title) ?? (plainText(summaryHtml).slice(0, 160) || "Untitled article");
+    const itemTitle = titlesArePostText ? "" : (string(item.title) ?? "");
     const rawAuthors = Array.isArray(item.authors) ? item.authors : [];
     const authors = rawAuthors
       .map((author) => (typeof author === "string" ? string(author) : nestedString(author, "name")))
@@ -150,10 +151,7 @@ function normalizeAtom(feed: UnknownRecord, feedUrl: string): ParsedFeed {
     const mediaDescription = nestedString(mediaGroup.description, "value");
     const feedContentHtml = string(entry.content) ?? string(entry.summary);
     const summaryHtml = string(entry.summary) ?? mediaDescription ?? feedContentHtml;
-    const itemTitle =
-      string(entry.title) ??
-      nestedString(mediaGroup.title, "value") ??
-      (plainText(summaryHtml).slice(0, 160) || "Untitled article");
+    const itemTitle = string(entry.title) ?? nestedString(mediaGroup.title, "value") ?? "";
     const thumbnail = records(mediaGroup.thumbnails)[0];
     const community = record(mediaGroup.community);
     const rating = record(community.starRating);
@@ -194,8 +192,7 @@ function normalizeJson(feed: UnknownRecord, feedUrl: string): ParsedFeed {
       contentHtml ??
       (contentText ? `<p>${escapeHtml(contentText).replaceAll("\n", "<br>")}</p>` : null);
     const summary = string(item.summary) ?? contentText ?? contentHtml;
-    const itemTitle =
-      string(item.title) ?? (plainText(summary).slice(0, 160) || "Untitled article");
+    const itemTitle = string(item.title) ?? "";
     return {
       externalId: string(item.id) ?? itemUrl ?? fallbackId([itemTitle, publishedAt, summary]),
       title: itemTitle,
@@ -228,8 +225,7 @@ function normalizeRdf(feed: UnknownRecord, feedUrl: string): ParsedFeed {
       string(dc.description) ??
       feedContentHtml;
     const publishedAt = date(firstString(dc.dates)) ?? date(dc.date);
-    const itemTitle =
-      string(item.title) ?? (plainText(summaryHtml).slice(0, 160) || "Untitled article");
+    const itemTitle = string(item.title) ?? "";
     return {
       externalId:
         nestedString(item.rdf, "about") ??
@@ -260,10 +256,7 @@ export function parseAndNormalizeWordPressPosts(
     const summaryHtml = excerptHtml ?? feedContentHtml;
     const dateGmt = string(post.date_gmt);
     const publishedAt = date(dateGmt ? `${dateGmt}Z` : null) ?? date(post.date);
-    const itemTitle =
-      plainText(nestedString(post.title, "rendered")) ||
-      plainText(summaryHtml).slice(0, 160) ||
-      "Untitled article";
+    const itemTitle = plainText(nestedString(post.title, "rendered"));
     return {
       externalId:
         nestedString(post.guid, "rendered") ??

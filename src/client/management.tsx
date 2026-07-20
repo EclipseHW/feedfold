@@ -622,11 +622,13 @@ function AddFeedForm({
                               target="_blank"
                               rel="noreferrer"
                             >
-                              {article.title}
+                              {article.title || article.summary || "Untitled article"}
                               <ExternalLink aria-hidden="true" size={12} />
                             </a>
                           ) : (
-                            <strong className="feed-preview-article-title">{article.title}</strong>
+                            <strong className="feed-preview-article-title">
+                              {article.title || article.summary || "Untitled article"}
+                            </strong>
                           )}
                           {article.author || article.publishedAt ? (
                             <div className="feed-preview-article-meta">

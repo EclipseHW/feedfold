@@ -54,7 +54,7 @@ describe("Telegram feed normalization", () => {
       articles: [
         {
           externalId: "Example_Channel/43",
-          title: "Example & Channel post 43",
+          title: "",
           url: "https://t.me/Example_Channel/43",
           publishedAt: "2026-07-17T11:45:00.000Z",
           summary: "",
@@ -62,7 +62,7 @@ describe("Telegram feed normalization", () => {
         },
         {
           externalId: "Example_Channel/42",
-          title: "First update Second line with a link.",
+          title: "",
           url: "https://t.me/Example_Channel/42",
           author: "Example & Channel",
           publishedAt: "2026-07-17T10:30:00.000Z",

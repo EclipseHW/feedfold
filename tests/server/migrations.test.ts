@@ -60,11 +60,13 @@ describe("database migrations", () => {
         updated_at TEXT NOT NULL
       );
       INSERT INTO feeds (
-        id, title, feed_url, refreshing, created_at, updated_at
-      ) VALUES (
-        1, 'Migration feed', 'https://example.test/feed', 1,
-        '2026-07-13T00:00:00.000Z', '2026-07-13T00:00:00.000Z'
-      );
+        id, title, feed_url, refreshing, etag, last_modified, created_at, updated_at
+      ) VALUES
+        (1, 'Migration feed', 'https://example.test/feed', 1, NULL, NULL,
+         '2026-07-13T00:00:00.000Z', '2026-07-13T00:00:00.000Z'),
+        (2, 'person / @person', 'https://nitter.net/person/rss', 0, 'old-etag',
+         'Mon, 20 Jul 2026 12:00:00 GMT', '2026-07-13T00:00:00.000Z',
+         '2026-07-13T00:00:00.000Z');
 
       CREATE TABLE articles (
         id INTEGER PRIMARY KEY,
@@ -101,7 +103,10 @@ describe("database migrations", () => {
          '2026-07-13T00:00:00.000Z', '<picture><source type="image/webp" srcset="https://substackcdn.com/image/fetch/$s_!legacy!, https://example.test/w_424, https://example.test/c_limit, https://example.test/f_webp/feed-hero.png 424w"><img src="/feed-hero.jpg" srcset="https://substackcdn.com/image/fetch/$s_!legacy!, https://example.test/w_424, https://example.test/c_limit, https://example.test/f_auto/feed-hero.png 424w"></picture>',
          '<p>Extracted text without an image.</p>', 'article', 'complete', NULL),
         (4, 1, 'four', 'YouTube Short', 'https://www.youtube.com/shorts/short123',
-         '2026-07-13T00:00:00.000Z', NULL, NULL, NULL, 'failed', 'Extraction failed');
+         '2026-07-13T00:00:00.000Z', NULL, NULL, NULL, 'failed', 'Extraction failed'),
+        (5, 2, 'social-post', 'The complete social post body',
+         'https://nitter.net/person/status/5', '2026-07-13T00:00:00.000Z',
+         '<p>The complete social post body</p>', NULL, 'feed', 'feed', NULL);
 
       CREATE TABLE rules (
         id INTEGER PRIMARY KEY,
@@ -151,7 +156,10 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(database.listFeeds(1)).toMatchObject([{ title: "Migration feed" }]);
+      expect(database.listFeeds(1)).toMatchObject([
+        { title: "Migration feed" },
+        { title: "person / @person" },
+      ]);
       expect(database.listRules(1)).toMatchObject([
         {
           name: "Hide video articles",
@@ -162,7 +170,7 @@ describe("database migrations", () => {
         },
       ]);
       database.recomputeRulesForArticle(1);
-      expect(database.listArticles(1, { state: "all" })).toHaveLength(3);
+      expect(database.listArticles(1, { state: "all" })).toHaveLength(4);
       expect(
         database.listArticles(1, { state: "all" }).map((article) => article.title),
       ).not.toContain("Video");
@@ -253,6 +261,7 @@ describe("database migrations", () => {
         { id: 2, contentRevision: 1 },
         { id: 3, contentRevision: 1 },
         { id: 4, contentRevision: 1 },
+        { id: 5, contentRevision: 2 },
       ]);
       expect(
         database.sqlite
@@ -262,7 +271,13 @@ describe("database migrations", () => {
           .pluck()
           .all(),
       ).toEqual(["ai_credentials", "ai_feature_settings"]);
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(11);
+      expect(database.getArticle(1, 5)?.title).toBe("");
+      expect(
+        database.sqlite
+          .prepare("SELECT etag, last_modified AS lastModified FROM feeds WHERE id = 2")
+          .get(),
+      ).toEqual({ etag: null, lastModified: null });
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(12);
     } finally {
       database.close();
     }
@@ -274,7 +289,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(11);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(12);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");
