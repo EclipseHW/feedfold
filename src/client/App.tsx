@@ -1027,6 +1027,38 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     navigateToRoute(lastReaderRoute.current, "replace");
   }, [navigateToRoute]);
 
+  const unsubscribeFromFeed = useCallback(
+    async (article: Article) => {
+      try {
+        await api.deleteFeed(article.feedId);
+        showToast(`Unsubscribed from ${article.feedTitle}`);
+        await loadBootstrap();
+
+        const current = currentRoute.current;
+        const readerRoute =
+          current.kind === "article"
+            ? lastReaderRoute.current
+            : current.kind === "reader"
+              ? current
+              : DEFAULT_READER_ROUTE;
+        const nextRoute: ReaderRoute =
+          readerRoute.scope === "feed" && readerRoute.scopeId === article.feedId
+            ? { ...readerRoute, scope: "all", scopeId: null }
+            : readerRoute;
+        loadedReaderRequestKey.current = null;
+
+        if (current.kind === "article" || appRoutePath(current) !== appRoutePath(nextRoute)) {
+          navigateToRoute(nextRoute, "replace");
+          return;
+        }
+        await loadArticles();
+      } catch (error) {
+        showToast(`Could not unsubscribe: ${errorMessage(error)}`);
+      }
+    },
+    [loadArticles, loadBootstrap, navigateToRoute, showToast],
+  );
+
   const refresh = useCallback(
     async (feedId?: number, forceAll = false) => {
       if (!bootstrap) return;
@@ -1434,6 +1466,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                       void changeArticleState(article, { isStarred: !article.isStarred })
                     }
                     onCopy={(article) => void copyArticleUrl(article)}
+                    onUnsubscribe={(article) => void unsubscribeFromFeed(article)}
                     onToggleFullContent={(article) => void toggleFullContent(article)}
                     onToggleSummary={toggleArticleSummary}
                     onRegenerateSummary={regenerateArticleSummary}
@@ -1464,6 +1497,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     void changeArticleState(article, { isStarred: !article.isStarred })
                   }
                   onCopy={(article) => void copyArticleUrl(article)}
+                  onUnsubscribe={(article) => void unsubscribeFromFeed(article)}
                   onToggleFullContent={(article) => void toggleFullContent(article)}
                   onToggleSummary={toggleArticleSummary}
                   onRegenerateSummary={regenerateArticleSummary}
