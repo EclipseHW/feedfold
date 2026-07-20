@@ -2268,6 +2268,7 @@ const shortcuts = [
   ["U", "Mark active article unread"],
   ["S", "Star or unstar article"],
   ["C", "Copy active article URL"],
+  ["O", "Open active article source"],
   ["W", "Toggle feed or full content"],
   ["M", "Show, hide, or create article summary"],
   ["R", "Refresh current feed or folder"],

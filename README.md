@@ -190,6 +190,7 @@ Single-key shortcuts pause while focus is in a text field or other editable cont
 | `u` | Mark the active article unread. |
 | `s` | Toggle the active article's starred state. |
 | `c` | Copy the active article URL. |
+| `o` | Open the active article's source in a new tab. |
 | `m` | Show, hide, or create the active article summary. |
 | `r` | Refresh the current feed or scope. |
 | `Shift+r` | Refresh all feeds. |
