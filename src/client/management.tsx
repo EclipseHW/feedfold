@@ -25,7 +25,7 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { type ChangeEvent, type FormEvent, useEffect, useRef, useState } from "react";
+import { type ChangeEvent, type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import type {
   AiProvider,
   AiSettings,
@@ -427,6 +427,7 @@ function AddFeedForm({
   const [error, setError] = useState<string | null>(null);
   const previewHeadingRef = useRef<HTMLHeadingElement>(null);
   const previewFocusFrame = useRef<number | null>(null);
+  const autoDiscoveryStarted = useRef(false);
   const motionStateRef = useRef(motionState);
   const loadingPresence = useMotionPresence(discovering);
   const previewPresence = useMotionPresence(preview !== null);
@@ -449,8 +450,7 @@ function AddFeedForm({
     [],
   );
 
-  const discover = async (event: FormEvent) => {
-    event.preventDefault();
+  const discover = useCallback(async (url: string) => {
     if (previewFocusFrame.current !== null) {
       window.cancelAnimationFrame(previewFocusFrame.current);
       previewFocusFrame.current = null;
@@ -459,7 +459,7 @@ function AddFeedForm({
     setError(null);
     setPreview(null);
     try {
-      const result = await api.discoverFeed(sourceUrl.trim());
+      const result = await api.discoverFeed(url);
       setPreview(result);
       setTitle(result.title);
       previewFocusFrame.current = window.requestAnimationFrame(() => {
@@ -471,7 +471,13 @@ function AddFeedForm({
     } finally {
       setDiscovering(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (!initialSourceUrl || autoDiscoveryStarted.current) return;
+    autoDiscoveryStarted.current = true;
+    void discover(initialSourceUrl.trim());
+  }, [discover, initialSourceUrl]);
 
   const save = async (event: FormEvent) => {
     event.preventDefault();
@@ -516,7 +522,13 @@ function AddFeedForm({
         </button>
       </div>
 
-      <form className="feed-discovery-form" onSubmit={(event) => void discover(event)}>
+      <form
+        className="feed-discovery-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void discover(sourceUrl.trim());
+        }}
+      >
         <label className="field feed-url-field">
           <span>Website or feed URL</span>
           <input
