@@ -1491,9 +1491,17 @@ kbd {
   color: var(--accent);
 }
 
+.article-actions .summary-action[aria-expanded="true"] {
+  color: var(--accent);
+}
+
 @media (hover: hover) and (pointer: fine) {
   .article-actions button.is-starred:hover:not(:disabled) {
     color: var(--warning);
+  }
+
+  .article-actions .summary-action[aria-expanded="true"]:hover:not(:disabled) {
+    color: var(--accent);
   }
 }
 
