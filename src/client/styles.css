@@ -442,13 +442,13 @@ kbd {
 }
 
 .nav-count {
-  width: 28px;
-  flex: 0 0 28px;
+  min-width: 28px;
+  flex: 0 0 auto;
   margin-left: auto;
   color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  text-align: center;
+  text-align: right;
 }
 
 .nav-count + kbd {
