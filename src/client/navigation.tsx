@@ -571,7 +571,6 @@ export function ReaderToolbar({
             className="refresh-all-action"
           >
             <Rss aria-hidden="true" size={17} />
-            <Kbd>⇧R</Kbd>
           </IconButton>
           <MarkReadSplitButton
             disabled={markReadPending}
