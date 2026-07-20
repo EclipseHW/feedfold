@@ -133,9 +133,7 @@ export function Sidebar({
   onRefresh,
   onLogout,
 }: SidebarProps) {
-  const rootFolders = bootstrap.folders
-    .filter((folder) => folder.parentId === null)
-    .sort((a, b) => a.position - b.position);
+  const rootFolders = bootstrap.folders.filter((folder) => folder.parentId === null);
   const uncategorized = bootstrap.feeds.filter((feed) => feed.folderId === null);
   const hasFeedErrors = bootstrap.feeds.some((feed) => feed.lastError);
   const refreshing = bootstrap.feeds.some((feed) => feed.refreshing);
@@ -238,7 +236,7 @@ export function Sidebar({
         </ul>
 
         <div className="sidebar-section-heading">
-          <span>Folders</span>
+          <span>Feeds</span>
           <button
             type="button"
             onClick={() => onNavigate("feeds")}
@@ -357,9 +355,7 @@ function SidebarFolder({
 }) {
   const revealsSelection = selectedFolderPathIds.has(folder.id);
   const [expanded, setExpanded] = useState(revealsSelection);
-  const childFolders = folders
-    .filter((candidate) => candidate.parentId === folder.id)
-    .sort((a, b) => a.position - b.position);
+  const childFolders = folders.filter((candidate) => candidate.parentId === folder.id);
   const childFeeds = feeds.filter((feed) => feed.folderId === folder.id);
   const hasChildren = childFolders.length > 0 || childFeeds.length > 0;
   const selectedScope =

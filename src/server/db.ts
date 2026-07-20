@@ -1042,11 +1042,16 @@ export class AppDatabase {
                     AND ${visibleClause}
                 ) AS unreadCount
          FROM folders
-         WHERE folders.user_id = ?
-         ORDER BY folders.position, folders.name COLLATE NOCASE`,
+         WHERE folders.user_id = ?`,
       )
       .all(userId, userId, userId) as Row[];
-    return rows.map(mapFolder);
+    return rows
+      .map(mapFolder)
+      .sort(
+        (left, right) =>
+          left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" }) ||
+          left.position - right.position,
+      );
   }
 
   getFolder(userId: number, id: number): Folder | null {

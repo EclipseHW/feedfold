@@ -521,6 +521,7 @@ describe("live API, OPML, and filtering rules", () => {
     expect(duplicate).toEqual({ imported: 0, duplicates: 1, failed: [] });
 
     const bootstrap = await asReader<BootstrapData>("/api/bootstrap");
+    expect(bootstrap.folders.map((folder) => folder.name)).toEqual(["Child", "Parent", "Someday"]);
     expect(bootstrap.settings.markReadOnScroll).toBe(true);
     expect(
       await asReader("/api/settings", {
