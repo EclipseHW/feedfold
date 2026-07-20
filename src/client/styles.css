@@ -406,6 +406,10 @@ kbd {
   text-align: left;
 }
 
+.quick-links .nav-item {
+  position: relative;
+}
+
 .nav-item[aria-current="page"] {
   border-color: var(--border);
   background: var(--surface-active);
@@ -426,28 +430,40 @@ kbd {
   transition: opacity 150ms var(--ease-out);
 }
 
+.quick-links .nav-item kbd {
+  position: absolute;
+  right: 7px;
+  width: 28px;
+  margin-left: 0;
+}
+
 .nav-item:focus-visible kbd {
   opacity: 1;
 }
 
 .nav-count {
-  min-width: 20px;
+  width: 28px;
+  flex: 0 0 28px;
   margin-left: auto;
   color: var(--muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
-  text-align: right;
+  text-align: center;
 }
 
 .nav-count + kbd {
   margin-left: 0;
 }
 
+.quick-links .nav-item:focus-visible .nav-count {
+  opacity: 0;
+}
+
 .sidebar-section-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 7px 5px;
+  padding: 14px 8px 5px 7px;
   color: var(--muted);
   font-size: 12px;
   font-weight: 650;
@@ -551,6 +567,10 @@ kbd {
 
   .nav-item:hover kbd {
     opacity: 1;
+  }
+
+  .quick-links .nav-item:hover .nav-count {
+    opacity: 0;
   }
 
   .sidebar-section-heading button:hover {
