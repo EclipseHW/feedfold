@@ -474,7 +474,8 @@ kbd {
   width: 28px;
   height: 28px;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
+  padding: 0;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
