@@ -562,7 +562,6 @@ export function ReaderToolbar({
         <div className="toolbar-actions">
           <IconButton label="Refresh feeds (R)" onClick={onRefresh} disabled={refreshing}>
             <RefreshCw className={refreshing ? "spin" : ""} aria-hidden="true" size={17} />
-            <Kbd>R</Kbd>
           </IconButton>
           <IconButton
             label="Refresh every feed (Shift+R)"
