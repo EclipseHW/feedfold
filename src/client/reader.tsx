@@ -288,7 +288,7 @@ function ArticleLoadSentinel({
       {loadingMore ? (
         <>
           <LoaderCircle className="spin" aria-hidden="true" size={15} />
-          <span>Loading older articles</span>
+          <span>Loading more articles</span>
         </>
       ) : null}
     </div>

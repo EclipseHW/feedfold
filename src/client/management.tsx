@@ -35,6 +35,7 @@ import type {
   Feed,
   FeedPreview,
   Folder,
+  FolderSortDirection,
   Rule,
   RuleAction,
   RuleCondition,
@@ -357,7 +358,7 @@ export function FeedsPage({
         <div className="section-title-row">
           <div>
             <h2 id="folders-heading">Folders</h2>
-            <p>Group feeds for focused reading and folder-level refresh.</p>
+            <p>Group feeds for focused reading, refresh, and article order.</p>
           </div>
           <button
             className="secondary-button"
@@ -993,6 +994,9 @@ function FolderForm({
 }) {
   const [name, setName] = useState(initial?.name ?? "");
   const [parentId, setParentId] = useState<number | null>(initial?.parentId ?? null);
+  const [sortDirection, setSortDirection] = useState<FolderSortDirection>(
+    initial?.sortDirection ?? "newest",
+  );
   const [saving, setSaving] = useState(false);
   const availableParents = folders.filter((folder) => folder.id !== initial?.id);
 
@@ -1001,8 +1005,8 @@ function FolderForm({
     setSaving(true);
     try {
       const folder = initial
-        ? await api.updateFolder(initial.id, { name: name.trim(), parentId })
-        : await api.createFolder({ name: name.trim(), parentId });
+        ? await api.updateFolder(initial.id, { name: name.trim(), parentId, sortDirection })
+        : await api.createFolder({ name: name.trim(), parentId, sortDirection });
       await onSaved(folder);
     } catch (error) {
       showToast(`Could not save folder: ${errorMessage(error)}`);
@@ -1029,6 +1033,16 @@ function FolderForm({
               {folder.name}
             </option>
           ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>Article order</span>
+        <select
+          value={sortDirection}
+          onChange={(event) => setSortDirection(event.target.value as FolderSortDirection)}
+        >
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
         </select>
       </label>
       <div className="form-actions">
@@ -1101,6 +1115,7 @@ function FolderRow({
               <small>
                 {feedCount} {feedCount === 1 ? "feed" : "feeds"}
                 {parent ? ` · inside ${parent.name}` : ""}
+                {` · ${folder.sortDirection === "oldest" ? "oldest" : "newest"} first`}
               </small>
             </span>
           </div>

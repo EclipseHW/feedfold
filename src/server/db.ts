@@ -14,6 +14,7 @@ import type {
   BootstrapData,
   Feed,
   Folder,
+  FolderSortDirection,
   MarkReadRequest,
   Rule,
   RuleAction,
@@ -669,32 +670,68 @@ const migrations: Migration[] = [
          OR lower(feed_url) LIKE 'http://t.me/%';
     `,
   },
+  {
+    sql: `
+      ALTER TABLE folders ADD COLUMN sort_direction TEXT NOT NULL DEFAULT 'newest'
+        CHECK(sort_direction IN ('newest', 'oldest'));
+    `,
+  },
 ];
 
 function now(): string {
   return new Date().toISOString();
 }
 
-function decodeArticleCursor(cursor: string): { sortAt: string; id: number } {
+interface ArticleCursorBoundary {
+  sortAt: string;
+  id: number;
+  consumed: number;
+}
+
+type ArticleCursor = Map<string, ArticleCursorBoundary>;
+
+function decodeArticleCursor(cursor: string): ArticleCursor {
   try {
     const value = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
-    if (
-      !Array.isArray(value) ||
-      value.length !== 2 ||
-      typeof value[0] !== "string" ||
-      typeof value[1] !== "number" ||
-      !Number.isInteger(value[1])
-    ) {
-      throw new Error("Invalid cursor fields");
+    if (!Array.isArray(value)) throw new Error("Invalid cursor fields");
+    const boundaries: ArticleCursor = new Map();
+    for (const boundary of value) {
+      if (
+        !Array.isArray(boundary) ||
+        boundary.length !== 4 ||
+        typeof boundary[0] !== "string" ||
+        typeof boundary[1] !== "string" ||
+        typeof boundary[2] !== "number" ||
+        !Number.isInteger(boundary[2]) ||
+        typeof boundary[3] !== "number" ||
+        !Number.isInteger(boundary[3]) ||
+        boundary[3] < 0
+      ) {
+        throw new Error("Invalid cursor fields");
+      }
+      boundaries.set(boundary[0], {
+        sortAt: boundary[1],
+        id: boundary[2],
+        consumed: boundary[3],
+      });
     }
-    return { sortAt: value[0], id: value[1] };
+    return boundaries;
   } catch {
     throw new Error("Invalid article cursor");
   }
 }
 
-function encodeArticleCursor(sortAt: string, id: number): string {
-  return Buffer.from(JSON.stringify([sortAt, id])).toString("base64url");
+function encodeArticleCursor(cursor: ArticleCursor): string {
+  return Buffer.from(
+    JSON.stringify(
+      [...cursor].map(([bucket, boundary]) => [
+        bucket,
+        boundary.sortAt,
+        boundary.id,
+        boundary.consumed,
+      ]),
+    ),
+  ).toString("base64url");
 }
 
 function toBoolean(value: unknown): boolean {
@@ -711,6 +748,7 @@ function mapFolder(row: Row): Folder {
     parentId: row.parentId === null ? null : Number(row.parentId),
     name: String(row.name),
     position: Number(row.position),
+    sortDirection: row.sortDirection as FolderSortDirection,
     unreadCount: Number(row.unreadCount),
   };
 }
@@ -1032,6 +1070,7 @@ export class AppDatabase {
                 folders.parent_id AS parentId,
                 folders.name,
                 folders.position,
+                folders.sort_direction AS sortDirection,
                 (
                   SELECT COUNT(*)
                   FROM descendants
@@ -1060,7 +1099,12 @@ export class AppDatabase {
 
   createFolder(
     userId: number,
-    input: { name: string; parentId?: number | null; position?: number },
+    input: {
+      name: string;
+      parentId?: number | null;
+      position?: number;
+      sortDirection?: FolderSortDirection;
+    },
   ): Folder {
     if (input.parentId && !this.getFolder(userId, input.parentId)) {
       throw new Error("The selected folder or feed does not exist");
@@ -1068,14 +1112,16 @@ export class AppDatabase {
     const timestamp = now();
     const result = this.sqlite
       .prepare(
-        `INSERT INTO folders (user_id, name, parent_id, position, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO folders (
+           user_id, name, parent_id, position, sort_direction, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         userId,
         input.name,
         input.parentId ?? null,
         input.position ?? this.nextFolderPosition(userId),
+        input.sortDirection ?? "newest",
         timestamp,
         timestamp,
       );
@@ -1085,7 +1131,12 @@ export class AppDatabase {
   updateFolder(
     userId: number,
     id: number,
-    input: { name?: string; parentId?: number | null; position?: number },
+    input: {
+      name?: string;
+      parentId?: number | null;
+      position?: number;
+      sortDirection?: FolderSortDirection;
+    },
   ): Folder | null {
     const existing = this.getFolder(userId, id);
     if (!existing) return null;
@@ -1101,13 +1152,14 @@ export class AppDatabase {
     this.sqlite
       .prepare(
         `UPDATE folders
-         SET name = ?, parent_id = ?, position = ?, updated_at = ?
+         SET name = ?, parent_id = ?, position = ?, sort_direction = ?, updated_at = ?
          WHERE id = ? AND user_id = ?`,
       )
       .run(
         input.name ?? existing.name,
         input.parentId === undefined ? existing.parentId : input.parentId,
         input.position ?? existing.position,
+        input.sortDirection ?? existing.sortDirection,
         now(),
         id,
         userId,
@@ -1579,19 +1631,48 @@ export class AppDatabase {
       const escaped = query.search.replace(/[\\%_]/g, "\\$&");
       values.push(`%${escaped}%`, `%${escaped}%`, `%${escaped}%`);
     }
-    if (query.cursor) {
-      const cursor = decodeArticleCursor(query.cursor);
-      where.push(
-        `(COALESCE(articles.published_at, articles.discovered_at) < ?
-          OR (COALESCE(articles.published_at, articles.discovered_at) = ? AND articles.id < ?))`,
-      );
-      values.push(cursor.sortAt, cursor.sortAt, cursor.id);
-    }
     const limit = Math.max(1, Math.min(query.limit ?? 200, 500));
-    values.push(limit + 1);
-    const rows = this.sqlite
+    const cursor = query.cursor ? decodeArticleCursor(query.cursor) : new Map();
+    const buckets = this.sqlite
       .prepare(
-        `SELECT articles.id,
+        `SELECT feeds.folder_id AS folderId,
+                COALESCE(folders.sort_direction, 'newest') AS sortDirection
+         FROM articles
+         JOIN feeds ON feeds.id = articles.feed_id
+         LEFT JOIN folders ON folders.id = feeds.folder_id
+         WHERE ${where.join(" AND ")}
+         GROUP BY feeds.folder_id, folders.sort_direction
+         ORDER BY feeds.folder_id`,
+      )
+      .all(...values) as Array<{
+      folderId: number | null;
+      sortDirection: FolderSortDirection;
+    }>;
+    const queues = buckets.map((bucket) => {
+      const key = bucket.folderId === null ? "top" : String(bucket.folderId);
+      const boundary = cursor.get(key);
+      const bucketWhere = [...where];
+      const bucketValues = [...values];
+      if (bucket.folderId === null) {
+        bucketWhere.push("feeds.folder_id IS NULL");
+      } else {
+        bucketWhere.push("feeds.folder_id = ?");
+        bucketValues.push(bucket.folderId);
+      }
+      if (boundary) {
+        const comparison = bucket.sortDirection === "oldest" ? ">" : "<";
+        bucketWhere.push(
+          `(COALESCE(articles.published_at, articles.discovered_at) ${comparison} ?
+            OR (COALESCE(articles.published_at, articles.discovered_at) = ?
+              AND articles.id ${comparison} ?))`,
+        );
+        bucketValues.push(boundary.sortAt, boundary.sortAt, boundary.id);
+      }
+      bucketValues.push(limit + 1);
+      const order = bucket.sortDirection === "oldest" ? "ASC" : "DESC";
+      const rows = this.sqlite
+        .prepare(
+          `SELECT articles.id,
                 articles.feed_id AS feedId,
                 feeds.title AS feedTitle,
                 feeds.folder_id AS folderId,
@@ -1618,24 +1699,57 @@ export class AppDatabase {
                 articles.is_read AS isRead,
                 articles.is_starred AS isStarred,
                 COALESCE(articles.published_at, articles.discovered_at) AS sortAt
-         FROM articles
-         JOIN feeds ON feeds.id = articles.feed_id
-         LEFT JOIN article_ai_summaries
-           ON article_ai_summaries.article_id = articles.id
-          AND article_ai_summaries.source_revision = articles.content_revision
-         WHERE ${where.join(" AND ")}
-         ORDER BY COALESCE(articles.published_at, articles.discovered_at) DESC, articles.id DESC
-         LIMIT ?`,
-      )
-      .all(...values) as Row[];
-    const pageRows = rows.slice(0, limit);
-    const last = pageRows.at(-1);
+           FROM articles
+           JOIN feeds ON feeds.id = articles.feed_id
+           LEFT JOIN article_ai_summaries
+             ON article_ai_summaries.article_id = articles.id
+            AND article_ai_summaries.source_revision = articles.content_revision
+           WHERE ${bucketWhere.join(" AND ")}
+           ORDER BY COALESCE(articles.published_at, articles.discovered_at) ${order},
+                    articles.id ${order}
+           LIMIT ?`,
+        )
+        .all(...bucketValues) as Row[];
+      return {
+        key,
+        rows,
+        index: 0,
+        consumed: boundary?.consumed ?? 0,
+      };
+    });
+    const nextBoundaries: ArticleCursor = new Map(
+      [...cursor].map(([key, boundary]) => [key, { ...boundary }]),
+    );
+    const pageRows: Row[] = [];
+    while (pageRows.length < limit) {
+      const available = queues.filter((queue) => queue.index < queue.rows.length);
+      if (available.length === 0) break;
+      const selected = available.reduce((preferred, candidate) => {
+        if (candidate.consumed !== preferred.consumed) {
+          return candidate.consumed < preferred.consumed ? candidate : preferred;
+        }
+        const candidateRow = candidate.rows[candidate.index];
+        const preferredRow = preferred.rows[preferred.index];
+        const dateComparison = String(candidateRow.sortAt).localeCompare(
+          String(preferredRow.sortAt),
+        );
+        if (dateComparison !== 0) return dateComparison > 0 ? candidate : preferred;
+        return Number(candidateRow.id) > Number(preferredRow.id) ? candidate : preferred;
+      });
+      const row = selected.rows[selected.index];
+      selected.index += 1;
+      selected.consumed += 1;
+      pageRows.push(row);
+      nextBoundaries.set(selected.key, {
+        sortAt: String(row.sortAt),
+        id: Number(row.id),
+        consumed: selected.consumed,
+      });
+    }
+    const hasMore = queues.some((queue) => queue.index < queue.rows.length);
     return {
       articles: pageRows.map(mapArticle),
-      nextCursor:
-        rows.length > limit && last
-          ? encodeArticleCursor(String(last.sortAt), Number(last.id))
-          : null,
+      nextCursor: hasMore ? encodeArticleCursor(nextBoundaries) : null,
     };
   }
 
