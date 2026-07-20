@@ -1,6 +1,7 @@
 import { JSDOM } from "jsdom";
 import type { FeedPreview } from "../shared/types.js";
 import type { ParsedFeed } from "./db.js";
+import { fetchFeed, nitterFeedUrl } from "./feed-http.js";
 import { parseAndNormalizeFeed } from "./feed-parser.js";
 import { parseAndNormalizeTelegramFeed, telegramChannelUrls } from "./telegram-feed.js";
 
@@ -100,7 +101,7 @@ async function fetchSource(
 ): Promise<{ source: string; url: string } | null> {
   let response: Response;
   try {
-    response = await fetch(url, {
+    response = await fetchFeed(url, {
       headers: { Accept: FEED_ACCEPT, "User-Agent": USER_AGENT },
       redirect: "follow",
       signal,
@@ -125,7 +126,8 @@ async function fetchSource(
 }
 
 export async function discoverFeed(inputUrl: string, timeoutMs = 15_000): Promise<FeedPreview> {
-  const url = new URL(inputUrl).toString();
+  const input = new URL(inputUrl).toString();
+  const url = nitterFeedUrl(input) ?? input;
   const telegram = telegramChannelUrls(url);
   const signal = AbortSignal.timeout(timeoutMs);
   const page = await fetchSource(telegram?.previewUrl ?? url, signal, true);
