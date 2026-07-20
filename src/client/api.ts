@@ -11,6 +11,7 @@ import type {
   Feed,
   FeedPreview,
   Folder,
+  FolderSortDirection,
   ImportResult,
   MarkReadRequest,
   RefreshResult,
@@ -88,6 +89,7 @@ export interface FeedInput {
 export interface FolderInput {
   name: string;
   parentId: number | null;
+  sortDirection: FolderSortDirection;
 }
 
 export interface RuleInput {

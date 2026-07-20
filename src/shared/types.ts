@@ -1,4 +1,5 @@
 export type ArticleState = "all" | "unread" | "read" | "starred";
+export type FolderSortDirection = "newest" | "oldest";
 export type ReadingMode = "magazine" | "expanded";
 export type ExtractionStatus = "pending" | "processing" | "complete" | "failed" | "feed";
 export type RuleField = "title" | "author" | "summary" | "content" | "media" | "any";
@@ -79,6 +80,7 @@ export interface Folder {
   parentId: number | null;
   name: string;
   position: number;
+  sortDirection: FolderSortDirection;
   unreadCount: number;
 }
 

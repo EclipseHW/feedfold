@@ -277,7 +277,11 @@ describe("database migrations", () => {
           .prepare("SELECT etag, last_modified AS lastModified FROM feeds WHERE id = 2")
           .get(),
       ).toEqual({ etag: null, lastModified: null });
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(12);
+      expect(database.createFolder(1, { name: "Default order" })).toMatchObject({
+        name: "Default order",
+        sortDirection: "newest",
+      });
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(13);
     } finally {
       database.close();
     }
@@ -289,7 +293,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(12);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(13);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");

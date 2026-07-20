@@ -192,7 +192,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         folderId: z.coerce.number().int().positive().optional(),
         search: z.string().trim().max(300).optional(),
         limit: z.coerce.number().int().min(1).max(500).optional(),
-        cursor: z.string().min(1).max(500).optional(),
+        cursor: z.string().min(1).max(50_000).optional(),
         includeContent: z
           .enum(["true", "false"])
           .transform((value) => value === "true")
@@ -320,6 +320,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         name: z.string().trim().min(1).max(200),
         parentId: nullableId.optional(),
         position: z.number().int().min(0).optional(),
+        sortDirection: z.enum(["newest", "oldest"]).optional(),
       })
       .parse(request.body);
     return services.database.createFolder(userId(request), body);
@@ -332,6 +333,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         name: z.string().trim().min(1).max(200).optional(),
         parentId: nullableId.optional(),
         position: z.number().int().min(0).optional(),
+        sortDirection: z.enum(["newest", "oldest"]).optional(),
       })
       .parse(request.body);
     const folder = services.database.updateFolder(userId(request), id, body);

@@ -128,10 +128,10 @@ describe("article filtering rules", () => {
     expect(updated).toMatchObject({ conditionOperator: "or", matchedCount: 4 });
     expect(titles(database)).toEqual([
       "Alpha Rust",
+      "Outside unmatched",
       "Alpha only",
       "Rust report",
       "Other",
-      "Outside unmatched",
     ]);
     expect(database.getBootstrap(TEST_USER_ID).counts).toEqual({ unread: 5, starred: 0, all: 5 });
     expect(database.getFeed(TEST_USER_ID, scopedFeedId)).toMatchObject({
@@ -162,10 +162,10 @@ describe("article filtering rules", () => {
     expect(keepEgor.matchedCount).toBe(3);
     expect(titles(database)).toEqual([
       "Alpha Rust",
+      "Outside unmatched",
       "Alpha only",
       "Rust report",
       "Other",
-      "Outside unmatched",
     ]);
 
     database.createRule(TEST_USER_ID, {
@@ -176,7 +176,7 @@ describe("article filtering rules", () => {
       action: "hide",
     });
 
-    expect(titles(database)).toEqual(["Alpha only", "Other", "Outside unmatched"]);
+    expect(titles(database)).toEqual(["Alpha only", "Outside unmatched", "Other"]);
     expect(database.getBootstrap(TEST_USER_ID).counts).toEqual({ unread: 3, starred: 0, all: 3 });
     expect(database.getFeed(TEST_USER_ID, scopedFeedId)).toMatchObject({
       unreadCount: 2,
@@ -193,7 +193,7 @@ describe("article filtering rules", () => {
       enabled: false,
       matchedCount: 2,
     });
-    expect(titles(database)).toEqual(["Alpha only", "Other", "Plain", "Outside unmatched"]);
+    expect(titles(database)).toEqual(["Alpha only", "Outside unmatched", "Other", "Plain"]);
     expect(database.getBootstrap(TEST_USER_ID).counts).toEqual({ unread: 4, starred: 0, all: 4 });
   });
 
@@ -214,19 +214,19 @@ describe("article filtering rules", () => {
     expect(rule.matchedCount).toBe(2);
     expect(titles(database)).toEqual([
       "Alpha Rust",
+      "Outside unmatched",
       "Alpha only",
       "Rust report",
       "Rust only",
       "Other",
       "Plain",
-      "Outside unmatched",
     ]);
     expect(titles(database, "unread")).toEqual([
       "Alpha only",
+      "Outside unmatched",
       "Rust only",
       "Other",
       "Plain",
-      "Outside unmatched",
     ]);
     expect(database.getBootstrap(TEST_USER_ID).counts).toEqual({ unread: 5, starred: 0, all: 7 });
   });

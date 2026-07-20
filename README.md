@@ -7,6 +7,7 @@ It deliberately has no social, discovery, recommendation, or public account-mana
 ## Features
 
 - Import and export OPML, including feed folders.
+- Choose newest-first or oldest-first reading order for each folder, including aggregate queues.
 - Magazine and expanded article lists.
 - Unread, read, and starred states.
 - Keyboard navigation for the complete reading loop.
