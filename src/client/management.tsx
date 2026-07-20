@@ -197,26 +197,44 @@ function ImportOpmlButton({
 
 export function FeedsPage({
   bootstrap,
+  addFeedSourceUrl,
   onMenu,
   onReload,
   onRefresh,
+  onCloseAddFeedRoute,
   showToast,
 }: {
   bootstrap: BootstrapData;
+  addFeedSourceUrl: string | null;
   onMenu: () => void;
   onReload: () => Promise<void> | void;
   onRefresh: (feedId: number) => void;
+  onCloseAddFeedRoute: () => void;
   showToast: (message: string) => void;
 }) {
-  const [addFeedOpen, setAddFeedOpen] = useState(bootstrap.feeds.length === 0);
+  const [addFeedOpen, setAddFeedOpen] = useState(
+    addFeedSourceUrl !== null || bootstrap.feeds.length === 0,
+  );
   const [addFeedSession, setAddFeedSession] = useState(0);
   const [addFolderOpen, setAddFolderOpen] = useState(false);
   const addFeedPresence = useMotionPresence(addFeedOpen);
   const addFeedTriggerRef = useRef<HTMLButtonElement>(null);
+  const previousAddFeedSourceUrl = useRef(addFeedSourceUrl);
+
+  useEffect(() => {
+    const previousSourceUrl = previousAddFeedSourceUrl.current;
+    previousAddFeedSourceUrl.current = addFeedSourceUrl;
+    if (addFeedSourceUrl !== null) {
+      setAddFeedOpen(true);
+    } else if (previousSourceUrl !== null) {
+      setAddFeedOpen(false);
+    }
+  }, [addFeedSourceUrl]);
 
   const closeAddFeed = () => {
     addFeedTriggerRef.current?.focus();
     setAddFeedOpen(false);
+    if (addFeedSourceUrl !== null) onCloseAddFeedRoute();
   };
 
   return (
@@ -242,7 +260,7 @@ export function FeedsPage({
               type="button"
               onClick={() => {
                 if (addFeedOpen) {
-                  setAddFeedOpen(false);
+                  closeAddFeed();
                   return;
                 }
                 setAddFeedSession((current) => current + 1);
@@ -258,9 +276,10 @@ export function FeedsPage({
 
       {addFeedPresence.present ? (
         <AddFeedForm
-          key={addFeedSession}
+          key={`${addFeedSession}:${addFeedSourceUrl ?? ""}`}
           feeds={bootstrap.feeds}
           folders={bootstrap.folders}
+          initialSourceUrl={addFeedSourceUrl ?? ""}
           motionState={addFeedPresence.state}
           onCancel={closeAddFeed}
           onSaved={async (feed) => {
@@ -387,17 +406,19 @@ export function FeedsPage({
 function AddFeedForm({
   feeds,
   folders,
+  initialSourceUrl,
   motionState,
   onCancel,
   onSaved,
 }: {
   feeds: Feed[];
   folders: Folder[];
+  initialSourceUrl: string;
   motionState: MotionState;
   onCancel: () => void;
   onSaved: (feed: Feed) => Promise<void> | void;
 }) {
-  const [sourceUrl, setSourceUrl] = useState("");
+  const [sourceUrl, setSourceUrl] = useState(initialSourceUrl);
   const [preview, setPreview] = useState<FeedPreview | null>(null);
   const [title, setTitle] = useState("");
   const [folderId, setFolderId] = useState<number | null>(null);
