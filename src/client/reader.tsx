@@ -733,7 +733,11 @@ function ArticleActions({
         ) : summaryState.error && !summaryState.visible ? (
           <RefreshCw aria-hidden="true" size={16} />
         ) : (
-          <Sparkles aria-hidden="true" size={16} />
+          <Sparkles
+            aria-hidden="true"
+            size={16}
+            fill={summaryState.visible ? "currentColor" : "none"}
+          />
         )}
       </button>
       <span className="action-divider" aria-hidden="true" />
