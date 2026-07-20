@@ -255,7 +255,12 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const [view, setView] = useState<AppView>(
     initialRoute.kind === "reader" || initialRoute.kind === "article"
       ? "reader"
-      : initialRoute.kind,
+      : initialRoute.kind === "add-feed"
+        ? "feeds"
+        : initialRoute.kind,
+  );
+  const [addFeedSourceUrl, setAddFeedSourceUrl] = useState<string | null>(
+    initialRoute.kind === "add-feed" ? initialRoute.sourceUrl : null,
   );
   const [rules, setRules] = useState<Rule[]>([]);
   const [rulesLoading, setRulesLoading] = useState(false);
@@ -300,6 +305,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     if (route.kind === "reader") {
       lastReaderRoute.current = route;
       setView("reader");
+      setAddFeedSourceUrl(null);
       setRoutedArticleId(null);
       setArticleStateFilter(route.state);
       setSelectedFeedId(route.scope === "feed" ? route.scopeId : null);
@@ -312,6 +318,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     }
     if (route.kind === "article") {
       setView("reader");
+      setAddFeedSourceUrl(null);
       setRoutedArticleId(route.articleId);
       setActiveArticleId(route.articleId);
       setArticlesLoading(false);
@@ -320,8 +327,18 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       setExpandedKeyboardTargetId(route.articleId);
       return;
     }
+    if (route.kind === "add-feed") {
+      loadedReaderRequestKey.current = null;
+      setView("feeds");
+      setAddFeedSourceUrl(route.sourceUrl);
+      setRoutedArticleId(null);
+      setReaderOpen(false);
+      setExpandedKeyboardTargetId(null);
+      return;
+    }
     loadedReaderRequestKey.current = null;
     setView(route.kind);
+    setAddFeedSourceUrl(null);
     setRoutedArticleId(null);
     setReaderOpen(false);
     setExpandedKeyboardTargetId(null);
@@ -1523,9 +1540,11 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         ) : view === "feeds" ? (
           <FeedsPage
             bootstrap={bootstrap}
+            addFeedSourceUrl={addFeedSourceUrl}
             onMenu={() => setNavOpen(true)}
             onReload={loadBootstrap}
             onRefresh={(feedId) => void refresh(feedId)}
+            onCloseAddFeedRoute={() => navigateToRoute({ kind: "feeds" }, "replace")}
             showToast={showToast}
           />
         ) : view === "rules" ? (

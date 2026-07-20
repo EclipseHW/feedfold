@@ -15,11 +15,16 @@ export interface ArticleRoute {
   articleId: number;
 }
 
+export interface AddFeedRoute {
+  kind: "add-feed";
+  sourceUrl: string;
+}
+
 export interface ManagementRoute {
   kind: "feeds" | "rules" | "settings";
 }
 
-export type AppRoute = ReaderRoute | ArticleRoute | ManagementRoute;
+export type AppRoute = ReaderRoute | ArticleRoute | AddFeedRoute | ManagementRoute;
 
 export const DEFAULT_READER_ROUTE: ReaderRoute = {
   kind: "reader",
@@ -61,6 +66,15 @@ export function parseAppRoute(pathname: string, search: string, basePath: string
   const segments = relativePath ? relativePath.split("/") : [];
   const query = new URLSearchParams(search).get("q")?.trim() ?? "";
 
+  if (segments[0] === "feeds" && segments[1] === "add" && segments.length >= 3) {
+    try {
+      const sourceUrl = decodeURIComponent(segments.slice(2).join("/"));
+      if (sourceUrl) return { kind: "add-feed", sourceUrl };
+    } catch {
+      return DEFAULT_READER_ROUTE;
+    }
+  }
+
   if (segments.length === 1) {
     const [page] = segments;
     if (page === "feeds" || page === "rules" || page === "settings") return { kind: page };
@@ -86,6 +100,7 @@ export function parseAppRoute(pathname: string, search: string, basePath: string
 
 export function appRoutePath(route: AppRoute): string {
   if (route.kind === "article") return `/articles/${route.articleId}`;
+  if (route.kind === "add-feed") return `/feeds/add/${encodeURIComponent(route.sourceUrl)}`;
   if (route.kind !== "reader") return `/${route.kind}`;
 
   const path =

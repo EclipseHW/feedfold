@@ -12,6 +12,10 @@ const BASE_PATH = "/echovale/";
 describe("application routes", () => {
   it.each([
     [{ kind: "feeds" }, "/feeds"],
+    [
+      { kind: "add-feed", sourceUrl: "https://example.com/feed.xml?format=rss#latest" },
+      "/feeds/add/https%3A%2F%2Fexample.com%2Ffeed.xml%3Fformat%3Drss%23latest",
+    ],
     [{ kind: "rules" }, "/rules"],
     [{ kind: "settings" }, "/settings"],
     [
@@ -53,6 +57,15 @@ describe("application routes", () => {
     expect(parseAppRoute("/echovale/articles/8", "?q=ignored", BASE_PATH)).toEqual({
       kind: "article",
       articleId: 8,
+    });
+  });
+
+  it("accepts an unescaped feed URL across the remaining path", () => {
+    expect(
+      parseAppRoute("/echovale/feeds/add/https://example.com/news/feed.xml", "", BASE_PATH),
+    ).toEqual({
+      kind: "add-feed",
+      sourceUrl: "https://example.com/news/feed.xml",
     });
   });
 });
