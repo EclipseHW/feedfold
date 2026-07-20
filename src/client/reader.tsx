@@ -12,6 +12,8 @@ import {
   Inbox,
   ListFilter,
   LoaderCircle,
+  Mail,
+  MailOpen,
   RefreshCw,
   Rss,
   Sparkles,
@@ -624,7 +626,7 @@ interface ArticleActionsProps {
   summaryState: ArticleSummaryViewState;
   onPrevious?: () => void;
   onNext?: () => void;
-  onMarkUnread: (article: Article) => void;
+  onToggleRead: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onToggleFullContent: (article: Article) => void;
@@ -637,7 +639,7 @@ function ArticleActions({
   summaryState,
   onPrevious,
   onNext,
-  onMarkUnread,
+  onToggleRead,
   onToggleStar,
   onCopy,
   onToggleFullContent,
@@ -668,6 +670,8 @@ function ArticleActions({
         : summaryState.error
           ? "Retry summary"
           : "Summarize";
+  const readTooltip = article.isRead ? "Mark unread (U)" : "Mark read (U)";
+  const starTooltip = article.isStarred ? "Remove star (S)" : "Star article (S)";
   return (
     <div className="article-actions" role="toolbar" aria-label="Article actions">
       {onPrevious ? (
@@ -675,11 +679,9 @@ function ArticleActions({
           type="button"
           onClick={onPrevious}
           aria-label="Previous article (K)"
-          title="Previous article (K)"
+          data-tooltip="Previous article (K)"
         >
           <ArrowLeft aria-hidden="true" size={16} />
-          <span className="action-label">Previous</span>
-          <Kbd>K</Kbd>
         </button>
       ) : null}
       {onNext ? (
@@ -687,14 +689,12 @@ function ArticleActions({
           type="button"
           onClick={onNext}
           aria-label="Next article (J)"
-          title="Next article (J)"
+          data-tooltip="Next article (J)"
         >
           <ArrowRight aria-hidden="true" size={16} />
-          <span className="action-label">Next</span>
-          <Kbd>J</Kbd>
         </button>
       ) : null}
-      <span className="action-divider" />
+      <span className="action-divider" aria-hidden="true" />
       {fullContentAvailable ? (
         <button
           className="full-content-action"
@@ -703,7 +703,7 @@ function ArticleActions({
           aria-pressed={fullContentLoaded}
           onClick={() => onToggleFullContent(article)}
           aria-label={`${fullContentLabel} (W)`}
-          title={`${fullContentLabel} (W)`}
+          data-tooltip={`${fullContentLabel} (W)`}
         >
           {fullContentLoading ? (
             <LoaderCircle className="spin" aria-hidden="true" size={16} />
@@ -716,8 +716,6 @@ function ArticleActions({
           ) : (
             <Download aria-hidden="true" size={16} />
           )}
-          <span className="action-label">{fullContentLabel}</span>
-          <Kbd>W</Kbd>
         </button>
       ) : null}
       <button
@@ -728,7 +726,7 @@ function ArticleActions({
         aria-controls={`article-${article.id}-ai-summary`}
         onClick={() => onToggleSummary(article)}
         aria-label={`${summaryLabel} (M)`}
-        title={`${summaryLabel} (M)`}
+        data-tooltip={`${summaryLabel} (M)`}
       >
         {summaryState.loading ? (
           <LoaderCircle className="spin" aria-hidden="true" size={16} />
@@ -737,42 +735,39 @@ function ArticleActions({
         ) : (
           <Sparkles aria-hidden="true" size={16} />
         )}
-        <span className="action-label">{summaryLabel}</span>
-        <Kbd>M</Kbd>
       </button>
-      <span className="action-divider" />
+      <span className="action-divider" aria-hidden="true" />
       <button
+        className="read-state-action"
         type="button"
-        disabled={!article.isRead}
-        onClick={() => onMarkUnread(article)}
-        aria-label="Mark article unread (U)"
-        title="Mark article unread (U)"
+        aria-label="Read article (U)"
+        aria-pressed={article.isRead}
+        onClick={() => onToggleRead(article)}
+        data-tooltip={readTooltip}
       >
-        <BookOpen aria-hidden="true" size={16} />
-        <span className="action-label">Mark unread</span>
-        <Kbd>U</Kbd>
+        {article.isRead ? (
+          <MailOpen aria-hidden="true" size={16} />
+        ) : (
+          <Mail aria-hidden="true" size={16} />
+        )}
       </button>
       <button
         className={article.isStarred ? "is-starred" : ""}
         type="button"
         aria-pressed={article.isStarred}
         onClick={() => onToggleStar(article)}
-        aria-label={article.isStarred ? "Remove star (S)" : "Star article (S)"}
-        title={article.isStarred ? "Remove star (S)" : "Star article (S)"}
+        aria-label="Star article (S)"
+        data-tooltip={starTooltip}
       >
         <Star aria-hidden="true" size={16} fill={article.isStarred ? "currentColor" : "none"} />
-        <span className="action-label">{article.isStarred ? "Starred" : "Star"}</span>
-        <Kbd>S</Kbd>
       </button>
       <button
         type="button"
         onClick={() => onCopy(article)}
         aria-label="Copy article URL (C)"
-        title="Copy article URL (C)"
+        data-tooltip="Copy article URL (C)"
       >
         <Copy aria-hidden="true" size={16} />
-        <span className="action-label">Copy URL</span>
-        <Kbd>C</Kbd>
       </button>
     </div>
   );
@@ -1082,7 +1077,7 @@ export function ReaderPane({
   onBack,
   onPrevious,
   onNext,
-  onMarkUnread,
+  onToggleRead,
   onToggleStar,
   onCopy,
   onUnsubscribe,
@@ -1098,7 +1093,7 @@ export function ReaderPane({
   onBack: () => void;
   onPrevious: () => void;
   onNext: () => void;
-  onMarkUnread: (article: Article) => void;
+  onToggleRead: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onUnsubscribe: (article: Article) => void;
@@ -1124,9 +1119,14 @@ export function ReaderPane({
     >
       <div className="reader-action-bar">
         <div className="reader-action-row">
-          <button className="reader-back-button" type="button" onClick={onBack}>
+          <button
+            className="reader-back-button"
+            type="button"
+            aria-label="Back to articles"
+            data-tooltip="Back to articles"
+            onClick={onBack}
+          >
             <ArrowLeft aria-hidden="true" size={16} />
-            Back to articles
           </button>
           <span className="reader-action-divider" aria-hidden="true" />
           <ArticleActions
@@ -1135,7 +1135,7 @@ export function ReaderPane({
             summaryState={summaryState}
             onPrevious={onPrevious}
             onNext={onNext}
-            onMarkUnread={onMarkUnread}
+            onToggleRead={onToggleRead}
             onToggleStar={onToggleStar}
             onCopy={onCopy}
             onToggleFullContent={onToggleFullContent}
@@ -1431,7 +1431,7 @@ export function ExpandedStream({
   onLoadMore,
   onActivate,
   onMarkPassedRead,
-  onMarkUnread,
+  onToggleRead,
   onToggleStar,
   onCopy,
   onUnsubscribe,
@@ -1452,7 +1452,7 @@ export function ExpandedStream({
   onLoadMore: () => void;
   onActivate: (article: Article) => void;
   onMarkPassedRead: (articles: Article[]) => Promise<unknown>;
-  onMarkUnread: (article: Article) => void;
+  onToggleRead: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onUnsubscribe: (article: Article) => void;
@@ -1488,7 +1488,7 @@ export function ExpandedStream({
               article={article}
               fullContentVisible={fullContentVisibleIds.has(article.id)}
               summaryState={summaryStates.get(article.id) ?? EMPTY_ARTICLE_SUMMARY_STATE}
-              onMarkUnread={onMarkUnread}
+              onToggleRead={onToggleRead}
               onToggleStar={onToggleStar}
               onCopy={onCopy}
               onToggleFullContent={onToggleFullContent}

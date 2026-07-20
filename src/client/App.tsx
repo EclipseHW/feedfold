@@ -1244,12 +1244,10 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         j: () => moveArticle(1),
         k: () => moveArticle(-1),
         u: () => {
-          if (activeArticle?.isRead) {
-            void changeArticleState(activeArticle, { isRead: false });
-            showToast("Marked unread");
-          } else if (activeArticle) {
-            showToast("Article is already unread");
-          }
+          if (!activeArticle) return;
+          const nextRead = !activeArticle.isRead;
+          void changeArticleState(activeArticle, { isRead: nextRead });
+          showToast(nextRead ? "Marked read" : "Marked unread");
         },
         s: () => {
           if (activeArticle) {
@@ -1459,8 +1457,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     onBack={returnToArticleList}
                     onPrevious={() => moveArticle(-1)}
                     onNext={() => moveArticle(1)}
-                    onMarkUnread={(article) =>
-                      article.isRead && void changeArticleState(article, { isRead: false })
+                    onToggleRead={(article) =>
+                      void changeArticleState(article, { isRead: !article.isRead })
                     }
                     onToggleStar={(article) =>
                       void changeArticleState(article, { isStarred: !article.isStarred })
@@ -1490,8 +1488,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     setActiveArticleId(article.id);
                   }}
                   onMarkPassedRead={markPassedArticlesRead}
-                  onMarkUnread={(article) =>
-                    article.isRead && void changeArticleState(article, { isRead: false })
+                  onToggleRead={(article) =>
+                    void changeArticleState(article, { isRead: !article.isRead })
                   }
                   onToggleStar={(article) =>
                     void changeArticleState(article, { isStarred: !article.isStarred })
