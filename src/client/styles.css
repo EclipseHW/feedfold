@@ -27,6 +27,7 @@
   --radius-md: 8px;
   --z-sidebar: 30;
   --z-scrim: 20;
+  --z-tooltip: 10;
   --z-context-menu: 40;
   --z-dialog: 50;
   --z-toast: 60;
@@ -1099,11 +1100,12 @@ kbd {
 
 :where(.mode-magazine.is-reading-article) .reader-back-button {
   display: inline-flex;
+  min-width: 36px;
   min-height: 36px;
   flex: 0 0 auto;
   align-items: center;
-  gap: 7px;
-  padding: 5px 7px;
+  justify-content: center;
+  padding: 6px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -1438,18 +1440,18 @@ kbd {
   align-items: center;
   gap: 3px;
   padding: 6px 12px;
-  overflow-x: auto;
+  overflow: visible;
 }
 
 .article-actions button {
   display: inline-flex;
-  min-width: 34px;
-  min-height: 34px;
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 5px 7px;
+  padding: 6px;
   border: 1px solid transparent;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -1463,12 +1465,7 @@ kbd {
   min-height: 44px;
   flex: 1;
   padding: 4px 0;
-  overflow-x: clip;
-}
-
-:where(.reader-action-row) .article-actions button {
-  gap: 3px;
-  padding-inline: 5px;
+  overflow: visible;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -1490,6 +1487,10 @@ kbd {
   color: var(--warning);
 }
 
+.article-actions .read-state-action[aria-pressed="false"] {
+  color: var(--accent);
+}
+
 @media (hover: hover) and (pointer: fine) {
   .article-actions button.is-starred:hover:not(:disabled) {
     color: var(--warning);
@@ -1502,6 +1503,58 @@ kbd {
   flex: 0 0 auto;
   margin-inline: 4px;
   background: var(--border);
+}
+
+.reader-action-bar [data-tooltip],
+.expanded-actions [data-tooltip] {
+  position: relative;
+}
+
+.reader-action-bar [data-tooltip]::after,
+.expanded-actions [data-tooltip]::after {
+  position: absolute;
+  z-index: var(--z-tooltip);
+  top: calc(100% + 7px);
+  left: 50%;
+  visibility: hidden;
+  padding: 5px 7px;
+  border-radius: 4px;
+  background: var(--text);
+  box-shadow: 0 3px 8px oklch(0 0 0 / 0.32);
+  color: var(--bg);
+  content: attr(data-tooltip);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.reader-action-bar [data-tooltip]:focus-visible::after,
+.expanded-actions [data-tooltip]:focus-visible::after {
+  visibility: visible;
+  opacity: 1;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .reader-action-bar [data-tooltip]:hover::after,
+  .expanded-actions [data-tooltip]:hover::after {
+    visibility: visible;
+    opacity: 1;
+  }
+}
+
+.reader-action-row > .reader-back-button::after {
+  left: 0;
+  transform: none;
+}
+
+.article-actions button:last-of-type::after {
+  right: 0;
+  left: auto;
+  transform: none;
 }
 
 .font-size-value {
@@ -3879,9 +3932,6 @@ kbd {
   .toolbar-actions .icon-button kbd {
     display: none;
   }
-  .action-label {
-    display: none;
-  }
   .scope-title {
     max-width: 180px;
   }
@@ -4545,13 +4595,10 @@ kbd {
     gap: 0;
   }
   :where(.reader-action-row) .article-actions button {
-    padding-inline: 4px;
+    width: 34px;
+    min-width: 34px;
+    height: 34px;
   }
-}
-
-.reader-action-row .full-content-action .action-label,
-.reader-action-row .summary-action .action-label {
-  display: none;
 }
 
 @media (forced-colors: active) {
