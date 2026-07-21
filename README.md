@@ -129,7 +129,7 @@ Save the generated value as `AI_CREDENTIALS_KEY` in the project-level `.env` fil
 
 Use **Summarize** in the article action bar, or press `m`. Echovale prefers loaded publisher content, falls back to feed content, and finally uses the feed excerpt. A summary is cached until the article source changes; **Regenerate** deliberately requests a new result and can use a newly selected provider.
 
-Set the destination under **Settings → Reading behavior → Translation language**. Use the translation button in the article action bar, or press `t`. The translated text replaces the currently visible article text; press the button or `t` again to restore the original. Translations are cached by article source and language until the source changes.
+Set the destination under **Settings → Reading behavior → Translation language**. Use the translation button in the article action bar, or press `t`. The translated text replaces the currently visible article text while retaining its links, images, and formatting; press the button or `t` again to restore the original. Translations are cached by article source and language until the source changes.
 
 Provider credentials and the selected model are shared by both AI reading features, while summaries and translations keep separate prompts and caches.
 

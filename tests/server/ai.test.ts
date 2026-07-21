@@ -1,8 +1,12 @@
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it } from "vitest";
 import { prepareArticleSummary } from "../../src/server/ai/article-summary.js";
-import { prepareArticleTranslation } from "../../src/server/ai/article-translation.js";
+import {
+  prepareArticleTranslation,
+  renderArticleTranslation,
+} from "../../src/server/ai/article-translation.js";
 import { CredentialCipher } from "../../src/server/ai/credential-cipher.js";
 import { AiError } from "../../src/server/ai/errors.js";
 import { createAiProviders } from "../../src/server/ai/providers.js";
@@ -73,9 +77,11 @@ async function liveOpenAiProvider(): Promise<{
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
       requests.push(body);
       const input = String(body.input);
-      const text = input.includes("Target language: French")
-        ? "Premier paragraphe.\n\nDeuxième paragraphe."
-        : "Pierwszy akapit.\n\nDrugi akapit.";
+      const language = input.includes("Target language: French") ? "Français" : "Polski";
+      const ids = [...input.matchAll(/data-translation-id="(\d+)"/gu)].map((match) => match[1]);
+      const text = JSON.stringify(
+        Object.fromEntries(ids.map((id) => [id, `${language} fragment ${id}`])),
+      );
       response.writeHead(200, { "Content-Type": "application/json" });
       response.end(
         JSON.stringify({
@@ -149,7 +155,7 @@ describe("AI article summaries", () => {
     expect(prepared.input).not.toContain("Feed fallback");
   });
 
-  it("preserves article structure for translation and rejects a missing selected source", () => {
+  it("preserves links, images, and quotations while replacing only translated text", () => {
     const article = {
       id: 1,
       revision: 1,
@@ -157,15 +163,56 @@ describe("AI article summaries", () => {
       url: null,
       author: null,
       contentHtml: null,
-      feedContentHtml: "<p>First paragraph.</p><p>Second paragraph.</p>",
-      excerpt: "Fallback excerpt.",
+      feedContentHtml: `<p>Sales start: <a href="https://busy.app/" target="_blank" rel="noopener noreferrer">https://busy.app</a></p>
+        <figure><img src="https://example.test/product.png" alt="Product"><figcaption>Product image.</figcaption></figure>
+        <blockquote class="article-prose-quote article-prose-quote-marked"><span class="article-quote-mark" aria-hidden="true">“</span><p><strong>Quoted claim.</strong> More context.</p></blockquote>`,
+      excerpt: "Fallback excerpt with https://example.test/story",
       currentSummary: null,
     };
 
-    expect(prepareArticleTranslation(article, "Polish", "feed")).toMatchObject({
-      sourceKind: "feed",
-      input: expect.stringContaining("First paragraph.\n\nSecond paragraph."),
+    const prepared = prepareArticleTranslation(article, "Polish", "feed");
+    expect(prepared).toMatchObject({ sourceKind: "feed", segmentCount: 4 });
+    expect(prepared.input).toContain('<span data-translation-id="0">Sales start:</span>');
+    expect(prepared.input).not.toContain("https://example.test/product.png");
+
+    const html = renderArticleTranslation(
+      prepared,
+      JSON.stringify({
+        0: "Sprzedaż rusza:",
+        1: "Zdjęcie produktu.",
+        2: "Cytowane stwierdzenie.",
+        3: "Więcej kontekstu.",
+      }),
+    );
+    const body = new JSDOM(`<body>${html}</body>`).window.document.body;
+    expect(body.querySelector("a")).toMatchObject({
+      href: "https://busy.app/",
+      textContent: "https://busy.app",
+      target: "_blank",
     });
+    expect(body.querySelector("img")).toMatchObject({
+      src: "https://example.test/product.png",
+      alt: "Product",
+    });
+    expect(body.querySelector("blockquote")?.className).toBe(
+      "article-prose-quote article-prose-quote-marked",
+    );
+    expect(body.querySelector(".article-quote-mark")).toMatchObject({
+      textContent: "“",
+      ariaHidden: "true",
+    });
+    expect(body.querySelector("blockquote strong")?.textContent).toBe("Cytowane stwierdzenie.");
+    expect(body.querySelector("blockquote p")?.textContent).toBe(
+      "Cytowane stwierdzenie. Więcej kontekstu.",
+    );
+
+    const excerpt = prepareArticleTranslation(article, "Polish", "excerpt");
+    expect(renderArticleTranslation(excerpt, '{"0":"Zapasowy fragment z"}')).toContain(
+      '<a href="https://example.test/story"',
+    );
+    expect(() => renderArticleTranslation(prepared, '{"0":"Incomplete"}')).toThrow(
+      expect.objectContaining({ code: "AI_RESPONSE_INVALID" }),
+    );
     expect(() => prepareArticleTranslation(article, "Polish", "full")).toThrow(AiError);
   });
 
@@ -182,7 +229,7 @@ describe("AI article summaries", () => {
 
     const first = await service.translateArticle(readerId, articleId, "feed");
     expect(first).toMatchObject({
-      text: "Pierwszy akapit.\n\nDrugi akapit.",
+      html: "<article><p>Polski fragment 0</p></article>",
       language: "Polish",
       provider: "openai",
       model: "shared-reader-model",
@@ -206,7 +253,7 @@ describe("AI article summaries", () => {
     service.setApiKey(readerId, "openai", "live-provider-test-key");
     database.updateSettings(readerId, { translationLanguage: "French" });
     expect(await service.translateArticle(readerId, articleId, "feed")).toMatchObject({
-      text: "Premier paragraphe.\n\nDeuxième paragraphe.",
+      html: "<article><p>Français fragment 0</p></article>",
       language: "French",
       model: "shared-reader-model",
     });

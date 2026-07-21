@@ -702,6 +702,12 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    sql: `
+      ALTER TABLE article_ai_translations RENAME COLUMN translation_text TO translation_html;
+      DELETE FROM article_ai_translations;
+    `,
+  },
 ];
 
 function now(): string {
@@ -866,9 +872,9 @@ function mapStoredArticleAiSummary(row: Row): StoredArticleAiSummary | null {
 }
 
 function mapStoredArticleAiTranslation(row: Row): StoredArticleAiTranslation | null {
-  if (row.aiTranslationText === null || row.aiTranslationText === undefined) return null;
+  if (row.aiTranslationHtml === null || row.aiTranslationHtml === undefined) return null;
   return {
-    text: String(row.aiTranslationText),
+    html: String(row.aiTranslationHtml),
     language: String(row.aiTranslationLanguage),
     provider: row.aiTranslationProvider as AiProvider,
     model: String(row.aiTranslationModel),
@@ -2108,7 +2114,7 @@ export class AppDatabase {
                 article_ai_translations.source_kind AS aiTranslationSourceKind,
                 article_ai_translations.provider AS aiTranslationProvider,
                 article_ai_translations.model AS aiTranslationModel,
-                article_ai_translations.translation_text AS aiTranslationText,
+                article_ai_translations.translation_html AS aiTranslationHtml,
                 article_ai_translations.input_tokens AS aiTranslationInputTokens,
                 article_ai_translations.output_tokens AS aiTranslationOutputTokens,
                 article_ai_translations.generated_at AS aiTranslationGeneratedAt
@@ -2135,7 +2141,7 @@ export class AppDatabase {
       sourceKind: AiArticleSourceKind;
       provider: AiProvider;
       model: string;
-      text: string;
+      html: string;
       usage: AiUsage;
     },
   ): StoredArticleAiTranslation | null {
@@ -2152,14 +2158,14 @@ export class AppDatabase {
         .prepare(
           `INSERT INTO article_ai_translations (
              article_id, target_language, source_kind, source_revision, prompt_version,
-             provider, model, translation_text, input_tokens, output_tokens, generated_at
+             provider, model, translation_html, input_tokens, output_tokens, generated_at
            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(article_id, target_language, source_kind) DO UPDATE SET
              source_revision = excluded.source_revision,
              prompt_version = excluded.prompt_version,
              provider = excluded.provider,
              model = excluded.model,
-             translation_text = excluded.translation_text,
+             translation_html = excluded.translation_html,
              input_tokens = excluded.input_tokens,
              output_tokens = excluded.output_tokens,
              generated_at = excluded.generated_at`,
@@ -2172,7 +2178,7 @@ export class AppDatabase {
           input.promptVersion,
           input.provider,
           input.model,
-          input.text,
+          input.html,
           input.usage.inputTokens,
           input.usage.outputTokens,
           now(),

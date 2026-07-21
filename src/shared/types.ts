@@ -52,7 +52,7 @@ export interface ArticleAiSummary {
 }
 
 export interface ArticleAiTranslation {
-  text: string;
+  html: string;
   language: string;
   provider: AiProvider;
   model: string;
