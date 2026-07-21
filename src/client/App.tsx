@@ -2,6 +2,7 @@ import { Check } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Article,
+  ArticleQuery,
   ArticleState,
   BootstrapData,
   Feed,
@@ -65,6 +66,7 @@ interface AppHistoryState {
   echovale?: true;
   returnTo?: string;
   returnsWithBack?: boolean;
+  articleIndex?: number;
 }
 
 function selectedReaderRoute(
@@ -80,6 +82,31 @@ function selectedReaderRoute(
     return { kind: "reader", scope: "folder", scopeId: folderId, state, search };
   }
   return { kind: "reader", scope: "all", scopeId: null, state, search };
+}
+
+function readerRouteFromReturnPath(path: string | undefined): ReaderRoute | null {
+  if (!path) return null;
+  const base = APP_BASE_PATH.replace(/\/$/, "");
+  const url = new URL(`${base}${path}`, window.location.origin);
+  const route = parseAppRoute(url.pathname, url.search, APP_BASE_PATH);
+  return route.kind === "reader" ? route : null;
+}
+
+function articleQueryForReaderRoute(
+  route: ReaderRoute,
+  options: {
+    limit: number;
+    includeContent: boolean;
+    cursor?: string;
+  },
+): ArticleQuery {
+  return {
+    state: route.state,
+    ...(route.scope === "feed" && route.scopeId !== null ? { feedId: route.scopeId } : {}),
+    ...(route.scope === "folder" && route.scopeId !== null ? { folderId: route.scopeId } : {}),
+    ...(route.search ? { search: route.search } : {}),
+    ...options,
+  };
 }
 
 function filterRuleName(text: string): string {
@@ -220,11 +247,16 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const initialRoute = useRef(
     parseAppRoute(window.location.pathname, window.location.search, APP_BASE_PATH),
   ).current;
+  const initialArticleReturnRoute = useRef(
+    initialRoute.kind === "article"
+      ? readerRouteFromReturnPath(((window.history.state ?? {}) as AppHistoryState).returnTo)
+      : null,
+  ).current;
   const initialReaderRoute = useRef<ReaderRoute>(
     initialRoute.kind === "reader"
       ? initialRoute
       : initialRoute.kind === "article"
-        ? { ...DEFAULT_READER_ROUTE, state: "all" }
+        ? (initialArticleReturnRoute ?? { ...DEFAULT_READER_ROUTE, state: "all" })
         : DEFAULT_READER_ROUTE,
   ).current;
   const [bootstrap, setBootstrap] = useState<BootstrapData | null>(null);
@@ -373,6 +405,10 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       const state: AppHistoryState = { echovale: true };
       if (route.kind === "article") {
         state.returnTo = appRoutePath(lastReaderRoute.current);
+        const articleIndex = articlesRef.current.findIndex(
+          (article) => article.id === route.articleId,
+        );
+        if (articleIndex >= 0) state.articleIndex = articleIndex;
         state.returnsWithBack =
           (historyMode === "push" && currentRoute.current.kind === "reader") ||
           (historyMode === "replace" &&
@@ -504,27 +540,29 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   }, []);
 
   const loadOlderArticles = useCallback(async (): Promise<Article[]> => {
-    if (
-      !bootstrapReady ||
-      !nextCursor ||
-      articlesLoadingMore ||
-      currentRoute.current.kind !== "reader"
-    ) {
+    const route =
+      currentRoute.current.kind === "reader"
+        ? currentRoute.current
+        : currentRoute.current.kind === "article"
+          ? lastReaderRoute.current
+          : null;
+    if (!bootstrapReady || !nextCursor || articlesLoadingMore || !route) {
       return [];
     }
     const requestId = articleListRequestId.current;
     setArticlesLoadingMore(true);
     try {
-      const page = await api.articles({
-        state: articleStateFilter,
-        ...(selectedFeedId !== null ? { feedId: selectedFeedId } : {}),
-        ...(selectedFolderId !== null ? { folderId: selectedFolderId } : {}),
-        ...(search ? { search } : {}),
-        limit: readingMode === "expanded" ? 20 : 100,
-        includeContent: readingMode === "expanded",
-        cursor: nextCursor,
-      });
-      if (articleListRequestId.current !== requestId || currentRoute.current.kind !== "reader") {
+      const page = await api.articles(
+        articleQueryForReaderRoute(route, {
+          limit: readingMode === "expanded" ? 20 : 100,
+          includeContent: readingMode === "expanded",
+          cursor: nextCursor,
+        }),
+      );
+      if (
+        articleListRequestId.current !== requestId ||
+        (currentRoute.current.kind !== "reader" && currentRoute.current.kind !== "article")
+      ) {
         return [];
       }
       const existingIds = new Set(articles.map((article) => article.id));
@@ -546,18 +584,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     } finally {
       if (articleListRequestId.current === requestId) setArticlesLoadingMore(false);
     }
-  }, [
-    articleStateFilter,
-    articles,
-    articlesLoadingMore,
-    bootstrapReady,
-    nextCursor,
-    readingMode,
-    search,
-    selectedFeedId,
-    selectedFolderId,
-    showToast,
-  ]);
+  }, [articles, articlesLoadingMore, bootstrapReady, nextCursor, readingMode, showToast]);
 
   useEffect(() => {
     void loadBootstrap();
@@ -743,12 +770,39 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     setArticlesError(null);
     void api
       .article(routedArticleId)
-      .then((article) => {
+      .then(async (article) => {
         const state = (window.history.state ?? {}) as AppHistoryState;
-        if (!state.returnTo) {
-          lastReaderRoute.current = selectedReaderRoute("all", article.feedId, null, "");
-        }
-        showArticle(article);
+        const queueRoute =
+          readerRouteFromReturnPath(state.returnTo) ??
+          selectedReaderRoute("all", article.feedId, null, "");
+        lastReaderRoute.current = queueRoute;
+        setArticleStateFilter(queueRoute.state);
+        setSelectedFeedId(queueRoute.scope === "feed" ? queueRoute.scopeId : null);
+        setSelectedFolderId(queueRoute.scope === "folder" ? queueRoute.scopeId : null);
+        setSearchInput(queueRoute.search);
+        setSearch(queueRoute.search);
+
+        const page = await api.articles(
+          articleQueryForReaderRoute(queueRoute, {
+            limit: readingMode === "expanded" ? 20 : 100,
+            includeContent: readingMode === "expanded",
+          }),
+        );
+        return { article, page, queueRoute, articleIndex: state.articleIndex };
+      })
+      .then(({ article, page, queueRoute, articleIndex }) => {
+        if (!active) return;
+        const pageIndex = page.articles.findIndex((item) => item.id === article.id);
+        const nextArticles = articlesWithContextReturn(page.articles, {
+          article,
+          index: articleIndex ?? Math.max(0, pageIndex),
+        });
+        loadedReaderRequestKey.current = `${appRoutePath(queueRoute)}:${readingMode}`;
+        fullContentLoadedIds.current.add(article.id);
+        setArticles(nextArticles);
+        setNextCursor(page.nextCursor);
+        setArticlesError(null);
+        activateArticle(article, true);
       })
       .catch((error) => {
         if (active) setArticlesError(errorMessage(error));
@@ -760,7 +814,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     return () => {
       active = false;
     };
-  }, [activateArticle, bootstrapReady, routedArticleId, routedArticleRetry, view]);
+  }, [activateArticle, bootstrapReady, readingMode, routedArticleId, routedArticleRetry, view]);
 
   const moveArticle = useCallback(
     (direction: 1 | -1) => {
@@ -1174,13 +1228,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       window.history.back();
       return;
     }
-    if (state.echovale && state.returnTo) {
-      const base = APP_BASE_PATH.replace(/\/$/, "");
-      const returnUrl = new URL(`${base}${state.returnTo}`, window.location.origin);
-      navigateToRoute(
-        parseAppRoute(returnUrl.pathname, returnUrl.search, APP_BASE_PATH),
-        "replace",
-      );
+    const returnRoute = readerRouteFromReturnPath(state.returnTo);
+    if (state.echovale && returnRoute) {
+      navigateToRoute(returnRoute, "replace");
       return;
     }
     navigateToRoute(lastReaderRoute.current, "replace");

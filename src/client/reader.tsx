@@ -20,11 +20,19 @@ import {
   Sparkles,
   Star,
 } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type TouchEvent as ReactTouchEvent,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import { createPortal } from "react-dom";
 import type { Article, ArticleState, ReadingMode } from "../shared/types";
 import { articleContentView } from "./article-content";
 import { extractHttpLinks } from "./article-links";
+import { articleSwipeDirection } from "./article-swipe";
 import {
   FeedActionMenuItems,
   type FeedManagementAction,
@@ -692,6 +700,7 @@ function ArticleActions({
     <div className="article-actions" role="toolbar" aria-label="Article actions">
       {onPrevious ? (
         <button
+          className="article-navigation-action"
           type="button"
           onClick={onPrevious}
           aria-label="Previous article (K)"
@@ -702,6 +711,7 @@ function ArticleActions({
       ) : null}
       {onNext ? (
         <button
+          className="article-navigation-action"
           type="button"
           onClick={onNext}
           aria-label="Next article (J)"
@@ -1133,6 +1143,58 @@ export function ReaderPane({
   onOpenAiSettings: () => void;
   onFilterSelection: (article: Article, text: string) => void;
 }) {
+  const swipeStart = useRef<{
+    identifier: number;
+    x: number;
+    y: number;
+    timeStamp: number;
+  } | null>(null);
+
+  const handleTouchStart = useCallback((event: ReactTouchEvent<HTMLElement>) => {
+    const target = event.target instanceof Element ? event.target : null;
+    const touch = event.touches.length === 1 ? event.touches[0] : null;
+    if (
+      !touch ||
+      target?.closest(
+        "a, button, input, select, textarea, summary, video, audio, iframe, pre, .article-table-scroll, [contenteditable]",
+      )
+    ) {
+      swipeStart.current = null;
+      return;
+    }
+
+    swipeStart.current = {
+      identifier: touch.identifier,
+      x: touch.clientX,
+      y: touch.clientY,
+      timeStamp: event.timeStamp,
+    };
+  }, []);
+
+  const handleTouchEnd = useCallback(
+    (event: ReactTouchEvent<HTMLElement>) => {
+      const start = swipeStart.current;
+      swipeStart.current = null;
+      if (!start) return;
+
+      const touch = Array.from(event.changedTouches).find(
+        (candidate) => candidate.identifier === start.identifier,
+      );
+      if (!touch) return;
+
+      const direction = articleSwipeDirection({
+        startX: start.x,
+        startY: start.y,
+        endX: touch.clientX,
+        endY: touch.clientY,
+        durationMs: event.timeStamp - start.timeStamp,
+      });
+      if (direction === "next") onNext();
+      if (direction === "previous") onPrevious();
+    },
+    [onNext, onPrevious],
+  );
+
   if (!article) {
     return (
       <section className="reader-pane reader-placeholder">
@@ -1146,6 +1208,14 @@ export function ReaderPane({
       className="reader-pane"
       key={article.id}
       aria-labelledby={`article-${article.id}-title`}
+      onTouchStart={handleTouchStart}
+      onTouchMove={(event) => {
+        if (event.touches.length !== 1) swipeStart.current = null;
+      }}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={() => {
+        swipeStart.current = null;
+      }}
     >
       <div className="reader-action-bar">
         <div className="reader-action-row">
