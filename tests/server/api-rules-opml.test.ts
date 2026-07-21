@@ -202,6 +202,24 @@ describe("live API, OPML, and filtering rules", () => {
         })
       ).statusCode,
     ).toBe(404);
+    const translationWithoutAi = await app.inject({
+      method: "POST",
+      url: `/api/articles/${articleId}/translation`,
+      headers: { cookie: readerCookie },
+      payload: { sourceKind: "excerpt" },
+    });
+    expect(translationWithoutAi.statusCode).toBe(422);
+    expect(translationWithoutAi.json()).toMatchObject({ code: "AI_NOT_CONFIGURED" });
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: `/api/articles/${articleId}/translation`,
+          headers: { cookie: partnerCookie },
+          payload: { sourceKind: "excerpt" },
+        })
+      ).statusCode,
+    ).toBe(404);
     expect(
       (
         await app.inject({
@@ -311,12 +329,26 @@ describe("live API, OPML, and filtering rules", () => {
       ).statusCode,
     ).toBe(400);
 
-    await app.inject({
+    const savedSettings = await app.inject({
       method: "PATCH",
       url: "/api/settings",
       headers: { cookie: readerCookie },
-      payload: { markReadOnScroll: false },
+      payload: { markReadOnScroll: false, translationLanguage: "Polish" },
     });
+    expect(savedSettings.json()).toMatchObject({
+      markReadOnScroll: false,
+      translationLanguage: "Polish",
+    });
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: "/api/settings",
+          headers: { cookie: readerCookie },
+          payload: { translationLanguage: "   " },
+        })
+      ).statusCode,
+    ).toBe(400);
     expect(
       (
         await app.inject({
@@ -325,7 +357,7 @@ describe("live API, OPML, and filtering rules", () => {
           headers: { cookie: partnerCookie },
         })
       ).json(),
-    ).toMatchObject({ markReadOnScroll: true });
+    ).toMatchObject({ markReadOnScroll: true, translationLanguage: "English" });
 
     const rejectedLegacyRule = await app.inject({
       method: "POST",

@@ -4,6 +4,7 @@ import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { ZodError, z } from "zod";
 import {
+  type AiArticleSourceKind,
   type AiFeature,
   type AiProvider,
   type ArticleQuery,
@@ -252,6 +253,15 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     return summary ?? missing(reply, "Article");
   });
 
+  app.post("/api/articles/:id/translation", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const { sourceKind } = z
+      .object({ sourceKind: z.enum(["full", "feed", "excerpt"]) })
+      .parse(request.body) as { sourceKind: AiArticleSourceKind };
+    const translation = await aiService.translateArticle(userId(request), id, sourceKind);
+    return translation ?? missing(reply, "Article");
+  });
+
   app.get("/api/feeds", async (request) => ({
     feeds: services.database.listFeeds(userId(request)),
   }));
@@ -409,6 +419,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         pollIntervalMinutes: z.number().int().min(1).max(1_440).optional(),
         singleKeyShortcuts: z.boolean().optional(),
         markReadOnScroll: z.boolean().optional(),
+        translationLanguage: z.string().trim().min(1).max(80).optional(),
       })
       .parse(request.body);
     return services.database.updateSettings(userId(request), body);

@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { articleContentView, fullContentToggleAction } from "../../src/client/article-content.js";
+import {
+  articleContentView,
+  articleTranslationSourceKind,
+  fullContentToggleAction,
+} from "../../src/client/article-content.js";
 import type { Article } from "../../src/shared/types.js";
 
 function linkedArticle(): Article {
@@ -55,5 +59,24 @@ describe("article content source selection", () => {
     expect(
       fullContentToggleAction({ ...article, contentHtml: null, extractionStatus: "failed" }, true),
     ).toBe("load");
+  });
+
+  it("translates the article text currently shown in the reader", () => {
+    const article = linkedArticle();
+
+    expect(articleTranslationSourceKind(article, false)).toBe("feed");
+    expect(articleTranslationSourceKind(article, true)).toBe("full");
+    expect(
+      articleTranslationSourceKind(
+        { ...article, contentHtml: null, extractionStatus: "processing" },
+        true,
+      ),
+    ).toBe("feed");
+    expect(
+      articleTranslationSourceKind(
+        { ...article, contentHtml: null, feedContentHtml: null, extractionStatus: "feed" },
+        false,
+      ),
+    ).toBe("excerpt");
   });
 });

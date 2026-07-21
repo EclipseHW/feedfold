@@ -13,7 +13,7 @@ It deliberately has no social, discovery, recommendation, or public account-mana
 - Keyboard navigation for the complete reading loop.
 - Rules that keep wanted articles, hide noise, or mark matches as read.
 - Full-text extraction with feed content as a visible fallback.
-- One-click AI article summaries through Google Gemini, OpenAI, or Anthropic.
+- One-click AI article summaries and translations through Google Gemini, OpenAI, or Anthropic.
 - Manual refresh and server-side background polling.
 - Per-feed last attempt, last success, HTTP status, and error details.
 - Persistent article font sizing, visible keyboard focus, and reduced-motion support.
@@ -117,7 +117,7 @@ docker compose up -d
 
 Background polling runs in the server and continues when no browser is open. The initial interval comes from `POLL_INTERVAL_MINUTES`; later changes made in **Settings** are stored in SQLite and survive restarts. Manual refresh remains available from the interface. Feed health shows the last attempt separately from the last successful update, so a stale or failing source is distinguishable from a healthy feed with no new articles.
 
-## AI article summaries
+## AI summaries and translations
 
 Create a persistent encryption key before saving provider credentials:
 
@@ -125,11 +125,13 @@ Create a persistent encryption key before saving provider credentials:
 openssl rand -hex 32
 ```
 
-Save the generated value as `AI_CREDENTIALS_KEY` in the project-level `.env` file, recreate the service, then open **Settings → AI summaries**. Choose Google Gemini, OpenAI, or Anthropic, enter the model ID you want to use, and save that provider's API key. Each provider starts with a recommended model ID, but the field accepts any model that the provider makes available to your account. Keys are encrypted per account before they enter SQLite and are never returned to the browser after saving.
+Save the generated value as `AI_CREDENTIALS_KEY` in the project-level `.env` file, recreate the service, then open **Settings → AI**. Choose Google Gemini, OpenAI, or Anthropic, enter the model ID you want to use, and save that provider's API key. Summaries and translations use this same model. Each provider starts with a recommended model ID, but the field accepts any model that the provider makes available to your account. Keys are encrypted per account before they enter SQLite and are never returned to the browser after saving.
 
 Use **Summarize** in the article action bar, or press `m`. Echovale prefers loaded publisher content, falls back to feed content, and finally uses the feed excerpt. A summary is cached until the article source changes; **Regenerate** deliberately requests a new result and can use a newly selected provider.
 
-Provider credentials are shared by Echovale's AI feature foundation, while each feature owns its provider/model choice and prompt. This lets a future digest feature reuse saved credentials without coupling its model or behavior to article summaries.
+Set the destination under **Settings → Reading behavior → Translation language**. Use the translation button in the article action bar, or press `t`. The translated text replaces the currently visible article text; press the button or `t` again to restore the original. Translations are cached by article source and language until the source changes.
+
+Provider credentials and the selected model are shared by both AI reading features, while summaries and translations keep separate prompts and caches.
 
 ## Back up and restore
 
@@ -196,6 +198,7 @@ Single-key shortcuts pause while focus is in a text field or other editable cont
 | `c` | Copy the active article URL. |
 | `o` | Open the active article's source in a new tab. |
 | `m` | Show, hide, or create the active article summary. |
+| `t` | Toggle the active article translation. |
 | `r` | Refresh the current feed or scope. |
 | `Shift+r` | Refresh all feeds. |
 | `[` | Decrease article font size. |

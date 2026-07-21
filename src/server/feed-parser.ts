@@ -54,19 +54,30 @@ function number(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export function plainText(value: string | null): string {
-  if (!value) return "";
-  return sanitizeHtml(
-    value.replace(/<(?:br|\/p|\/div|\/li|\/h[1-6]|\/blockquote|\/tr)\b[^>]*>/gi, " "),
-    { allowedTags: [], allowedAttributes: {} },
-  )
+function decodeTextEntities(value: string): string {
+  return value
     .replaceAll("&lt;", "<")
     .replaceAll("&gt;", ">")
     .replaceAll("&quot;", '"')
     .replaceAll("&#39;", "'")
-    .replaceAll("&amp;", "&")
-    .replace(/\s+/g, " ")
+    .replaceAll("&amp;", "&");
+}
+
+export function structuredPlainText(value: string | null): string {
+  if (!value) return "";
+  const text = sanitizeHtml(
+    value.replace(/<br\b[^>]*>/gi, "\n").replace(/<\/(?:p|div|li|h[1-6]|blockquote|tr)>/gi, "\n\n"),
+    { allowedTags: [], allowedAttributes: {} },
+  )
+    .replace(/[^\S\r\n]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
+  return decodeTextEntities(text);
+}
+
+export function plainText(value: string | null): string {
+  return structuredPlainText(value).replace(/\s+/g, " ").trim();
 }
 
 function escapeHtml(value: string): string {

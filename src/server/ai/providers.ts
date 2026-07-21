@@ -62,7 +62,7 @@ function providerError(provider: string, status: number, body: unknown): AiError
   return new AiError(
     "AI_PROVIDER_FAILED",
     502,
-    `${provider} could not complete the summary. Try again.`,
+    `${provider} could not complete this request. Try again.`,
   );
 }
 
@@ -115,11 +115,15 @@ async function postJson(
 
 function requireText(provider: string, values: string[], refused = false): string {
   if (refused) {
-    throw new AiError("AI_RESPONSE_REFUSED", 422, `${provider} could not summarize this article.`);
+    throw new AiError("AI_RESPONSE_REFUSED", 422, `${provider} could not process this article.`);
   }
   const text = values.join("").trim();
   if (text) return text;
-  throw new AiError("AI_PROVIDER_FAILED", 502, `${provider} returned an empty summary. Try again.`);
+  throw new AiError(
+    "AI_PROVIDER_FAILED",
+    502,
+    `${provider} returned an empty response. Try again.`,
+  );
 }
 
 function geminiAdapter(baseUrl: string): AiProviderAdapter {
@@ -147,7 +151,7 @@ function geminiAdapter(baseUrl: string): AiProviderAdapter {
       );
       const promptFeedback = response.promptFeedback as Record<string, unknown> | undefined;
       if (typeof promptFeedback?.blockReason === "string") {
-        throw new AiError("AI_RESPONSE_REFUSED", 422, `${label} could not summarize this article.`);
+        throw new AiError("AI_RESPONSE_REFUSED", 422, `${label} could not process this article.`);
       }
       const candidates = Array.isArray(response.candidates) ? response.candidates : [];
       const first = candidates[0] as Record<string, unknown> | undefined;
@@ -156,13 +160,13 @@ function geminiAdapter(baseUrl: string): AiProviderAdapter {
         typeof finishReason === "string" &&
         ["SAFETY", "BLOCKLIST", "PROHIBITED_CONTENT", "IMAGE_SAFETY"].includes(finishReason);
       if (refused) {
-        throw new AiError("AI_RESPONSE_REFUSED", 422, `${label} could not summarize this article.`);
+        throw new AiError("AI_RESPONSE_REFUSED", 422, `${label} could not process this article.`);
       }
       if (finishReason !== "STOP") {
         throw new AiError(
           "AI_PROVIDER_FAILED",
           502,
-          `${label} did not finish the summary. Try again.`,
+          `${label} did not finish processing this article. Try again.`,
         );
       }
       const content = first?.content as Record<string, unknown> | undefined;
@@ -212,16 +216,12 @@ function openAiAdapter(baseUrl: string): AiProviderAdapter {
       if (response.status !== "completed") {
         const details = response.incomplete_details as Record<string, unknown> | undefined;
         if (details?.reason === "content_filter") {
-          throw new AiError(
-            "AI_RESPONSE_REFUSED",
-            422,
-            `${label} could not summarize this article.`,
-          );
+          throw new AiError("AI_RESPONSE_REFUSED", 422, `${label} could not process this article.`);
         }
         throw new AiError(
           "AI_PROVIDER_FAILED",
           502,
-          `${label} did not finish the summary. Try again.`,
+          `${label} did not finish processing this article. Try again.`,
         );
       }
       const output = Array.isArray(response.output) ? response.output : [];
@@ -278,13 +278,13 @@ function anthropicAdapter(baseUrl: string): AiProviderAdapter {
         request.signal,
       );
       if (response.stop_reason === "refusal") {
-        throw new AiError("AI_RESPONSE_REFUSED", 422, `${label} could not summarize this article.`);
+        throw new AiError("AI_RESPONSE_REFUSED", 422, `${label} could not process this article.`);
       }
       if (response.stop_reason !== "end_turn") {
         throw new AiError(
           "AI_PROVIDER_FAILED",
           502,
-          `${label} did not finish the summary. Try again.`,
+          `${label} did not finish processing this article. Try again.`,
         );
       }
       const content = Array.isArray(response.content) ? response.content : [];

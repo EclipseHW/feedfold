@@ -1,7 +1,11 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { prepareArticleSummary } from "../../src/server/ai/article-summary.js";
+import { prepareArticleTranslation } from "../../src/server/ai/article-translation.js";
 import { CredentialCipher } from "../../src/server/ai/credential-cipher.js";
 import { AiError } from "../../src/server/ai/errors.js";
+import { createAiProviders } from "../../src/server/ai/providers.js";
 import { AiService } from "../../src/server/ai/service.js";
 import { AuthService } from "../../src/server/auth.js";
 import { AppDatabase, type ParsedFeed } from "../../src/server/db.js";
@@ -57,6 +61,43 @@ function addArticle(database: AppDatabase, userId: number): { feedId: number; ar
   return { feedId: feed.id, articleId };
 }
 
+async function liveOpenAiProvider(): Promise<{
+  providers: ReturnType<typeof createAiProviders>;
+  requests: Array<Record<string, unknown>>;
+}> {
+  const requests: Array<Record<string, unknown>> = [];
+  const server = createServer((request, response) => {
+    const chunks: Buffer[] = [];
+    request.on("data", (chunk: Buffer) => chunks.push(chunk));
+    request.on("end", () => {
+      const body = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
+      requests.push(body);
+      const input = String(body.input);
+      const text = input.includes("Target language: French")
+        ? "Premier paragraphe.\n\nDeuxième paragraphe."
+        : "Pierwszy akapit.\n\nDrugi akapit.";
+      response.writeHead(200, { "Content-Type": "application/json" });
+      response.end(
+        JSON.stringify({
+          status: "completed",
+          output: [
+            {
+              type: "message",
+              role: "assistant",
+              content: [{ type: "output_text", text }],
+            },
+          ],
+          usage: { input_tokens: 24, output_tokens: 8 },
+        }),
+      );
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  cleanups.push(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  const baseUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  return { providers: createAiProviders({ openai: baseUrl }), requests };
+}
+
 describe("AI article summaries", () => {
   it("encrypts provider keys per account and never exposes them through settings", () => {
     const { database, readerId, partnerId } = databaseWithUsers();
@@ -108,10 +149,74 @@ describe("AI article summaries", () => {
     expect(prepared.input).not.toContain("Feed fallback");
   });
 
+  it("preserves article structure for translation and rejects a missing selected source", () => {
+    const article = {
+      id: 1,
+      revision: 1,
+      title: "Structured article",
+      url: null,
+      author: null,
+      contentHtml: null,
+      feedContentHtml: "<p>First paragraph.</p><p>Second paragraph.</p>",
+      excerpt: "Fallback excerpt.",
+      currentSummary: null,
+    };
+
+    expect(prepareArticleTranslation(article, "Polish", "feed")).toMatchObject({
+      sourceKind: "feed",
+      input: expect.stringContaining("First paragraph.\n\nSecond paragraph."),
+    });
+    expect(() => prepareArticleTranslation(article, "Polish", "full")).toThrow(AiError);
+  });
+
+  it("uses the summary model for cached translations in the configured account language", async () => {
+    const { database, readerId } = databaseWithUsers();
+    const { articleId } = addArticle(database, readerId);
+    const cipher = CredentialCipher.fromHex(CREDENTIAL_KEY);
+    if (!cipher) throw new Error("Credential cipher was not created");
+    const { providers, requests } = await liveOpenAiProvider();
+    const service = new AiService(database, { credentialCipher: cipher, providers });
+    service.setApiKey(readerId, "openai", "live-provider-test-key");
+    service.setFeatureSetting(readerId, "article_summary", "openai", "shared-reader-model");
+    database.updateSettings(readerId, { translationLanguage: "Polish" });
+
+    const first = await service.translateArticle(readerId, articleId, "feed");
+    expect(first).toMatchObject({
+      text: "Pierwszy akapit.\n\nDrugi akapit.",
+      language: "Polish",
+      provider: "openai",
+      model: "shared-reader-model",
+      sourceKind: "feed",
+      usage: { inputTokens: 24, outputTokens: 8 },
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      model: "shared-reader-model",
+      max_output_tokens: 32_000,
+      input: expect.stringContaining("Target language: Polish"),
+    });
+
+    expect(await service.translateArticle(readerId, articleId, "feed")).toEqual(first);
+    expect(requests).toHaveLength(1);
+
+    service.deleteApiKey(readerId, "openai");
+    expect(await service.translateArticle(readerId, articleId, "feed")).toEqual(first);
+    expect(requests).toHaveLength(1);
+
+    service.setApiKey(readerId, "openai", "live-provider-test-key");
+    database.updateSettings(readerId, { translationLanguage: "French" });
+    expect(await service.translateArticle(readerId, articleId, "feed")).toMatchObject({
+      text: "Premier paragraphe.\n\nDeuxième paragraphe.",
+      language: "French",
+      model: "shared-reader-model",
+    });
+    expect(requests).toHaveLength(2);
+  });
+
   it("keeps a summary for metadata-only refreshes and invalidates it when source text changes", () => {
     const { database, readerId, partnerId } = databaseWithUsers();
     const { feedId, articleId } = addArticle(database, readerId);
-    const article = database.getArticleForAiSummary(readerId, articleId);
+    const article = database.getArticleForAi(readerId, articleId);
     if (!article) throw new Error("Test article is unavailable");
     database.saveArticleAiSummary(readerId, articleId, article.revision, {
       promptVersion: 1,
@@ -158,7 +263,7 @@ describe("AI article summaries", () => {
       },
     });
     expect(database.getArticle(readerId, articleId)?.aiSummary).toBeNull();
-    expect(database.getArticleForAiSummary(partnerId, articleId)).toBeNull();
+    expect(database.getArticleForAi(partnerId, articleId)).toBeNull();
   });
 
   it("explains whether the provider selection or its API key is missing", async () => {
@@ -172,8 +277,16 @@ describe("AI article summaries", () => {
       code: "AI_NOT_CONFIGURED",
       statusCode: 422,
     });
+    await expect(service.translateArticle(readerId, articleId, "feed")).rejects.toMatchObject({
+      code: "AI_NOT_CONFIGURED",
+      statusCode: 422,
+    });
     service.setFeatureSetting(readerId, "article_summary", "anthropic");
     await expect(service.summarizeArticle(readerId, articleId)).rejects.toMatchObject({
+      code: "AI_KEY_MISSING",
+      statusCode: 422,
+    });
+    await expect(service.translateArticle(readerId, articleId, "feed")).rejects.toMatchObject({
       code: "AI_KEY_MISSING",
       statusCode: 422,
     });

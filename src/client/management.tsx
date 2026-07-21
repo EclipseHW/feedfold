@@ -1885,7 +1885,7 @@ function AiSettingsSection({
           model: nextModel.trim(),
         }),
       );
-      showToast("Article summary model saved");
+      showToast("AI model saved");
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -1929,7 +1929,7 @@ function AiSettingsSection({
         onAiSettings(updated);
         setApiKey("");
         setShowKey(false);
-        showToast(`${provider.label} API key saved for article summaries`);
+        showToast(`${provider.label} API key saved for summaries and translations`);
       } catch (caught) {
         onAiSettings(keySettings);
         throw caught;
@@ -1944,7 +1944,7 @@ function AiSettingsSection({
   const removeKey = async () => {
     if (
       !window.confirm(
-        `Remove the ${provider.label} API key? New summaries will stop until another key is saved.`,
+        `Remove the ${provider.label} API key? New summaries and translations will stop until another key is saved.`,
       )
     ) {
       return;
@@ -1971,8 +1971,8 @@ function AiSettingsSection({
     >
       <div className="settings-heading">
         <div>
-          <h2 id="ai-heading">AI summaries</h2>
-          <p>Choose the service Echovale uses to summarize articles.</p>
+          <h2 id="ai-heading">AI</h2>
+          <p>One provider and model creates summaries and article translations.</p>
         </div>
         {busy ? (
           <span className="saving-label" role="status">
@@ -1995,7 +1995,7 @@ function AiSettingsSection({
       <div className="setting-row">
         <label htmlFor="ai-summary-provider">
           <strong>Provider</strong>
-          <p>Used when a summary is generated or regenerated.</p>
+          <p>Used when a summary or translation is generated.</p>
         </label>
         <div className="ai-provider-control">
           <select
@@ -2158,6 +2158,11 @@ export function SettingsPage({
   showToast: (message: string) => void;
 }) {
   const [saving, setSaving] = useState(false);
+  const [translationLanguage, setTranslationLanguage] = useState(settings.translationLanguage);
+
+  useEffect(() => {
+    setTranslationLanguage(settings.translationLanguage);
+  }, [settings.translationLanguage]);
 
   const saveSettings = async (change: Partial<AppSettings>) => {
     setSaving(true);
@@ -2175,7 +2180,7 @@ export function SettingsPage({
     <div className="management-page settings-page">
       <PageHeader
         title="Settings"
-        description="Reading preferences, AI summaries, polling, shortcuts, and portable subscriptions for this account."
+        description="Reading preferences, AI, polling, shortcuts, and portable subscriptions for this account."
         onMenu={onMenu}
         actions={
           saving ? (
@@ -2256,6 +2261,51 @@ export function SettingsPage({
           >
             <span />
           </button>
+        </div>
+        <div className="setting-row">
+          <label htmlFor="translation-language">
+            <strong>Translation language</strong>
+            <p>Article translations use this language and the AI model configured below.</p>
+          </label>
+          <form
+            className="translation-language-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const language = translationLanguage.trim();
+              if (language) void saveSettings({ translationLanguage: language });
+            }}
+          >
+            <input
+              id="translation-language"
+              list="translation-language-suggestions"
+              value={translationLanguage}
+              maxLength={80}
+              required
+              disabled={saving}
+              onChange={(event) => setTranslationLanguage(event.target.value)}
+            />
+            <datalist id="translation-language-suggestions">
+              <option value="English" />
+              <option value="Polish" />
+              <option value="German" />
+              <option value="Spanish" />
+              <option value="French" />
+              <option value="Italian" />
+              <option value="Portuguese" />
+              <option value="Ukrainian" />
+            </datalist>
+            <button
+              className="secondary-button"
+              type="submit"
+              disabled={
+                saving ||
+                !translationLanguage.trim() ||
+                translationLanguage.trim() === settings.translationLanguage
+              }
+            >
+              Save language
+            </button>
+          </form>
         </div>
       </section>
 
@@ -2354,6 +2404,7 @@ const shortcuts = [
   ["O", "Open active article source"],
   ["W", "Toggle feed or full content"],
   ["M", "Show, hide, or create article summary"],
+  ["T", "Toggle article translation"],
   ["R", "Refresh current feed or folder"],
   ["Shift R", "Refresh every feed"],
   ["[", "Decrease article text size"],

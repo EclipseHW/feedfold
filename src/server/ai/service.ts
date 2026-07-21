@@ -1,17 +1,25 @@
 import type {
+  AiArticleSourceKind,
   AiFeature,
   AiFeatureSetting,
   AiProvider,
   AiSettings,
   ArticleAiSummary,
+  ArticleAiTranslation,
 } from "../../shared/types.js";
-import type { AppDatabase, StoredArticleAiSummary } from "../db.js";
+import type { AppDatabase, StoredArticleAiSummary, StoredArticleAiTranslation } from "../db.js";
 import {
   ARTICLE_SUMMARY_MAX_OUTPUT_TOKENS,
   ARTICLE_SUMMARY_PROMPT_VERSION,
   ARTICLE_SUMMARY_SYSTEM_PROMPT,
   prepareArticleSummary,
 } from "./article-summary.js";
+import {
+  ARTICLE_TRANSLATION_MAX_OUTPUT_TOKENS,
+  ARTICLE_TRANSLATION_PROMPT_VERSION,
+  ARTICLE_TRANSLATION_SYSTEM_PROMPT,
+  prepareArticleTranslation,
+} from "./article-translation.js";
 import type { CredentialCipher } from "./credential-cipher.js";
 import { AiError } from "./errors.js";
 import { createAiProviders } from "./providers.js";
@@ -47,10 +55,23 @@ function publicSummary(summary: StoredArticleAiSummary): ArticleAiSummary {
   };
 }
 
+function publicTranslation(translation: StoredArticleAiTranslation): ArticleAiTranslation {
+  return {
+    text: translation.text,
+    language: translation.language,
+    provider: translation.provider,
+    model: translation.model,
+    sourceKind: translation.sourceKind,
+    generatedAt: translation.generatedAt,
+    usage: translation.usage,
+  };
+}
+
 export class AiService {
   private readonly providers: ReadonlyMap<AiProvider, AiProviderAdapter>;
   private readonly requestTimeoutMs: number;
   private readonly summariesInFlight = new Map<string, Promise<ArticleAiSummary | null>>();
+  private readonly translationsInFlight = new Map<string, Promise<ArticleAiTranslation | null>>();
 
   constructor(
     private readonly database: AppDatabase,
@@ -169,12 +190,33 @@ export class AiService {
     return summary;
   }
 
+  translateArticle(
+    userId: number,
+    articleId: number,
+    sourceKind: AiArticleSourceKind,
+  ): Promise<ArticleAiTranslation | null> {
+    const language = this.database.getSettings(userId).translationLanguage;
+    const key = `${userId}:${articleId}:${sourceKind}:${language.toLocaleLowerCase()}`;
+    const running = this.translationsInFlight.get(key);
+    if (running) return running;
+    const translation = this.createArticleTranslation(
+      userId,
+      articleId,
+      sourceKind,
+      language,
+    ).finally(() => {
+      this.translationsInFlight.delete(key);
+    });
+    this.translationsInFlight.set(key, translation);
+    return translation;
+  }
+
   private async createArticleSummary(
     userId: number,
     articleId: number,
     regenerate: boolean,
   ): Promise<ArticleAiSummary | null> {
-    const article = this.database.getArticleForAiSummary(userId, articleId);
+    const article = this.database.getArticleForAi(userId, articleId);
     if (!article) return null;
     if (!regenerate && article.currentSummary?.promptVersion === ARTICLE_SUMMARY_PROMPT_VERSION) {
       return publicSummary(article.currentSummary);
@@ -201,6 +243,43 @@ export class AiService {
       );
     }
     return publicSummary(saved);
+  }
+
+  private async createArticleTranslation(
+    userId: number,
+    articleId: number,
+    sourceKind: AiArticleSourceKind,
+    language: string,
+  ): Promise<ArticleAiTranslation | null> {
+    const article = this.database.getArticleForAi(userId, articleId);
+    if (!article) return null;
+    const current = this.database.getArticleAiTranslation(userId, articleId, language, sourceKind);
+    if (current?.promptVersion === ARTICLE_TRANSLATION_PROMPT_VERSION) {
+      return publicTranslation(current);
+    }
+    const prepared = prepareArticleTranslation(article, language, sourceKind);
+    const generated = await this.generateText(userId, "article_summary", {
+      system: ARTICLE_TRANSLATION_SYSTEM_PROMPT,
+      input: prepared.input,
+      maxOutputTokens: ARTICLE_TRANSLATION_MAX_OUTPUT_TOKENS,
+    });
+    const saved = this.database.saveArticleAiTranslation(userId, articleId, article.revision, {
+      promptVersion: ARTICLE_TRANSLATION_PROMPT_VERSION,
+      language,
+      sourceKind: prepared.sourceKind,
+      provider: generated.provider,
+      model: generated.model,
+      text: generated.text,
+      usage: generated.usage,
+    });
+    if (!saved) {
+      throw new AiError(
+        "ARTICLE_CHANGED",
+        409,
+        "The article changed while it was being translated. Try again.",
+      );
+    }
+    return publicTranslation(saved);
   }
 
   private validFeatureSetting(setting: AiFeatureSetting | null): AiFeatureSetting | null {

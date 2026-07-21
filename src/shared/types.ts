@@ -51,6 +51,16 @@ export interface ArticleAiSummary {
   usage: AiUsage;
 }
 
+export interface ArticleAiTranslation {
+  text: string;
+  language: string;
+  provider: AiProvider;
+  model: string;
+  sourceKind: AiArticleSourceKind;
+  generatedAt: string;
+  usage: AiUsage;
+}
+
 export interface RuleCondition {
   field: RuleField;
   pattern: string;
@@ -161,6 +171,7 @@ export interface AppSettings {
   pollIntervalMinutes: number;
   singleKeyShortcuts: boolean;
   markReadOnScroll: boolean;
+  translationLanguage: string;
 }
 
 export interface BootstrapData {

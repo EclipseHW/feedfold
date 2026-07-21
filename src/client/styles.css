@@ -2083,6 +2083,10 @@ kbd {
   margin: 0 0 1.15em;
 }
 
+.article-translation p {
+  white-space: pre-line;
+}
+
 .article-content h1,
 .article-content h2,
 .article-content h3,
@@ -2388,6 +2392,10 @@ kbd {
 .extraction-loading,
 .extraction-failed {
   margin-bottom: 18px;
+}
+
+.article-translation-state {
+  margin-bottom: 24px;
 }
 
 .article-extraction-state strong {
@@ -3958,6 +3966,25 @@ kbd {
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
+
+.translation-language-form {
+  display: flex;
+  width: min(100%, 460px);
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.translation-language-form input {
+  min-width: 180px;
+  height: 38px;
+  flex: 1;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+}
 .settings-actions {
   display: flex;
   flex-wrap: wrap;
@@ -4575,6 +4602,10 @@ kbd {
     width: 100%;
     justify-content: flex-start;
   }
+  .translation-language-form {
+    width: 100%;
+    justify-content: flex-start;
+  }
   .ai-provider-control {
     width: 100%;
     justify-content: flex-start;
@@ -4813,6 +4844,7 @@ kbd {
   }
   :where(.mode-magazine.is-reading-article) .reader-action-row {
     flex-wrap: nowrap;
+    padding-inline: 0;
     padding-block: 4px;
   }
   :where(.mode-magazine.is-reading-article) .reader-action-divider,
@@ -4825,10 +4857,16 @@ kbd {
   :where(.mode-magazine.is-reading-article) .reader-back-button,
   :where(.mode-magazine.is-reading-article) .article-actions button {
     width: auto;
-    min-width: 36px;
+    min-width: 30px;
     max-width: 44px;
     height: 44px;
     flex: 1 1 0;
+  }
+  :where(.mode-magazine.is-reading-article) .reader-back-button {
+    width: 36px;
+    min-width: 36px;
+    max-width: 36px;
+    flex: 0 0 36px;
   }
   :where(.mode-magazine.is-reading-article) .article-actions {
     min-width: 0;
