@@ -12,7 +12,7 @@ export default defineConfig({
         id: "/echovale/",
         name: "Echovale",
         short_name: "Echovale",
-        description: "A quiet, keyboard-first RSS reader for a private household.",
+        description: "A quiet, keyboard-first, self-hosted RSS reader.",
         start_url: "/echovale/",
         scope: "/echovale/",
         display: "standalone",

@@ -1,24 +1,25 @@
 # Echovale
 
-Echovale is a dark-first, keyboard-first RSS reader for a private household. It keeps each account's daily reading loop in one place: OPML subscriptions, folders, filtering rules, full-text articles, explicit read and starred state, and visible feed health.
+Echovale is a quiet, keyboard-first RSS reader designed to be self-hosted.
 
-It deliberately has no social, discovery, recommendation, or public account-management features.
+## Screenshots
+
+| Reader | Subscription health |
+| :---: | :---: |
+| [![Echovale magazine view populated with public demo feeds](docs/screenshots/reader-desktop.jpg)](docs/screenshots/reader-desktop.jpg) | [![Healthy YouTube, Telegram, Nitter, and RSS subscriptions in Echovale](docs/screenshots/feed-sources-desktop.jpg)](docs/screenshots/feed-sources-desktop.jpg) |
+| **YouTube article** | **Nitter / X article** |
+| [![A 3Blue1Brown YouTube video open in Echovale](docs/screenshots/article-youtube.jpg)](docs/screenshots/article-youtube.jpg) | [![An Andrej Karpathy post from Nitter open in Echovale](docs/screenshots/article-nitter.jpg)](docs/screenshots/article-nitter.jpg) |
 
 ## Features
 
-- Import and export OPML, including feed folders.
-- Choose newest-first or oldest-first reading order for each folder, including aggregate queues.
-- Magazine and expanded article lists.
-- Unread, read, and starred states.
 - Keyboard navigation for the complete reading loop.
 - Rules that keep wanted articles, hide noise, or mark matches as read.
 - Full-text extraction with feed content as a visible fallback.
 - One-click AI article summaries and translations through Google Gemini, OpenAI, or Anthropic.
-- Manual refresh and server-side background polling.
 - Per-feed last attempt, last success, HTTP status, and error details.
-- Persistent article font sizing, visible keyboard focus, and reduced-motion support.
 - Installable Progressive Web App with standalone windows, home-screen shortcuts, and an offline app shell.
-- In-app account registration and password login, with separate subscriptions, rules, settings, and reading state per account.
+- Import and export OPML, including feed folders.
+- Choose newest-first or oldest-first reading order for each folder or feed. Configured sorting per folder or feed persists in the aggregated view without affecting other feeds.
 
 ## Deploy with Docker Compose
 
@@ -27,7 +28,6 @@ The included deployment runs one Node.js 24.18.0 process and stores SQLite data 
 Requirements:
 
 - Docker Engine with Docker Compose v2.
-- A Tailscale-connected host if Echovale will be used from another device.
 
 Build and start Echovale:
 
@@ -35,7 +35,7 @@ Build and start Echovale:
 docker compose up -d --build
 ```
 
-Open Echovale and choose **Create an account** on the sign-in screen. Registration signs the new account in immediately, and passwords are hashed before they are stored in SQLite. To add another household member, sign out and register another account.
+Open `http://127.0.0.1:3000/echovale/` and choose **Create an account**. Registration signs the new account in immediately, and passwords are hashed before they are stored in SQLite. To add another account, sign out and register again.
 
 When an existing single-account database is upgraded, its feeds, folders, rules, settings, and article state belong to the first account registered after the upgrade. Later accounts start with an empty reading queue.
 
@@ -65,11 +65,11 @@ docker compose down
 
 Never add `--volumes` to that command unless the SQLite database should be permanently deleted.
 
-## Private HTTPS over Tailscale
+## Network exposure and HTTPS
 
-Echovale has password authentication, but registration remains available to anyone who can reach the sign-in screen. The Compose port remains bound to host loopback by default rather than the LAN or public internet. Keep access private and let tailnet access rules provide the outer network boundary.
+Echovale has password authentication, but registration remains available to anyone who can reach the sign-in screen. Compose binds the service to host loopback by default. For access from another device, place Echovale behind a trusted private network or a reverse proxy with HTTPS and its own access controls.
 
-On the Docker host, publish the loopback service through Tailscale Serve:
+For example, a host connected to Tailscale can publish the loopback service to its tailnet:
 
 ```sh
 sudo tailscale serve --bg --https=443 http://127.0.0.1:3000
@@ -81,9 +81,7 @@ The command prints the private `https://<device>.<tailnet>.ts.net` address. Insp
 tailscale serve status
 ```
 
-HTTPS is important here: browsers allow copy-to-clipboard from a secure context. Plain HTTP on a remote tailnet address may load the reader but block the copy shortcut. Tailscale Serve terminates HTTPS with an automatically provisioned certificate and persists a `--bg` configuration across restarts. See the official [Tailscale Serve command documentation](https://tailscale.com/docs/reference/tailscale-cli/serve).
-
-Once the HTTPS page has loaded, use the browser's **Install app** or **Add to Home Screen** action. Echovale then launches in a standalone window and provides shortcuts to unread and starred articles. The app shell can open without a network connection and explains that the private reading queue is unavailable; feed and account data remain server-backed and are never stored in a shared service-worker response cache.
+HTTPS is important because browsers only allow features such as copy-to-clipboard in a secure context. Tailscale Serve terminates HTTPS with an automatically provisioned certificate and persists a `--bg` configuration across restarts. See the official [Tailscale Serve command documentation](https://tailscale.com/docs/reference/tailscale-cli/serve).
 
 Disable the proxy with:
 
@@ -91,7 +89,7 @@ Disable the proxy with:
 sudo tailscale serve --https=443 off
 ```
 
-Do not use Tailscale Funnel for Echovale; Funnel makes a service public to the internet.
+Do not expose Echovale through Tailscale Funnel or an unrestricted public proxy unless open registration is intentional.
 
 ## Configuration
 
@@ -99,7 +97,7 @@ Compose accepts these values from a project-level `.env` file or the shell:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ECHOVALE_BIND_ADDRESS` | `127.0.0.1` | Host address that publishes the container port. Keep loopback when using Tailscale Serve. |
+| `ECHOVALE_BIND_ADDRESS` | `127.0.0.1` | Host address that publishes the container port. Keep loopback when using a local reverse proxy. |
 | `ECHOVALE_PORT` | `3000` | Host port forwarded to Echovale. |
 | `POLL_INTERVAL_MINUTES` | `20` | Initial background polling interval for a new database. |
 | `FEED_FETCH_TIMEOUT_MS` | `15000` | Feed request timeout in milliseconds. |
@@ -127,132 +125,7 @@ openssl rand -hex 32
 
 Save the generated value as `AI_CREDENTIALS_KEY` in the project-level `.env` file, recreate the service, then open **Settings → AI**. Choose Google Gemini, OpenAI, or Anthropic, enter the model ID you want to use, and save that provider's API key. Summaries and translations use this same model. Each provider starts with a recommended model ID, but the field accepts any model that the provider makes available to your account. Keys are encrypted per account before they enter SQLite and are never returned to the browser after saving.
 
-Use **Summarize** in the article action bar, or press `m`. Echovale prefers loaded publisher content, falls back to feed content, and finally uses the feed excerpt. A summary is cached until the article source changes; **Regenerate** deliberately requests a new result and can use a newly selected provider.
-
-Set the destination under **Settings → Reading behavior → Translation language**. Use the translation button in the article action bar, or press `t`. The translated text replaces the currently visible article text while retaining its links, images, and formatting; press the button or `t` again to restore the original. Translations are cached by article source and language until the source changes.
-
-Provider credentials and the selected model are shared by both AI reading features, while summaries and translations keep separate prompts and caches.
-
-## Back up and restore
-
-Use a stopped service for a consistent copy of the SQLite database and its journal files. Back up the project-level `.env` securely as well: restoring encrypted provider keys requires the same `AI_CREDENTIALS_KEY`. If that key is lost, the database still starts, but each provider API key must be entered again.
-
-Create a timestamped backup:
-
-```sh
-docker compose stop echovale
-```
-
-```sh
-mkdir -p backups
-```
-
-```sh
-docker compose cp echovale:/data/. ./backups/echovale-$(date +%Y%m%d-%H%M%S)
-```
-
-```sh
-docker compose start echovale
-```
-
-Restore a selected backup after stopping the service:
-
-```sh
-docker compose stop echovale
-```
-
-```sh
-docker compose run --rm --no-deps --entrypoint sh echovale -c 'rm -f /data/echovale.db /data/echovale.db-shm /data/echovale.db-wal'
-```
-
-```sh
-docker compose cp ./backups/echovale-YYYYMMDD-HHMMSS/. echovale:/data/
-```
-
-```sh
-docker compose run --rm --no-deps --user root --entrypoint chown echovale -R node:node /data
-```
-
-```sh
-docker compose start echovale
-```
-
-Replace the timestamp placeholder with the backup directory to restore. Confirm readiness with the health command after restoration. Keep backups outside the Docker volume and include them in the homeserver's normal off-host backup routine.
-
-## OPML and article rules
-
-Open **Feeds** to import or export an OPML file. Import recreates folders and subscriptions; duplicate feed URLs are skipped and import failures are reported. OPML contains subscriptions and folder organization, not article read/starred state or rules, so retain the SQLite backup as the complete recovery source.
-
-Open **Rules** to build filters from one or more case-insensitive conditions. Conditions can inspect the title, author, summary, content, media type, or all text and can require every condition (AND) or any condition (OR). A rule can hide matches, keep only wanted matches, or mark matches as read, and can apply globally or to a feed or folder.
-
-## Keyboard shortcuts
-
-Single-key shortcuts pause while focus is in a text field or other editable control. They can also be disabled in settings. Press `?` in the app to see the same shortcut reference.
-
-| Key | Action |
-| --- | --- |
-| `j` | Move to the next article. |
-| `k` | Move to the previous article. |
-| `u` | Mark the active article unread. |
-| `s` | Toggle the active article's starred state. |
-| `c` | Copy the active article URL. |
-| `o` | Open the active article's source in a new tab. |
-| `m` | Show, hide, or create the active article summary. |
-| `t` | Toggle the active article translation. |
-| `r` | Refresh the current feed or scope. |
-| `Shift+r` | Refresh all feeds. |
-| `[` | Decrease article font size. |
-| `]` | Increase article font size. |
-| `1` | Switch to magazine view. |
-| `2` | Switch to expanded view. |
-| `g`, then `u` | Open unread articles. |
-| `g`, then `s` | Open starred articles. |
-| `g`, then `a` | Open all articles. |
-| `?` | Open keyboard help. |
-
-## Local development
-
-Install Node.js 24.18.0, then install locked dependencies:
-
-```sh
-npm ci
-```
-
-Start the API and Vite development server:
-
-```sh
-npm run dev
-```
-
-Open `http://localhost:5173/echovale/`. Vite proxies the app's API and health paths to the API on port 3000.
-
-Run the complete validation suite:
-
-```sh
-npm run check
-```
-
-Build and run the production application without Docker:
-
-```sh
-npm run build
-```
-
-```sh
-npm start
-```
-
 ## Updating
-
-The configured homeserver remote deploys `master` automatically through the bare repository hook:
-
-```sh
-git push homeserver master
-```
-
-The production app is available to the tailnet at `https://hs.tailb4f5f1.ts.net/echovale/`.
-
-For another Docker host, back up the database, update the checkout, and rebuild the image:
 
 ```sh
 git pull --ff-only
