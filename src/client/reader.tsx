@@ -39,6 +39,7 @@ import {
   handleActionMenuKeyDown,
 } from "./feed-management";
 import { useMotionPresence } from "./motion";
+import { animateHorizontalSpring, type HorizontalSpringController } from "./swipe-motion";
 import {
   captureTextSelection,
   restoreTextSelection,
@@ -48,10 +49,11 @@ import {
 const ARTICLE_SWIPE_TARGETS =
   "a, button, input, select, textarea, summary, video, audio, iframe, pre, .article-table-scroll, [contenteditable]";
 const SWIPE_INTENT_DISTANCE = 10;
-const SWIPE_EXIT_DURATION = 150;
-const SWIPE_ENTRY_DURATION = 280;
-const SWIPE_RESTORE_DURATION = 220;
-const REDUCED_SWIPE_DURATION = 160;
+const SWIPE_SAMPLE_WINDOW = 100;
+const SWIPE_SAMPLE_LIMIT = 5;
+const SWIPE_SPRING_RESPONSE = 0.4;
+const SWIPE_SPRING_DAMPING = 1;
+const REDUCED_SWIPE_DURATION = 200;
 
 type ArticleNavigationHandler = () => boolean | Promise<boolean>;
 type SwipeIntent = "pending" | "horizontal" | "vertical";
@@ -63,14 +65,6 @@ function prefersReducedMotion(): boolean {
 function surfaceTranslateX(element: HTMLElement): number {
   const transform = window.getComputedStyle(element).transform;
   return transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m41;
-}
-
-function surfaceKeyframe(element: HTMLElement): Keyframe {
-  const styles = window.getComputedStyle(element);
-  return {
-    transform: styles.transform === "none" ? "translate3d(0, 0, 0)" : styles.transform,
-    opacity: styles.opacity,
-  };
 }
 
 function clearSwipeSurface(element: HTMLElement): void {
@@ -1142,6 +1136,63 @@ function ArticleDocument({
   );
 }
 
+interface ArticleSurfaceSnapshot {
+  article: Article;
+  fullContentVisible: boolean;
+  summaryState: ArticleSummaryViewState;
+}
+
+interface PointerSample {
+  x: number;
+  timeStamp: number;
+}
+
+interface SwipeGestureState {
+  pointerId: number;
+  x: number;
+  y: number;
+  surfaceX: number;
+  surfaceOpacity: number;
+  reducedMotion: boolean;
+  intent: SwipeIntent;
+  samples: PointerSample[];
+}
+
+interface PendingArticleNavigation {
+  readonly id: number;
+  readonly direction: ArticleSwipeDirection;
+  readonly releaseVelocity: number;
+  readonly reducedMotion: boolean;
+  readonly restoreFrameHandle: number;
+}
+
+interface OutgoingArticleSurface {
+  snapshot: ArticleSurfaceSnapshot;
+  requestId: number;
+}
+
+interface ArticleTransitionSetup {
+  requestId: number;
+  direction: ArticleSwipeDirection;
+  startX: number;
+  startOpacity: number;
+  releaseVelocity: number;
+  reducedMotion: boolean;
+}
+
+function appendPointerSample(samples: PointerSample[], sample: PointerSample): PointerSample[] {
+  return [...samples, sample]
+    .filter((entry) => sample.timeStamp - entry.timeStamp <= SWIPE_SAMPLE_WINDOW)
+    .slice(-SWIPE_SAMPLE_LIMIT);
+}
+
+function horizontalReleaseVelocity(samples: PointerSample[]): number {
+  const first = samples[0];
+  const last = samples.at(-1);
+  if (!first || !last || last.timeStamp <= first.timeStamp) return 0;
+  return (last.x - first.x) / (last.timeStamp - first.timeStamp);
+}
+
 export function ReaderPane({
   article,
   fullContentVisible,
@@ -1177,141 +1228,275 @@ export function ReaderPane({
   onOpenAiSettings: () => void;
   onFilterSelection: (article: Article, text: string) => void;
 }) {
-  const swipeStart = useRef<{
-    pointerId: number;
-    x: number;
-    y: number;
-    timeStamp: number;
-    surfaceX: number;
-    surfaceOpacity: number;
-    reducedMotion: boolean;
-    intent: SwipeIntent;
-  } | null>(null);
-  const swipeSurfaceRef = useRef<HTMLDivElement>(null);
-  const swipeAnimation = useRef<Animation | null>(null);
-  const pendingNavigation = useRef<ArticleSwipeDirection | null>(null);
-  const previousArticleId = useRef(article?.id ?? null);
+  const initialSurface = article ? { article, fullContentVisible, summaryState } : null;
+  const [activeSurface, setActiveSurface] = useState<ArticleSurfaceSnapshot | null>(initialSurface);
+  const [outgoingSurface, setOutgoingSurface] = useState<OutgoingArticleSurface | null>(null);
+  const readerPaneRef = useRef<HTMLElement>(null);
+  const activeLayerRef = useRef<HTMLDivElement>(null);
+  const outgoingLayerRef = useRef<HTMLDivElement>(null);
+  const activeSurfaceRef = useRef(activeSurface);
+  const outgoingSurfaceRef = useRef(outgoingSurface);
+  const activeMotion = useRef<HorizontalSpringController | null>(null);
+  const swipeStart = useRef<SwipeGestureState | null>(null);
+  const pendingNavigation = useRef<PendingArticleNavigation | null>(null);
+  const nextRequestId = useRef(0);
+  const propArticleId = useRef(article?.id ?? null);
+  const paginationRestoreRequestId = useRef<number | null>(null);
+  const transitionSetup = useRef<ArticleTransitionSetup | null>(null);
+  activeSurfaceRef.current = activeSurface;
+  outgoingSurfaceRef.current = outgoingSurface;
+  propArticleId.current = article?.id ?? null;
 
-  const animateSurfaceBack = useCallback(() => {
-    const surface = swipeSurfaceRef.current;
-    if (!surface) return;
-
-    const start = surfaceKeyframe(surface);
-    swipeAnimation.current?.cancel();
-    const reducedMotion = prefersReducedMotion();
-    const animation = surface.animate(
-      reducedMotion
-        ? [start, { opacity: 1 }]
-        : [start, { transform: "translate3d(0, 0, 0)", opacity: 1 }],
-      {
-        duration: reducedMotion ? REDUCED_SWIPE_DURATION : SWIPE_RESTORE_DURATION,
-        easing: "cubic-bezier(0.32, 0.72, 0, 1)",
-        fill: "forwards",
-      },
-    );
-    swipeAnimation.current = animation;
+  const preserveActivePresentation = useCallback(() => {
+    const surface = activeLayerRef.current;
+    if (!surface) return { position: 0, opacity: 1 };
+    const position = surfaceTranslateX(surface);
+    const opacity = Number(window.getComputedStyle(surface).opacity);
+    activeMotion.current?.cancel();
+    activeMotion.current = null;
+    surface.style.transform = `translate3d(${position}px, 0, 0)`;
+    surface.style.opacity = String(opacity);
     surface.dataset.swiping = "true";
-    animation.onfinish = () => {
-      if (swipeAnimation.current !== animation) return;
-      swipeAnimation.current = null;
-      clearSwipeSurface(surface);
-    };
+    return { position, opacity };
   }, []);
 
+  const restoreActiveSurface = useCallback(
+    (releaseVelocity = 0, reducedMotion = prefersReducedMotion()) => {
+      const surface = activeLayerRef.current;
+      if (!surface) return;
+      const { position, opacity } = preserveActivePresentation();
+      transitionSetup.current = null;
+      if (outgoingSurfaceRef.current) {
+        outgoingSurfaceRef.current = null;
+        setOutgoingSurface(null);
+      }
+
+      if (reducedMotion) {
+        const animation = surface.animate([{ opacity }, { opacity: 1 }], {
+          duration: REDUCED_SWIPE_DURATION,
+          easing: "ease",
+          fill: "forwards",
+        });
+        const controller: HorizontalSpringController = {
+          cancel: () => animation.cancel(),
+        };
+        activeMotion.current = controller;
+        animation.onfinish = () => {
+          if (activeMotion.current !== controller) return;
+          activeMotion.current = null;
+          clearSwipeSurface(surface);
+        };
+        return;
+      }
+
+      let controller: HorizontalSpringController;
+      controller = animateHorizontalSpring({
+        initialPosition: position,
+        initialVelocity: releaseVelocity,
+        target: 0,
+        damping: SWIPE_SPRING_DAMPING,
+        response: SWIPE_SPRING_RESPONSE,
+        onUpdate: ({ position: nextPosition, progress }) => {
+          surface.style.transform = `translate3d(${nextPosition}px, 0, 0)`;
+          surface.style.opacity = String(opacity + (1 - opacity) * progress);
+        },
+        onComplete: () => {
+          if (activeMotion.current !== controller) return;
+          activeMotion.current = null;
+          clearSwipeSurface(surface);
+        },
+      });
+      activeMotion.current = controller;
+    },
+    [preserveActivePresentation],
+  );
+
   const navigateWithAnimation = useCallback(
-    (direction: ArticleSwipeDirection, releaseVelocity = 0) => {
-      const surface = swipeSurfaceRef.current;
+    (
+      direction: ArticleSwipeDirection,
+      releaseVelocity = 0,
+      reducedMotion = prefersReducedMotion(),
+    ) => {
+      if (pendingNavigation.current) {
+        restoreActiveSurface(releaseVelocity, reducedMotion);
+        return;
+      }
+
       const navigate = direction === "next" ? onNext : onPrevious;
-      if (!surface) {
+      if (!activeLayerRef.current) {
         void navigate();
         return;
       }
 
-      const start = surfaceKeyframe(surface);
-      const currentX = surfaceTranslateX(surface);
-      const reducedMotion = prefersReducedMotion();
-      const directionSign = direction === "next" ? -1 : 1;
-      const exitX = directionSign * Math.max(surface.clientWidth * 0.55, 180);
-      const remainingDistance = Math.abs(exitX - currentX);
-      const velocityDuration = releaseVelocity
-        ? (remainingDistance / Math.max(Math.abs(releaseVelocity), 700)) * 1000
-        : SWIPE_EXIT_DURATION;
-      const duration = Math.min(180, Math.max(90, velocityDuration));
-
-      swipeAnimation.current?.cancel();
-      const animation = surface.animate(
-        reducedMotion
-          ? [start, { opacity: 0.35 }]
-          : [start, { transform: `translate3d(${exitX}px, 0, 0)`, opacity: 0.08 }],
-        {
-          duration: reducedMotion ? 100 : duration,
-          easing: "cubic-bezier(0.4, 0, 1, 1)",
-          fill: "forwards",
-        },
-      );
-      swipeAnimation.current = animation;
-      surface.dataset.swiping = "true";
-      animation.onfinish = () => {
-        if (swipeAnimation.current !== animation) return;
-        swipeAnimation.current = null;
-        pendingNavigation.current = direction;
-        const navigationResult = navigate();
-        animateSurfaceBack();
-        void Promise.resolve(navigationResult).then((moved) => {
-          if (moved || pendingNavigation.current !== direction) return;
-          pendingNavigation.current = null;
-        });
-      };
+      const requestId = ++nextRequestId.current;
+      const restoreFrameHandle = window.requestAnimationFrame(() => {
+        const request = pendingNavigation.current;
+        if (request?.id !== requestId) return;
+        if (propArticleId.current !== activeSurfaceRef.current?.article.id) return;
+        paginationRestoreRequestId.current = requestId;
+        restoreActiveSurface(request.releaseVelocity, request.reducedMotion);
+      });
+      const request = Object.freeze({
+        id: requestId,
+        direction,
+        releaseVelocity,
+        reducedMotion,
+        restoreFrameHandle,
+      });
+      pendingNavigation.current = request;
+      const navigationResult = navigate();
+      void Promise.resolve(navigationResult).then((moved) => {
+        if (pendingNavigation.current?.id !== requestId || moved) return;
+        pendingNavigation.current = null;
+        window.cancelAnimationFrame(restoreFrameHandle);
+        const alreadyRestoring = paginationRestoreRequestId.current === requestId;
+        paginationRestoreRequestId.current = null;
+        if (!alreadyRestoring) restoreActiveSurface(releaseVelocity, reducedMotion);
+      });
     },
-    [animateSurfaceBack, onNext, onPrevious],
+    [onNext, onPrevious, restoreActiveSurface],
   );
 
   useLayoutEffect(() => {
-    const nextArticleId = article?.id ?? null;
-    const lastArticleId = previousArticleId.current;
-    previousArticleId.current = nextArticleId;
-    if (nextArticleId === null || lastArticleId === nextArticleId) return;
+    const nextSurface = article ? { article, fullContentVisible, summaryState } : null;
+    const currentSurface = activeSurfaceRef.current;
+    if (nextSurface?.article.id === currentSurface?.article.id) {
+      if (
+        nextSurface &&
+        (nextSurface.article !== currentSurface?.article ||
+          nextSurface.fullContentVisible !== currentSurface.fullContentVisible ||
+          nextSurface.summaryState !== currentSurface.summaryState)
+      ) {
+        activeSurfaceRef.current = nextSurface;
+        setActiveSurface(nextSurface);
+      }
+      return;
+    }
 
-    const direction = pendingNavigation.current;
+    if (readerPaneRef.current) readerPaneRef.current.scrollTop = 0;
+    if (!nextSurface || !currentSurface) {
+      activeMotion.current?.cancel();
+      activeMotion.current = null;
+      const request = pendingNavigation.current;
+      if (request) window.cancelAnimationFrame(request.restoreFrameHandle);
+      pendingNavigation.current = null;
+      paginationRestoreRequestId.current = null;
+      transitionSetup.current = null;
+      outgoingSurfaceRef.current = null;
+      activeSurfaceRef.current = nextSurface;
+      setOutgoingSurface(null);
+      setActiveSurface(nextSurface);
+      return;
+    }
+
+    const request = pendingNavigation.current;
+    if (!request) {
+      activeMotion.current?.cancel();
+      activeMotion.current = null;
+      paginationRestoreRequestId.current = null;
+      transitionSetup.current = null;
+      outgoingSurfaceRef.current = null;
+      activeSurfaceRef.current = nextSurface;
+      setOutgoingSurface(null);
+      setActiveSurface(nextSurface);
+      return;
+    }
+
+    const { position, opacity } = preserveActivePresentation();
+    window.cancelAnimationFrame(request.restoreFrameHandle);
     pendingNavigation.current = null;
-    if (!direction) return;
-
-    const surface = swipeSurfaceRef.current;
-    if (!surface) return;
-    swipeAnimation.current?.cancel();
-    clearSwipeSurface(surface);
-    const reducedMotion = prefersReducedMotion();
-    const directionSign = direction === "next" ? 1 : -1;
-    const entryX = directionSign * Math.min(surface.clientWidth * 0.32, 150);
-    const animation = surface.animate(
-      reducedMotion
-        ? [{ opacity: 0.35 }, { opacity: 1 }]
-        : [
-            { transform: `translate3d(${entryX}px, 0, 0)`, opacity: 0.18 },
-            {
-              transform: `translate3d(${-directionSign * 4}px, 0, 0)`,
-              opacity: 1,
-              offset: 0.84,
-            },
-            { transform: "translate3d(0, 0, 0)", opacity: 1 },
-          ],
-      {
-        duration: reducedMotion ? REDUCED_SWIPE_DURATION : SWIPE_ENTRY_DURATION,
-        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
-      },
-    );
-    swipeAnimation.current = animation;
-    surface.dataset.swiping = "true";
-    animation.onfinish = () => {
-      if (swipeAnimation.current !== animation) return;
-      swipeAnimation.current = null;
-      clearSwipeSurface(surface);
+    const wasRestoringPagination = paginationRestoreRequestId.current === request.id;
+    paginationRestoreRequestId.current = null;
+    transitionSetup.current = {
+      requestId: request.id,
+      direction: request.direction,
+      startX: position,
+      startOpacity: opacity,
+      releaseVelocity: wasRestoringPagination ? 0 : request.releaseVelocity,
+      reducedMotion: request.reducedMotion,
     };
-  }, [article?.id]);
+    const nextOutgoingSurface = { snapshot: currentSurface, requestId: request.id };
+    outgoingSurfaceRef.current = nextOutgoingSurface;
+    activeSurfaceRef.current = nextSurface;
+    setOutgoingSurface(nextOutgoingSurface);
+    setActiveSurface(nextSurface);
+  }, [article, fullContentVisible, preserveActivePresentation, summaryState]);
+
+  useLayoutEffect(() => {
+    const setup = transitionSetup.current;
+    const outgoing = outgoingLayerRef.current;
+    const incoming = activeLayerRef.current;
+    if (!setup || !outgoing || !incoming || outgoingSurface?.requestId !== setup.requestId) return;
+    transitionSetup.current = null;
+    const width = outgoing.getBoundingClientRect().width;
+    const targetX = setup.direction === "next" ? -width : width;
+    const incomingStartX = setup.startX - targetX;
+    outgoing.dataset.swiping = "true";
+    incoming.dataset.swiping = "true";
+
+    const complete = (controller: HorizontalSpringController) => {
+      if (activeMotion.current !== controller) return;
+      activeMotion.current = null;
+      clearSwipeSurface(incoming);
+      clearSwipeSurface(outgoing);
+      outgoingSurfaceRef.current = null;
+      setOutgoingSurface(null);
+    };
+
+    if (setup.reducedMotion) {
+      outgoing.style.removeProperty("transform");
+      incoming.style.removeProperty("transform");
+      outgoing.style.opacity = String(setup.startOpacity);
+      incoming.style.opacity = "0.65";
+      const outgoingAnimation = outgoing.animate(
+        [{ opacity: setup.startOpacity }, { opacity: 0.35 }],
+        { duration: REDUCED_SWIPE_DURATION, easing: "ease", fill: "forwards" },
+      );
+      const incomingAnimation = incoming.animate([{ opacity: 0.65 }, { opacity: 1 }], {
+        duration: REDUCED_SWIPE_DURATION,
+        easing: "ease",
+        fill: "forwards",
+      });
+      const controller: HorizontalSpringController = {
+        cancel: () => {
+          outgoingAnimation.cancel();
+          incomingAnimation.cancel();
+        },
+      };
+      activeMotion.current = controller;
+      incomingAnimation.onfinish = () => complete(controller);
+      return;
+    }
+
+    outgoing.style.transform = `translate3d(${setup.startX}px, 0, 0)`;
+    outgoing.style.opacity = String(setup.startOpacity);
+    incoming.style.transform = `translate3d(${incomingStartX}px, 0, 0)`;
+    incoming.style.opacity = "0.65";
+    let controller: HorizontalSpringController;
+    controller = animateHorizontalSpring({
+      initialPosition: setup.startX,
+      initialVelocity: setup.releaseVelocity,
+      target: targetX,
+      damping: SWIPE_SPRING_DAMPING,
+      response: SWIPE_SPRING_RESPONSE,
+      onUpdate: ({ position, progress }) => {
+        outgoing.style.transform = `translate3d(${position}px, 0, 0)`;
+        incoming.style.transform = `translate3d(${position - targetX}px, 0, 0)`;
+        outgoing.style.opacity = String(
+          setup.startOpacity + (0.35 - setup.startOpacity) * progress,
+        );
+        incoming.style.opacity = String(0.65 + 0.35 * progress);
+      },
+      onComplete: () => complete(controller),
+    });
+    activeMotion.current = controller;
+  }, [outgoingSurface]);
 
   useEffect(
     () => () => {
-      swipeAnimation.current?.cancel();
+      activeMotion.current?.cancel();
+      const request = pendingNavigation.current;
+      if (request) window.cancelAnimationFrame(request.restoreFrameHandle);
     },
     [],
   );
@@ -1325,42 +1510,44 @@ export function ReaderPane({
           event.currentTarget.releasePointerCapture(activeSwipe.pointerId);
         }
         swipeStart.current = null;
-        animateSurfaceBack();
+        restoreActiveSurface(0, activeSwipe?.reducedMotion);
         return;
       }
 
       const target = event.target instanceof Element ? event.target : null;
-      const surface = swipeSurfaceRef.current;
-      if (!surface || target?.closest(ARTICLE_SWIPE_TARGETS)) {
+      if (!activeLayerRef.current || target?.closest(ARTICLE_SWIPE_TARGETS)) {
         swipeStart.current = null;
         return;
       }
 
-      const surfaceX = surfaceTranslateX(surface);
-      const opacity = Number(window.getComputedStyle(surface).opacity);
-      swipeAnimation.current?.cancel();
-      swipeAnimation.current = null;
-      surface.style.transform = `translate3d(${surfaceX}px, 0, 0)`;
-      surface.style.opacity = String(opacity);
-      surface.dataset.swiping = "true";
+      const { position, opacity } = preserveActivePresentation();
+      transitionSetup.current = null;
+      if (outgoingSurfaceRef.current) {
+        outgoingSurfaceRef.current = null;
+        setOutgoingSurface(null);
+      }
       event.currentTarget.setPointerCapture(event.pointerId);
       swipeStart.current = {
         pointerId: event.pointerId,
         x: event.clientX,
         y: event.clientY,
-        timeStamp: event.timeStamp,
-        surfaceX,
+        surfaceX: position,
         surfaceOpacity: opacity,
         reducedMotion: prefersReducedMotion(),
         intent: "pending",
+        samples: [{ x: event.clientX, timeStamp: event.timeStamp }],
       };
     },
-    [animateSurfaceBack],
+    [preserveActivePresentation, restoreActiveSurface],
   );
 
   const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     const start = swipeStart.current;
     if (!start || event.pointerId !== start.pointerId) return;
+    start.samples = appendPointerSample(start.samples, {
+      x: event.clientX,
+      timeStamp: event.timeStamp,
+    });
 
     const horizontalDistance = event.clientX - start.x;
     const verticalDistance = event.clientY - start.y;
@@ -1372,7 +1559,7 @@ export function ReaderPane({
     if (start.intent !== "horizontal") return;
 
     event.preventDefault();
-    const surface = swipeSurfaceRef.current;
+    const surface = activeLayerRef.current;
     if (!surface) return;
     const nextX = start.surfaceX + horizontalDistance;
     const fadeProgress = Math.min(Math.abs(horizontalDistance) / surface.clientWidth, 1);
@@ -1386,95 +1573,127 @@ export function ReaderPane({
     (event: ReactPointerEvent<HTMLElement>) => {
       const start = swipeStart.current;
       if (!start || event.pointerId !== start.pointerId) return;
+      const samples = appendPointerSample(start.samples, {
+        x: event.clientX,
+        timeStamp: event.timeStamp,
+      });
+      const velocity = horizontalReleaseVelocity(samples);
       swipeStart.current = null;
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
 
-      const durationMs = event.timeStamp - start.timeStamp;
-      const horizontalDistance = event.clientX - start.x;
       const direction = articleSwipeDirection({
         startX: start.x,
         startY: start.y,
         endX: event.clientX,
         endY: event.clientY,
-        durationMs,
+        horizontalVelocity: velocity,
       });
       if (!direction) {
-        animateSurfaceBack();
+        restoreActiveSurface(velocity * 1000, start.reducedMotion);
         return;
       }
 
-      navigateWithAnimation(direction, (horizontalDistance / Math.max(durationMs, 1)) * 1000);
+      navigateWithAnimation(direction, velocity * 1000, start.reducedMotion);
     },
-    [animateSurfaceBack, navigateWithAnimation],
+    [navigateWithAnimation, restoreActiveSurface],
   );
 
   const cancelPointerGesture = useCallback(() => {
-    if (!swipeStart.current) return;
+    const start = swipeStart.current;
+    if (!start) return;
     swipeStart.current = null;
-    animateSurfaceBack();
-  }, [animateSurfaceBack]);
+    restoreActiveSurface(0, start.reducedMotion);
+  }, [restoreActiveSurface]);
 
-  if (!article) {
+  if (!activeSurface) {
     return (
-      <section className="reader-pane reader-placeholder">
+      <section ref={readerPaneRef} className="reader-pane reader-placeholder">
         <BookOpen aria-hidden="true" size={24} />
         <p>Choose an article to read it here.</p>
       </section>
     );
   }
+
+  const renderArticleSurface = (surface: ArticleSurfaceSnapshot, titleId: string) => (
+    <>
+      <div className="reader-action-bar">
+        <div className="reader-action-row">
+          <button
+            data-management-focus-fallback
+            className="reader-back-button"
+            type="button"
+            aria-label="Back to articles"
+            data-tooltip="Back to articles"
+            onClick={onBack}
+          >
+            <ArrowLeft aria-hidden="true" size={16} />
+          </button>
+          <span className="reader-action-divider" aria-hidden="true" />
+          <ArticleActions
+            article={surface.article}
+            fullContentVisible={surface.fullContentVisible}
+            summaryState={surface.summaryState}
+            onPrevious={() => navigateWithAnimation("previous")}
+            onNext={() => navigateWithAnimation("next")}
+            onToggleRead={onToggleRead}
+            onToggleStar={onToggleStar}
+            onCopy={onCopy}
+            onOpenSource={onOpenSource}
+            onToggleFullContent={onToggleFullContent}
+            onToggleSummary={onToggleSummary}
+          />
+        </div>
+      </div>
+      <ArticleDocument
+        article={surface.article}
+        titleId={titleId}
+        fullContentVisible={surface.fullContentVisible}
+        summaryState={surface.summaryState}
+        onFeedAction={onFeedAction}
+        onToggleFullContent={onToggleFullContent}
+        onRegenerateSummary={onRegenerateSummary}
+        onOpenAiSettings={onOpenAiSettings}
+        onFilterSelection={onFilterSelection}
+      />
+    </>
+  );
+  const activeTitleId = `article-${activeSurface.article.id}-title`;
+
   return (
     <article
+      ref={readerPaneRef}
       className="reader-pane"
-      key={article.id}
-      aria-labelledby={`article-${article.id}-title`}
+      aria-labelledby={activeTitleId}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={finishPointerGesture}
       onPointerCancel={cancelPointerGesture}
       onLostPointerCapture={cancelPointerGesture}
     >
-      <div ref={swipeSurfaceRef} className="article-swipe-surface">
-        <div className="reader-action-bar">
-          <div className="reader-action-row">
-            <button
-              data-management-focus-fallback
-              className="reader-back-button"
-              type="button"
-              aria-label="Back to articles"
-              data-tooltip="Back to articles"
-              onClick={onBack}
-            >
-              <ArrowLeft aria-hidden="true" size={16} />
-            </button>
-            <span className="reader-action-divider" aria-hidden="true" />
-            <ArticleActions
-              article={article}
-              fullContentVisible={fullContentVisible}
-              summaryState={summaryState}
-              onPrevious={() => navigateWithAnimation("previous")}
-              onNext={() => navigateWithAnimation("next")}
-              onToggleRead={onToggleRead}
-              onToggleStar={onToggleStar}
-              onCopy={onCopy}
-              onOpenSource={onOpenSource}
-              onToggleFullContent={onToggleFullContent}
-              onToggleSummary={onToggleSummary}
-            />
+      <div className="article-swipe-stage">
+        {outgoingSurface ? (
+          <div
+            ref={outgoingLayerRef}
+            className="article-swipe-layer is-outgoing"
+            key={`article-${outgoingSurface.snapshot.article.id}`}
+            aria-hidden="true"
+            inert
+          >
+            {renderArticleSurface(
+              outgoingSurface.snapshot,
+              `article-${outgoingSurface.snapshot.article.id}-outgoing-${outgoingSurface.requestId}-title`,
+            )}
           </div>
+        ) : null}
+        <div
+          ref={activeLayerRef}
+          className="article-swipe-layer is-active"
+          key={`article-${activeSurface.article.id}`}
+        >
+          {renderArticleSurface(activeSurface, activeTitleId)}
         </div>
-        <ArticleDocument
-          article={article}
-          titleId={`article-${article.id}-title`}
-          fullContentVisible={fullContentVisible}
-          summaryState={summaryState}
-          onFeedAction={onFeedAction}
-          onToggleFullContent={onToggleFullContent}
-          onRegenerateSummary={onRegenerateSummary}
-          onOpenAiSettings={onOpenAiSettings}
-          onFilterSelection={onFilterSelection}
-        />
       </div>
     </article>
   );
