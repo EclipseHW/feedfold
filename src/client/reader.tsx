@@ -21,7 +21,7 @@ import {
   Star,
 } from "lucide-react";
 import {
-  type TouchEvent as ReactTouchEvent,
+  type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -32,7 +32,7 @@ import { createPortal } from "react-dom";
 import type { Article, ArticleState, ReadingMode } from "../shared/types";
 import { articleContentView } from "./article-content";
 import { extractHttpLinks } from "./article-links";
-import { articleSwipeDirection } from "./article-swipe";
+import { type ArticleSwipeDirection, articleSwipeDirection } from "./article-swipe";
 import {
   FeedActionMenuItems,
   type FeedManagementAction,
@@ -44,6 +44,40 @@ import {
   restoreTextSelection,
   type TextSelectionSnapshot,
 } from "./text-selection";
+
+const ARTICLE_SWIPE_TARGETS =
+  "a, button, input, select, textarea, summary, video, audio, iframe, pre, .article-table-scroll, [contenteditable]";
+const SWIPE_INTENT_DISTANCE = 10;
+const SWIPE_EXIT_DURATION = 150;
+const SWIPE_ENTRY_DURATION = 280;
+const SWIPE_RESTORE_DURATION = 220;
+const REDUCED_SWIPE_DURATION = 160;
+
+type ArticleNavigationHandler = () => boolean | Promise<boolean>;
+type SwipeIntent = "pending" | "horizontal" | "vertical";
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function surfaceTranslateX(element: HTMLElement): number {
+  const transform = window.getComputedStyle(element).transform;
+  return transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m41;
+}
+
+function surfaceKeyframe(element: HTMLElement): Keyframe {
+  const styles = window.getComputedStyle(element);
+  return {
+    transform: styles.transform === "none" ? "translate3d(0, 0, 0)" : styles.transform,
+    opacity: styles.opacity,
+  };
+}
+
+function clearSwipeSurface(element: HTMLElement): void {
+  element.style.removeProperty("transform");
+  element.style.removeProperty("opacity");
+  delete element.dataset.swiping;
+}
 
 function formatRelativeDate(value: string | null): string {
   if (!value) return "Date unknown";
@@ -1130,8 +1164,8 @@ export function ReaderPane({
   fullContentVisible: boolean;
   summaryState: ArticleSummaryViewState;
   onBack: () => void;
-  onPrevious: () => void;
-  onNext: () => void;
+  onPrevious: ArticleNavigationHandler;
+  onNext: ArticleNavigationHandler;
   onToggleRead: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
@@ -1144,56 +1178,243 @@ export function ReaderPane({
   onFilterSelection: (article: Article, text: string) => void;
 }) {
   const swipeStart = useRef<{
-    identifier: number;
+    pointerId: number;
     x: number;
     y: number;
     timeStamp: number;
+    surfaceX: number;
+    surfaceOpacity: number;
+    reducedMotion: boolean;
+    intent: SwipeIntent;
   } | null>(null);
+  const swipeSurfaceRef = useRef<HTMLDivElement>(null);
+  const swipeAnimation = useRef<Animation | null>(null);
+  const pendingNavigation = useRef<ArticleSwipeDirection | null>(null);
+  const previousArticleId = useRef(article?.id ?? null);
 
-  const handleTouchStart = useCallback((event: ReactTouchEvent<HTMLElement>) => {
-    const target = event.target instanceof Element ? event.target : null;
-    const touch = event.touches.length === 1 ? event.touches[0] : null;
-    if (
-      !touch ||
-      target?.closest(
-        "a, button, input, select, textarea, summary, video, audio, iframe, pre, .article-table-scroll, [contenteditable]",
-      )
-    ) {
-      swipeStart.current = null;
-      return;
-    }
+  const animateSurfaceBack = useCallback(() => {
+    const surface = swipeSurfaceRef.current;
+    if (!surface) return;
 
-    swipeStart.current = {
-      identifier: touch.identifier,
-      x: touch.clientX,
-      y: touch.clientY,
-      timeStamp: event.timeStamp,
+    const start = surfaceKeyframe(surface);
+    swipeAnimation.current?.cancel();
+    const reducedMotion = prefersReducedMotion();
+    const animation = surface.animate(
+      reducedMotion
+        ? [start, { opacity: 1 }]
+        : [start, { transform: "translate3d(0, 0, 0)", opacity: 1 }],
+      {
+        duration: reducedMotion ? REDUCED_SWIPE_DURATION : SWIPE_RESTORE_DURATION,
+        easing: "cubic-bezier(0.32, 0.72, 0, 1)",
+        fill: "forwards",
+      },
+    );
+    swipeAnimation.current = animation;
+    surface.dataset.swiping = "true";
+    animation.onfinish = () => {
+      if (swipeAnimation.current !== animation) return;
+      swipeAnimation.current = null;
+      clearSwipeSurface(surface);
     };
   }, []);
 
-  const handleTouchEnd = useCallback(
-    (event: ReactTouchEvent<HTMLElement>) => {
-      const start = swipeStart.current;
-      swipeStart.current = null;
-      if (!start) return;
+  const navigateWithAnimation = useCallback(
+    (direction: ArticleSwipeDirection, releaseVelocity = 0) => {
+      const surface = swipeSurfaceRef.current;
+      const navigate = direction === "next" ? onNext : onPrevious;
+      if (!surface) {
+        void navigate();
+        return;
+      }
 
-      const touch = Array.from(event.changedTouches).find(
-        (candidate) => candidate.identifier === start.identifier,
+      const start = surfaceKeyframe(surface);
+      const currentX = surfaceTranslateX(surface);
+      const reducedMotion = prefersReducedMotion();
+      const directionSign = direction === "next" ? -1 : 1;
+      const exitX = directionSign * Math.max(surface.clientWidth * 0.55, 180);
+      const remainingDistance = Math.abs(exitX - currentX);
+      const velocityDuration = releaseVelocity
+        ? (remainingDistance / Math.max(Math.abs(releaseVelocity), 700)) * 1000
+        : SWIPE_EXIT_DURATION;
+      const duration = Math.min(180, Math.max(90, velocityDuration));
+
+      swipeAnimation.current?.cancel();
+      const animation = surface.animate(
+        reducedMotion
+          ? [start, { opacity: 0.35 }]
+          : [start, { transform: `translate3d(${exitX}px, 0, 0)`, opacity: 0.08 }],
+        {
+          duration: reducedMotion ? 100 : duration,
+          easing: "cubic-bezier(0.4, 0, 1, 1)",
+          fill: "forwards",
+        },
       );
-      if (!touch) return;
+      swipeAnimation.current = animation;
+      surface.dataset.swiping = "true";
+      animation.onfinish = () => {
+        if (swipeAnimation.current !== animation) return;
+        swipeAnimation.current = null;
+        pendingNavigation.current = direction;
+        const navigationResult = navigate();
+        animateSurfaceBack();
+        void Promise.resolve(navigationResult).then((moved) => {
+          if (moved || pendingNavigation.current !== direction) return;
+          pendingNavigation.current = null;
+        });
+      };
+    },
+    [animateSurfaceBack, onNext, onPrevious],
+  );
 
+  useLayoutEffect(() => {
+    const nextArticleId = article?.id ?? null;
+    const lastArticleId = previousArticleId.current;
+    previousArticleId.current = nextArticleId;
+    if (nextArticleId === null || lastArticleId === nextArticleId) return;
+
+    const direction = pendingNavigation.current;
+    pendingNavigation.current = null;
+    if (!direction) return;
+
+    const surface = swipeSurfaceRef.current;
+    if (!surface) return;
+    swipeAnimation.current?.cancel();
+    clearSwipeSurface(surface);
+    const reducedMotion = prefersReducedMotion();
+    const directionSign = direction === "next" ? 1 : -1;
+    const entryX = directionSign * Math.min(surface.clientWidth * 0.32, 150);
+    const animation = surface.animate(
+      reducedMotion
+        ? [{ opacity: 0.35 }, { opacity: 1 }]
+        : [
+            { transform: `translate3d(${entryX}px, 0, 0)`, opacity: 0.18 },
+            {
+              transform: `translate3d(${-directionSign * 4}px, 0, 0)`,
+              opacity: 1,
+              offset: 0.84,
+            },
+            { transform: "translate3d(0, 0, 0)", opacity: 1 },
+          ],
+      {
+        duration: reducedMotion ? REDUCED_SWIPE_DURATION : SWIPE_ENTRY_DURATION,
+        easing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      },
+    );
+    swipeAnimation.current = animation;
+    surface.dataset.swiping = "true";
+    animation.onfinish = () => {
+      if (swipeAnimation.current !== animation) return;
+      swipeAnimation.current = null;
+      clearSwipeSurface(surface);
+    };
+  }, [article?.id]);
+
+  useEffect(
+    () => () => {
+      swipeAnimation.current?.cancel();
+    },
+    [],
+  );
+
+  const handlePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      if (event.pointerType !== "touch") return;
+      if (!event.isPrimary) {
+        const activeSwipe = swipeStart.current;
+        if (activeSwipe && event.currentTarget.hasPointerCapture(activeSwipe.pointerId)) {
+          event.currentTarget.releasePointerCapture(activeSwipe.pointerId);
+        }
+        swipeStart.current = null;
+        animateSurfaceBack();
+        return;
+      }
+
+      const target = event.target instanceof Element ? event.target : null;
+      const surface = swipeSurfaceRef.current;
+      if (!surface || target?.closest(ARTICLE_SWIPE_TARGETS)) {
+        swipeStart.current = null;
+        return;
+      }
+
+      const surfaceX = surfaceTranslateX(surface);
+      const opacity = Number(window.getComputedStyle(surface).opacity);
+      swipeAnimation.current?.cancel();
+      swipeAnimation.current = null;
+      surface.style.transform = `translate3d(${surfaceX}px, 0, 0)`;
+      surface.style.opacity = String(opacity);
+      surface.dataset.swiping = "true";
+      event.currentTarget.setPointerCapture(event.pointerId);
+      swipeStart.current = {
+        pointerId: event.pointerId,
+        x: event.clientX,
+        y: event.clientY,
+        timeStamp: event.timeStamp,
+        surfaceX,
+        surfaceOpacity: opacity,
+        reducedMotion: prefersReducedMotion(),
+        intent: "pending",
+      };
+    },
+    [animateSurfaceBack],
+  );
+
+  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
+    const start = swipeStart.current;
+    if (!start || event.pointerId !== start.pointerId) return;
+
+    const horizontalDistance = event.clientX - start.x;
+    const verticalDistance = event.clientY - start.y;
+    if (start.intent === "pending") {
+      if (Math.hypot(horizontalDistance, verticalDistance) < SWIPE_INTENT_DISTANCE) return;
+      start.intent =
+        Math.abs(horizontalDistance) > Math.abs(verticalDistance) ? "horizontal" : "vertical";
+    }
+    if (start.intent !== "horizontal") return;
+
+    event.preventDefault();
+    const surface = swipeSurfaceRef.current;
+    if (!surface) return;
+    const nextX = start.surfaceX + horizontalDistance;
+    const fadeProgress = Math.min(Math.abs(horizontalDistance) / surface.clientWidth, 1);
+    if (!start.reducedMotion) {
+      surface.style.transform = `translate3d(${nextX}px, 0, 0)`;
+    }
+    surface.style.opacity = String(Math.max(0.18, start.surfaceOpacity - fadeProgress * 0.18));
+  }, []);
+
+  const finishPointerGesture = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      const start = swipeStart.current;
+      if (!start || event.pointerId !== start.pointerId) return;
+      swipeStart.current = null;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+
+      const durationMs = event.timeStamp - start.timeStamp;
+      const horizontalDistance = event.clientX - start.x;
       const direction = articleSwipeDirection({
         startX: start.x,
         startY: start.y,
-        endX: touch.clientX,
-        endY: touch.clientY,
-        durationMs: event.timeStamp - start.timeStamp,
+        endX: event.clientX,
+        endY: event.clientY,
+        durationMs,
       });
-      if (direction === "next") onNext();
-      if (direction === "previous") onPrevious();
+      if (!direction) {
+        animateSurfaceBack();
+        return;
+      }
+
+      navigateWithAnimation(direction, (horizontalDistance / Math.max(durationMs, 1)) * 1000);
     },
-    [onNext, onPrevious],
+    [animateSurfaceBack, navigateWithAnimation],
   );
+
+  const cancelPointerGesture = useCallback(() => {
+    if (!swipeStart.current) return;
+    swipeStart.current = null;
+    animateSurfaceBack();
+  }, [animateSurfaceBack]);
 
   if (!article) {
     return (
@@ -1208,54 +1429,53 @@ export function ReaderPane({
       className="reader-pane"
       key={article.id}
       aria-labelledby={`article-${article.id}-title`}
-      onTouchStart={handleTouchStart}
-      onTouchMove={(event) => {
-        if (event.touches.length !== 1) swipeStart.current = null;
-      }}
-      onTouchEnd={handleTouchEnd}
-      onTouchCancel={() => {
-        swipeStart.current = null;
-      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishPointerGesture}
+      onPointerCancel={cancelPointerGesture}
+      onLostPointerCapture={cancelPointerGesture}
     >
-      <div className="reader-action-bar">
-        <div className="reader-action-row">
-          <button
-            data-management-focus-fallback
-            className="reader-back-button"
-            type="button"
-            aria-label="Back to articles"
-            data-tooltip="Back to articles"
-            onClick={onBack}
-          >
-            <ArrowLeft aria-hidden="true" size={16} />
-          </button>
-          <span className="reader-action-divider" aria-hidden="true" />
-          <ArticleActions
-            article={article}
-            fullContentVisible={fullContentVisible}
-            summaryState={summaryState}
-            onPrevious={onPrevious}
-            onNext={onNext}
-            onToggleRead={onToggleRead}
-            onToggleStar={onToggleStar}
-            onCopy={onCopy}
-            onOpenSource={onOpenSource}
-            onToggleFullContent={onToggleFullContent}
-            onToggleSummary={onToggleSummary}
-          />
+      <div ref={swipeSurfaceRef} className="article-swipe-surface">
+        <div className="reader-action-bar">
+          <div className="reader-action-row">
+            <button
+              data-management-focus-fallback
+              className="reader-back-button"
+              type="button"
+              aria-label="Back to articles"
+              data-tooltip="Back to articles"
+              onClick={onBack}
+            >
+              <ArrowLeft aria-hidden="true" size={16} />
+            </button>
+            <span className="reader-action-divider" aria-hidden="true" />
+            <ArticleActions
+              article={article}
+              fullContentVisible={fullContentVisible}
+              summaryState={summaryState}
+              onPrevious={() => navigateWithAnimation("previous")}
+              onNext={() => navigateWithAnimation("next")}
+              onToggleRead={onToggleRead}
+              onToggleStar={onToggleStar}
+              onCopy={onCopy}
+              onOpenSource={onOpenSource}
+              onToggleFullContent={onToggleFullContent}
+              onToggleSummary={onToggleSummary}
+            />
+          </div>
         </div>
+        <ArticleDocument
+          article={article}
+          titleId={`article-${article.id}-title`}
+          fullContentVisible={fullContentVisible}
+          summaryState={summaryState}
+          onFeedAction={onFeedAction}
+          onToggleFullContent={onToggleFullContent}
+          onRegenerateSummary={onRegenerateSummary}
+          onOpenAiSettings={onOpenAiSettings}
+          onFilterSelection={onFilterSelection}
+        />
       </div>
-      <ArticleDocument
-        article={article}
-        titleId={`article-${article.id}-title`}
-        fullContentVisible={fullContentVisible}
-        summaryState={summaryState}
-        onFeedAction={onFeedAction}
-        onToggleFullContent={onToggleFullContent}
-        onRegenerateSummary={onRegenerateSummary}
-        onOpenAiSettings={onOpenAiSettings}
-        onFilterSelection={onFilterSelection}
-      />
     </article>
   );
 }

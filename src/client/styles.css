@@ -1498,9 +1498,21 @@ kbd {
 .reader-pane {
   min-width: 0;
   min-height: 0;
+  overflow-x: clip;
   overflow-y: auto;
+  overscroll-behavior-x: contain;
   background: var(--bg);
   scroll-behavior: smooth;
+  touch-action: pan-y pinch-zoom;
+}
+
+.article-swipe-surface {
+  min-height: 100%;
+  background: var(--bg);
+}
+
+.article-swipe-surface[data-swiping="true"] {
+  will-change: transform, opacity;
 }
 
 .reader-action-bar,

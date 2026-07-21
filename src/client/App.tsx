@@ -817,12 +817,12 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   }, [activateArticle, bootstrapReady, readingMode, routedArticleId, routedArticleRetry, view]);
 
   const moveArticle = useCallback(
-    (direction: 1 | -1) => {
-      if (articles.length === 0) return;
+    async (direction: 1 | -1): Promise<boolean> => {
+      if (articles.length === 0) return false;
       const openReader = readingMode === "magazine" || routedArticleId !== null;
       if (openReader && !readerOpen && activeArticle) {
         openArticle(activeArticle, true);
-        return;
+        return true;
       }
       const currentIndex = articles.findIndex((article) => article.id === activeArticleId);
       if (
@@ -831,23 +831,24 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         nextCursor &&
         !articlesLoadingMore
       ) {
-        void loadOlderArticles().then((appended) => {
-          const next = appended[0];
-          if (!next) return;
-          if (!openReader) setExpandedKeyboardTargetId(next.id);
-          openArticle(next, openReader, readerOpen ? "replace" : "push");
-        });
-        return;
+        const appended = await loadOlderArticles();
+        const next = appended[0];
+        if (!next) return false;
+        if (!openReader) setExpandedKeyboardTargetId(next.id);
+        openArticle(next, openReader, readerOpen ? "replace" : "push");
+        return true;
       }
       const nextIndex = Math.min(
         articles.length - 1,
         Math.max(0, (currentIndex < 0 ? 0 : currentIndex) + direction),
       );
       const next = articles[nextIndex];
-      if (next) {
-        if (!openReader && next.id !== activeArticleId) setExpandedKeyboardTargetId(next.id);
+      if (next && next.id !== activeArticleId) {
+        if (!openReader) setExpandedKeyboardTargetId(next.id);
         openArticle(next, openReader, readerOpen ? "replace" : "push");
+        return true;
       }
+      return false;
     },
     [
       activeArticle,
