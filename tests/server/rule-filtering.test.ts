@@ -55,11 +55,11 @@ function seededDatabase(): {
       title: "Scoped feed",
       siteUrl: null,
       articles: [
-        article("alpha-rust", "Alpha Rust", "Egor", "2026-07-16T12:00:00.000Z"),
+        article("alpha-rust", "Alpha Rust", "Avery", "2026-07-16T12:00:00.000Z"),
         article("alpha-only", "Alpha only", "Someone", "2026-07-16T11:00:00.000Z"),
-        article("rust-report", "Rust report", "Egor", "2026-07-16T10:00:00.000Z"),
+        article("rust-report", "Rust report", "Avery", "2026-07-16T10:00:00.000Z"),
         article("rust-only", "Rust only", "Someone", "2026-07-16T09:00:00.000Z"),
-        article("other", "Other", "Egor", "2026-07-16T08:00:00.000Z"),
+        article("other", "Other", "Avery", "2026-07-16T08:00:00.000Z"),
         article("plain", "Plain", "Someone", "2026-07-16T07:00:00.000Z"),
       ],
     },
@@ -95,7 +95,7 @@ describe("article filtering rules", () => {
     const { database, folderId, scopedFeedId, outsideFeedId } = seededDatabase();
     const conditions = [
       { field: "title" as const, pattern: "alpha" },
-      { field: "author" as const, pattern: "egor" },
+      { field: "author" as const, pattern: "avery" },
     ];
 
     const rule = database.createRule(TEST_USER_ID, {
@@ -150,16 +150,16 @@ describe("article filtering rules", () => {
       conditionOperator: "and",
       action: "keep",
     });
-    const keepEgor = database.createRule(TEST_USER_ID, {
-      name: "Keep Egor",
+    const keepAvery = database.createRule(TEST_USER_ID, {
+      name: "Keep Avery",
       folderId,
-      conditions: [{ field: "author", pattern: "egor" }],
+      conditions: [{ field: "author", pattern: "avery" }],
       conditionOperator: "and",
       action: "keep",
     });
 
     expect(keepAlpha.matchedCount).toBe(2);
-    expect(keepEgor.matchedCount).toBe(3);
+    expect(keepAvery.matchedCount).toBe(3);
     expect(titles(database)).toEqual([
       "Alpha Rust",
       "Outside unmatched",
@@ -183,7 +183,7 @@ describe("article filtering rules", () => {
       totalCount: 2,
     });
 
-    expect(database.updateRule(TEST_USER_ID, keepEgor.id, { enabled: false })).toMatchObject({
+    expect(database.updateRule(TEST_USER_ID, keepAvery.id, { enabled: false })).toMatchObject({
       enabled: false,
       matchedCount: 3,
     });
@@ -201,11 +201,11 @@ describe("article filtering rules", () => {
     const { database, scopedFeedId } = seededDatabase();
 
     const rule = database.createRule(TEST_USER_ID, {
-      name: "Read Rust by Egor",
+      name: "Read Rust by Avery",
       feedId: scopedFeedId,
       conditions: [
         { field: "title", pattern: "rust" },
-        { field: "author", pattern: "egor" },
+        { field: "author", pattern: "avery" },
       ],
       conditionOperator: "and",
       action: "mark_read",

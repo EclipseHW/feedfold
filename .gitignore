@@ -8,4 +8,7 @@ backups/
 *.db-wal
 .DS_Store
 .env
-.impeccable/live/session.json
+.agents/
+.codex/
+.impeccable/
+AGENTS*.md
