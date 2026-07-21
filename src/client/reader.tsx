@@ -13,6 +13,7 @@ import {
   FileText,
   Inbox,
   Languages,
+  List,
   ListFilter,
   LoaderCircle,
   Mail,
@@ -1840,7 +1841,7 @@ export function ReaderPane({
             data-tooltip="Back to articles"
             onClick={onBack}
           >
-            <ArrowLeft aria-hidden="true" size={16} />
+            <List aria-hidden="true" size={16} />
           </button>
           <span className="reader-action-divider" aria-hidden="true" />
           <ArticleActions
