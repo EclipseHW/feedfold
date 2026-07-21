@@ -168,6 +168,24 @@ describe("folder article sorting", () => {
       "News older",
     ]);
 
+    const allArticles = (
+      await request({ method: "GET", url: "/api/articles?state=all" })
+    ).json<ArticlePage>();
+    const anchorId = allArticles.articles.find((article) => article.title === "Social newer")?.id;
+    if (!anchorId) throw new Error("Anchor article was not stored");
+    const anchoredPage = (
+      await request({
+        method: "GET",
+        url: `/api/articles?state=all&limit=3&anchorId=${anchorId}`,
+      })
+    ).json<ArticlePage>();
+    expect(anchoredPage.articles.map(({ title }) => title)).toEqual([
+      "Social older",
+      "Social newer",
+      "News older",
+    ]);
+    expect(anchoredPage.anchorIndex).toBe(1);
+
     const firstPageResponse = await request({
       method: "GET",
       url: "/api/articles?state=unread&limit=2",

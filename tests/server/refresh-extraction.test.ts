@@ -436,9 +436,43 @@ describe("feed refresh and full-text extraction", () => {
     });
     expect(secondPage.articles).toHaveLength(25);
     expect(secondPage.nextCursor).toBeNull();
-    expect(
-      new Set([...firstPage.articles, ...secondPage.articles].map((article) => article.id)).size,
-    ).toBe(125);
+    const fullQueue = [...firstPage.articles, ...secondPage.articles];
+    expect(new Set(fullQueue.map((article) => article.id)).size).toBe(125);
+
+    const targetIndex = 112;
+    const target = fullQueue[targetIndex];
+    if (!target) throw new Error("Deep queue target was not stored");
+    expect(firstPage.articles.some((article) => article.id === target.id)).toBe(false);
+
+    const anchoredPage = database.listArticlePage(TEST_USER_ID, {
+      state: "all",
+      limit: 20,
+      anchorId: target.id,
+    });
+    expect(anchoredPage.anchorIndex).toBe(10);
+    expect(anchoredPage.articles.map((article) => article.id)).toEqual(
+      fullQueue.slice(targetIndex - 10, targetIndex + 10).map((article) => article.id),
+    );
+    expect(anchoredPage.nextCursor).not.toBeNull();
+
+    database.updateArticleState(TEST_USER_ID, target.id, { isRead: true });
+    const unreadAnchoredPage = database.listArticlePage(TEST_USER_ID, {
+      state: "unread",
+      limit: 20,
+      anchorId: target.id,
+    });
+    expect(unreadAnchoredPage.anchorIndex).toBe(10);
+    expect(unreadAnchoredPage.articles[9]?.id).toBe(fullQueue[targetIndex - 1]?.id);
+    expect(unreadAnchoredPage.articles[10]?.id).toBe(target.id);
+    expect(unreadAnchoredPage.articles[11]?.id).toBe(fullQueue[targetIndex + 1]?.id);
+    const unreadOlderPage = database.listArticlePage(TEST_USER_ID, {
+      state: "unread",
+      limit: 20,
+      cursor: unreadAnchoredPage.nextCursor ?? undefined,
+    });
+    expect(unreadOlderPage.articles.map((article) => article.id)).toEqual(
+      fullQueue.slice(targetIndex + 10).map((article) => article.id),
+    );
   });
 
   it("preserves an extracted thumbnail when feed metadata changes", async () => {

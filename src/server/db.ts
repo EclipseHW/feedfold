@@ -1605,11 +1605,8 @@ export class AppDatabase {
   }
 
   listArticlePage(userId: number, query: ArticleQuery): ArticlePage {
-    const where = ["feeds.user_id = ?", visibleClause];
+    const where = ["feeds.user_id = ?"];
     const values: Array<string | number> = [userId];
-    if (query.state === "unread") where.push("articles.is_read = 0");
-    if (query.state === "read") where.push("articles.is_read = 1");
-    if (query.state === "starred") where.push("articles.is_starred = 1");
     if (query.feedId !== undefined) {
       where.push("articles.feed_id = ?");
       values.push(query.feedId);
@@ -1627,17 +1624,33 @@ export class AppDatabase {
       );
       values.push(query.folderId, userId, userId);
     }
+    const queueWhere = [visibleClause];
+    const queueValues: Array<string | number> = [];
+    if (query.state === "unread") queueWhere.push("articles.is_read = 0");
+    if (query.state === "read") queueWhere.push("articles.is_read = 1");
+    if (query.state === "starred") queueWhere.push("articles.is_starred = 1");
     if (query.search) {
-      where.push(
+      queueWhere.push(
         `(articles.title LIKE ? ESCAPE '\\' COLLATE NOCASE
           OR COALESCE(articles.author, '') LIKE ? ESCAPE '\\' COLLATE NOCASE
           OR articles.summary LIKE ? ESCAPE '\\' COLLATE NOCASE)`,
       );
       const escaped = query.search.replace(/[\\%_]/g, "\\$&");
-      values.push(`%${escaped}%`, `%${escaped}%`, `%${escaped}%`);
+      queueValues.push(`%${escaped}%`, `%${escaped}%`, `%${escaped}%`);
+    }
+    if (query.anchorId === undefined) {
+      where.push(...queueWhere);
+      values.push(...queueValues);
+    } else {
+      where.push(`((${queueWhere.join(" AND ")}) OR articles.id = ?)`);
+      values.push(...queueValues, query.anchorId);
     }
     const limit = Math.max(1, Math.min(query.limit ?? 200, 500));
-    const cursor = query.cursor ? decodeArticleCursor(query.cursor) : new Map();
+    const anchor =
+      query.anchorId !== undefined && !query.cursor
+        ? this.articlePageAnchor(where, values, query.anchorId, Math.floor(limit / 2))
+        : null;
+    const cursor = query.cursor ? decodeArticleCursor(query.cursor) : (anchor?.cursor ?? new Map());
     const buckets = this.sqlite
       .prepare(
         `SELECT feeds.folder_id AS folderId,
@@ -1755,7 +1768,119 @@ export class AppDatabase {
     return {
       articles: pageRows.map(mapArticle),
       nextCursor: hasMore ? encodeArticleCursor(nextBoundaries) : null,
+      anchorIndex: anchor?.index ?? null,
     };
+  }
+
+  private articlePageAnchor(
+    where: string[],
+    values: Array<string | number>,
+    anchorId: number,
+    precedingArticles: number,
+  ): { cursor: ArticleCursor; index: number } | null {
+    const rows = this.sqlite
+      .prepare(
+        `WITH filtered_articles AS (
+           SELECT articles.id,
+                  CASE
+                    WHEN feeds.folder_id IS NULL THEN 'top'
+                    ELSE CAST(feeds.folder_id AS TEXT)
+                  END AS bucketKey,
+                  COALESCE(folders.sort_direction, 'newest') AS sortDirection,
+                  COALESCE(articles.published_at, articles.discovered_at) AS sortAt
+           FROM articles
+           JOIN feeds ON feeds.id = articles.feed_id
+           LEFT JOIN folders ON folders.id = feeds.folder_id
+           WHERE ${where.join(" AND ")}
+         ),
+         bucket_ranked AS (
+           SELECT *,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY bucketKey
+                    ORDER BY
+                      CASE WHEN sortDirection = 'oldest' THEN sortAt END ASC,
+                      CASE WHEN sortDirection = 'newest' THEN sortAt END DESC,
+                      CASE WHEN sortDirection = 'oldest' THEN id END ASC,
+                      CASE WHEN sortDirection = 'newest' THEN id END DESC
+                  ) - 1 AS bucketIndex
+           FROM filtered_articles
+         ),
+         ordered_articles AS (
+           SELECT *,
+                  ROW_NUMBER() OVER (
+                    ORDER BY bucketIndex ASC, sortAt DESC, id DESC
+                  ) - 1 AS queueIndex
+           FROM bucket_ranked
+         ),
+         anchor AS (
+           SELECT queueIndex
+           FROM ordered_articles
+           WHERE id = ?
+         ),
+         window_start AS (
+           SELECT queueIndex, MAX(0, queueIndex - ?) AS startIndex
+           FROM anchor
+         ),
+         ranked_boundaries AS (
+           SELECT ordered_articles.bucketKey,
+                  ordered_articles.sortAt,
+                  ordered_articles.id,
+                  ordered_articles.bucketIndex,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY ordered_articles.bucketKey
+                    ORDER BY ordered_articles.bucketIndex DESC
+                  ) AS boundaryRank
+           FROM ordered_articles
+           JOIN window_start ON ordered_articles.queueIndex < window_start.startIndex
+         )
+         SELECT 'anchor' AS kind,
+                queueIndex,
+                startIndex,
+                NULL AS bucketKey,
+                NULL AS sortAt,
+                NULL AS id,
+                NULL AS consumed
+         FROM window_start
+         UNION ALL
+         SELECT 'boundary' AS kind,
+                NULL AS queueIndex,
+                NULL AS startIndex,
+                bucketKey,
+                sortAt,
+                id,
+                bucketIndex + 1 AS consumed
+         FROM ranked_boundaries
+         WHERE boundaryRank = 1`,
+      )
+      .all(...values, anchorId, precedingArticles) as Array<{
+      kind: "anchor" | "boundary";
+      queueIndex: number | null;
+      startIndex: number | null;
+      bucketKey: string | null;
+      sortAt: string | null;
+      id: number | null;
+      consumed: number | null;
+    }>;
+    const anchor = rows.find((row) => row.kind === "anchor");
+    if (!anchor || anchor.queueIndex === null || anchor.startIndex === null) return null;
+
+    const cursor: ArticleCursor = new Map();
+    for (const row of rows) {
+      if (
+        row.kind === "boundary" &&
+        row.bucketKey !== null &&
+        row.sortAt !== null &&
+        row.id !== null &&
+        row.consumed !== null
+      ) {
+        cursor.set(row.bucketKey, {
+          sortAt: row.sortAt,
+          id: row.id,
+          consumed: row.consumed,
+        });
+      }
+    }
+    return { cursor, index: anchor.queueIndex - anchor.startIndex };
   }
 
   getArticle(userId: number, id: number): Article | null {

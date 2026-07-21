@@ -193,6 +193,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         search: z.string().trim().max(300).optional(),
         limit: z.coerce.number().int().min(1).max(500).optional(),
         cursor: z.string().min(1).max(50_000).optional(),
+        anchorId: z.coerce.number().int().positive().optional(),
         includeContent: z
           .enum(["true", "false"])
           .transform((value) => value === "true")

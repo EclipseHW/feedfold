@@ -1190,8 +1190,9 @@ kbd {
 }
 
 :where(.mode-magazine.is-reading-article) .reader-pane {
-  display: block;
+  display: flex;
   height: 100%;
+  flex-direction: column;
 }
 
 :where(.mode-magazine.is-reading-article) .reader-back-button {
@@ -1499,26 +1500,30 @@ kbd {
 .reader-pane {
   min-width: 0;
   min-height: 0;
-  overflow-x: clip;
-  overflow-y: auto;
-  overscroll-behavior-x: contain;
+  overflow: hidden;
   background: var(--bg);
-  scroll-behavior: smooth;
   touch-action: pan-y pinch-zoom;
 }
 
-.article-swipe-stage,
 .article-swipe-layer {
-  min-height: 100%;
   background: var(--bg);
 }
 
 .article-swipe-stage {
   position: relative;
+  min-height: 0;
+  flex: 1;
 }
 
 .article-swipe-layer {
   width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow-x: clip;
+  overflow-y: auto;
+  overscroll-behavior-x: contain;
+  scroll-behavior: smooth;
+  touch-action: pan-y pinch-zoom;
 }
 
 .article-swipe-layer.is-active {
@@ -1527,7 +1532,7 @@ kbd {
 
 .article-swipe-layer.is-outgoing {
   position: absolute;
-  inset: 0 0 auto;
+  inset: 0;
   pointer-events: none;
 }
 
@@ -5098,7 +5103,7 @@ kbd {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .reader-pane {
+  .article-swipe-layer {
     scroll-behavior: auto;
   }
 
