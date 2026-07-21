@@ -2007,6 +2007,7 @@ kbd {
 }
 
 .article-media-player {
+  position: relative;
   width: 100%;
   aspect-ratio: 16 / 9;
   overflow: hidden;
@@ -2027,6 +2028,29 @@ kbd {
   width: 100%;
   height: 100%;
   border: 0;
+}
+
+.article-media-swipe-surface {
+  display: none;
+}
+
+@media (max-width: 760px), (hover: none) and (pointer: coarse) {
+  .article-media-swipe-surface {
+    position: absolute;
+    z-index: 1;
+    inset: 0;
+    display: block;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    touch-action: pan-y pinch-zoom;
+  }
+
+  .article-media-swipe-surface:focus-visible {
+    outline-offset: -3px;
+  }
 }
 
 .article-content,

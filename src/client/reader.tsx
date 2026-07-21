@@ -21,6 +21,7 @@ import {
   Star,
 } from "lucide-react";
 import {
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   useCallback,
   useEffect,
@@ -48,6 +49,7 @@ import {
 
 const ARTICLE_SWIPE_TARGETS =
   "a, button, input, select, textarea, summary, video, audio, iframe, pre, .article-table-scroll, [contenteditable]";
+const ARTICLE_SWIPE_SURFACE = "[data-article-swipe-surface]";
 const SWIPE_INTENT_DISTANCE = 10;
 const SWIPE_SAMPLE_WINDOW = 100;
 const SWIPE_SAMPLE_LIMIT = 5;
@@ -1155,6 +1157,7 @@ interface SwipeGestureState {
   surfaceOpacity: number;
   reducedMotion: boolean;
   intent: SwipeIntent;
+  startedOnSwipeSurface: boolean;
   samples: PointerSample[];
 }
 
@@ -1238,6 +1241,7 @@ export function ReaderPane({
   const outgoingSurfaceRef = useRef(outgoingSurface);
   const activeMotion = useRef<HorizontalSpringController | null>(null);
   const swipeStart = useRef<SwipeGestureState | null>(null);
+  const suppressSwipeSurfaceClick = useRef(false);
   const pendingNavigation = useRef<PendingArticleNavigation | null>(null);
   const nextRequestId = useRef(0);
   const propArticleId = useRef(article?.id ?? null);
@@ -1515,7 +1519,8 @@ export function ReaderPane({
       }
 
       const target = event.target instanceof Element ? event.target : null;
-      if (!activeLayerRef.current || target?.closest(ARTICLE_SWIPE_TARGETS)) {
+      const swipeSurface = target?.closest(ARTICLE_SWIPE_SURFACE);
+      if (!activeLayerRef.current || (target?.closest(ARTICLE_SWIPE_TARGETS) && !swipeSurface)) {
         swipeStart.current = null;
         return;
       }
@@ -1535,6 +1540,7 @@ export function ReaderPane({
         surfaceOpacity: opacity,
         reducedMotion: prefersReducedMotion(),
         intent: "pending",
+        startedOnSwipeSurface: Boolean(swipeSurface),
         samples: [{ x: event.clientX, timeStamp: event.timeStamp }],
       };
     },
@@ -1579,6 +1585,12 @@ export function ReaderPane({
       });
       const velocity = horizontalReleaseVelocity(samples);
       swipeStart.current = null;
+      if (start.intent === "horizontal" && start.startedOnSwipeSurface) {
+        suppressSwipeSurfaceClick.current = true;
+        window.setTimeout(() => {
+          suppressSwipeSurfaceClick.current = false;
+        }, 0);
+      }
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
       }
@@ -1599,6 +1611,14 @@ export function ReaderPane({
     },
     [navigateWithAnimation, restoreActiveSurface],
   );
+
+  const handleClickCapture = useCallback((event: ReactMouseEvent<HTMLElement>) => {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!suppressSwipeSurfaceClick.current || !target?.closest(ARTICLE_SWIPE_SURFACE)) return;
+    suppressSwipeSurfaceClick.current = false;
+    event.preventDefault();
+    event.stopPropagation();
+  }, []);
 
   const cancelPointerGesture = useCallback(() => {
     const start = swipeStart.current;
@@ -1671,6 +1691,7 @@ export function ReaderPane({
       onPointerUp={finishPointerGesture}
       onPointerCancel={cancelPointerGesture}
       onLostPointerCapture={cancelPointerGesture}
+      onClickCapture={handleClickCapture}
     >
       <div className="article-swipe-stage">
         {outgoingSurface ? (
@@ -1859,17 +1880,28 @@ function ArticleBody({
 
 function ArticleMediaPlayer({ article }: { article: Article }) {
   const media = article.media;
+  const [interactive, setInteractive] = useState(false);
   if (!media) return null;
+  const playerUrl = interactive ? `${media.embedUrl}?autoplay=1&playsinline=1` : media.embedUrl;
   return (
     <div className={`article-media-player ${media.type}`}>
       <iframe
-        src={media.embedUrl}
+        src={playerUrl}
         title={`Play ${article.title}`}
         loading="lazy"
         referrerPolicy="strict-origin-when-cross-origin"
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowFullScreen
       />
+      {!interactive ? (
+        <button
+          className="article-media-swipe-surface"
+          type="button"
+          aria-label={`Play ${article.title || "video"}`}
+          data-article-swipe-surface
+          onClick={() => setInteractive(true)}
+        />
+      ) : null}
     </div>
   );
 }
