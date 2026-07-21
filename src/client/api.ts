@@ -1,10 +1,12 @@
 import type {
+  AiArticleSourceKind,
   AiFeature,
   AiProvider,
   AiSettings,
   AppSettings,
   Article,
   ArticleAiSummary,
+  ArticleAiTranslation,
   ArticlePage,
   ArticleQuery,
   BootstrapData,
@@ -31,11 +33,13 @@ export function appUrl(path: string): string {
 
 export class ApiError extends Error {
   status: number;
+  code: string | null;
 
-  constructor(message: string, status: number) {
+  constructor(message: string, status: number, code: string | null = null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
+    this.code = code;
   }
 }
 
@@ -48,9 +52,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(appUrl(path), { ...init, headers, credentials: "same-origin" });
   if (!response.ok) {
     let message = `Request failed (${response.status})`;
+    let code: string | null = null;
     try {
-      const body = (await response.json()) as { error?: string; message?: string };
+      const body = (await response.json()) as { error?: string; message?: string; code?: string };
       message = body.error ?? body.message ?? message;
+      code = body.code ?? null;
     } catch {
       // The status code still gives the user a useful error when no JSON body exists.
     }
@@ -61,7 +67,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ) {
       window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT));
     }
-    throw new ApiError(message, response.status);
+    throw new ApiError(message, response.status, code);
   }
 
   if (response.status === 204) return undefined as T;
@@ -140,6 +146,12 @@ export const api = {
     request<ArticleAiSummary>(`/api/articles/${id}/summary`, {
       method: "POST",
       body: JSON.stringify(regenerate ? { regenerate: true } : {}),
+    }),
+
+  translateArticle: (id: number, sourceKind: AiArticleSourceKind) =>
+    request<ArticleAiTranslation>(`/api/articles/${id}/translation`, {
+      method: "POST",
+      body: JSON.stringify({ sourceKind }),
     }),
 
   updateArticleState: (id: number, state: { isRead?: boolean; isStarred?: boolean }) =>

@@ -87,8 +87,9 @@ export class AuthService {
         this.database.sqlite
           .prepare(
             `INSERT INTO settings (
-               user_id, poll_interval_minutes, single_key_shortcuts, mark_read_on_scroll
-             ) VALUES (?, ?, 1, 1)`,
+               user_id, poll_interval_minutes, single_key_shortcuts, mark_read_on_scroll,
+               translation_language
+             ) VALUES (?, ?, 1, 1, 'English')`,
           )
           .run(userId, this.defaultPollIntervalMinutes);
         user = { id: userId, username: trimmedUsername };

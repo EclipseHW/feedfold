@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
+  BookOpenText,
   CheckCircle2,
   ChevronDown,
   Circle,
@@ -11,6 +12,7 @@ import {
   ExternalLink,
   FileText,
   Inbox,
+  Languages,
   ListFilter,
   LoaderCircle,
   Mail,
@@ -30,7 +32,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import type { Article, ArticleState, ReadingMode } from "../shared/types";
+import type { Article, ArticleAiTranslation, ArticleState, ReadingMode } from "../shared/types";
 import { articleContentView } from "./article-content";
 import { extractHttpLinks } from "./article-links";
 import {
@@ -676,10 +678,28 @@ export const EMPTY_ARTICLE_SUMMARY_STATE: ArticleSummaryViewState = {
   configurationMissing: false,
 };
 
+export interface ArticleTranslationViewState {
+  visible: boolean;
+  loading: boolean;
+  error: string | null;
+  configurationMissing: boolean;
+  translation: ArticleAiTranslation | null;
+}
+
+export const EMPTY_ARTICLE_TRANSLATION_STATE: ArticleTranslationViewState = {
+  visible: false,
+  loading: false,
+  error: null,
+  configurationMissing: false,
+  translation: null,
+};
+
 interface ArticleActionsProps {
   article: Article;
   fullContentVisible: boolean;
   summaryState: ArticleSummaryViewState;
+  translationState: ArticleTranslationViewState;
+  translationLanguage: string;
   onPrevious?: () => void;
   onNext?: () => void;
   canPrevious?: boolean;
@@ -691,12 +711,15 @@ interface ArticleActionsProps {
   onOpenSource: (article: Article) => void;
   onToggleFullContent: (article: Article) => void;
   onToggleSummary: (article: Article) => void;
+  onToggleTranslation: (article: Article) => void;
 }
 
 function ArticleActions({
   article,
   fullContentVisible,
   summaryState,
+  translationState,
+  translationLanguage,
   onPrevious,
   onNext,
   canPrevious = true,
@@ -708,6 +731,7 @@ function ArticleActions({
   onOpenSource,
   onToggleFullContent,
   onToggleSummary,
+  onToggleTranslation,
 }: ArticleActionsProps) {
   const fullContentAvailable = Boolean(article.url) && !article.media;
   const cachedFullContent = article.extractionStatus === "complete" && Boolean(article.contentHtml);
@@ -734,6 +758,13 @@ function ArticleActions({
         : summaryState.error
           ? "Retry summary"
           : "Summarize";
+  const translationLabel = translationState.loading
+    ? `Translating to ${translationLanguage}`
+    : translationState.visible
+      ? "Show original article"
+      : translationState.error
+        ? `Retry ${translationLanguage} translation`
+        : `Translate to ${translationLanguage}`;
   const readTooltip = article.isRead ? "Mark unread (U)" : "Mark read (U)";
   const starTooltip = article.isStarred ? "Remove star (S)" : "Star article (S)";
   return (
@@ -806,6 +837,23 @@ function ArticleActions({
             size={16}
             fill={summaryState.visible ? "currentColor" : "none"}
           />
+        )}
+      </button>
+      <button
+        className="translation-action"
+        type="button"
+        disabled={translationState.loading}
+        aria-pressed={translationState.visible}
+        onClick={() => onToggleTranslation(article)}
+        aria-label={`${translationLabel} (T)`}
+        data-tooltip={`${translationLabel} (T)`}
+      >
+        {translationState.loading ? (
+          <LoaderCircle className="spin" aria-hidden="true" size={16} />
+        ) : translationState.visible ? (
+          <BookOpenText aria-hidden="true" size={16} />
+        ) : (
+          <Languages aria-hidden="true" size={16} />
         )}
       </button>
       <span className="action-divider" aria-hidden="true" />
@@ -981,6 +1029,55 @@ function ArticleSummaryPanel({
   );
 }
 
+function ArticleTranslationNotice({
+  state,
+  language,
+  onOpenSettings,
+}: {
+  state: ArticleTranslationViewState;
+  language: string;
+  onOpenSettings: () => void;
+}) {
+  if (state.visible || (!state.loading && !state.configurationMissing && !state.error)) return null;
+  if (state.loading) {
+    return (
+      <div className="article-extraction-state article-translation-state" role="status">
+        <LoaderCircle className="spin" aria-hidden="true" size={18} />
+        <div>
+          <strong>Translating to {language}</strong>
+          <p>The original article stays visible until the translation is ready.</p>
+        </div>
+      </div>
+    );
+  }
+  if (state.configurationMissing) {
+    return (
+      <div className="article-extraction-state article-translation-state" role="note">
+        <Languages aria-hidden="true" size={18} />
+        <div>
+          <strong>Translation is not set up</strong>
+          <p>Choose an AI provider and save its API key in Settings.</p>
+          <button className="secondary-button" type="button" onClick={onOpenSettings}>
+            Open AI settings
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="article-extraction-state article-translation-state extraction-failed"
+      role="alert"
+    >
+      <AlertTriangle aria-hidden="true" size={18} />
+      <div>
+        <strong>Translation could not be created</strong>
+        <p>{state.error}</p>
+      </div>
+    </div>
+  );
+}
+
 interface SelectionMenuState {
   text: string;
   selection: TextSelectionSnapshot;
@@ -994,6 +1091,8 @@ function ArticleDocument({
   titleId,
   fullContentVisible,
   summaryState,
+  translationState,
+  translationLanguage,
   onFeedAction,
   onToggleFullContent,
   onRegenerateSummary,
@@ -1004,6 +1103,8 @@ function ArticleDocument({
   titleId: string;
   fullContentVisible: boolean;
   summaryState: ArticleSummaryViewState;
+  translationState: ArticleTranslationViewState;
+  translationLanguage: string;
   onFeedAction: (feedId: number, action: FeedManagementAction) => void;
   onToggleFullContent: (article: Article) => void;
   onRegenerateSummary: (article: Article) => void;
@@ -1110,9 +1211,15 @@ function ArticleDocument({
           onRegenerate={onRegenerateSummary}
           onOpenSettings={onOpenAiSettings}
         />
+        <ArticleTranslationNotice
+          state={translationState}
+          language={translationLanguage}
+          onOpenSettings={onOpenAiSettings}
+        />
         <ArticleBody
           article={article}
           fullContentVisible={fullContentVisible}
+          translationState={translationState}
           onToggleFullContent={onToggleFullContent}
         />
       </div>
@@ -1154,6 +1261,7 @@ interface ArticleSurfaceSnapshot {
   article: Article;
   fullContentVisible: boolean;
   summaryState: ArticleSummaryViewState;
+  translationState: ArticleTranslationViewState;
 }
 
 interface PointerSample {
@@ -1212,6 +1320,8 @@ export function ReaderPane({
   article,
   fullContentVisible,
   summaryState,
+  translationState,
+  translationLanguage,
   canPrevious,
   canNext,
   onBack,
@@ -1224,6 +1334,7 @@ export function ReaderPane({
   onFeedAction,
   onToggleFullContent,
   onToggleSummary,
+  onToggleTranslation,
   onRegenerateSummary,
   onOpenAiSettings,
   onFilterSelection,
@@ -1231,6 +1342,8 @@ export function ReaderPane({
   article: Article | null;
   fullContentVisible: boolean;
   summaryState: ArticleSummaryViewState;
+  translationState: ArticleTranslationViewState;
+  translationLanguage: string;
   canPrevious: boolean;
   canNext: boolean;
   onBack: () => void;
@@ -1243,11 +1356,14 @@ export function ReaderPane({
   onFeedAction: (feedId: number, action: FeedManagementAction) => void;
   onToggleFullContent: (article: Article) => void;
   onToggleSummary: (article: Article) => void;
+  onToggleTranslation: (article: Article) => void;
   onRegenerateSummary: (article: Article) => void;
   onOpenAiSettings: () => void;
   onFilterSelection: (article: Article, text: string) => void;
 }) {
-  const initialSurface = article ? { article, fullContentVisible, summaryState } : null;
+  const initialSurface = article
+    ? { article, fullContentVisible, summaryState, translationState }
+    : null;
   const [activeSurface, setActiveSurface] = useState<ArticleSurfaceSnapshot | null>(initialSurface);
   const [outgoingSurface, setOutgoingSurface] = useState<OutgoingArticleSurface | null>(null);
   const [navigationPending, setNavigationPending] = useState(false);
@@ -1386,14 +1502,17 @@ export function ReaderPane({
   );
 
   useLayoutEffect(() => {
-    const nextSurface = article ? { article, fullContentVisible, summaryState } : null;
+    const nextSurface = article
+      ? { article, fullContentVisible, summaryState, translationState }
+      : null;
     const currentSurface = activeSurfaceRef.current;
     if (nextSurface?.article.id === currentSurface?.article.id) {
       if (
         nextSurface &&
         (nextSurface.article !== currentSurface?.article ||
           nextSurface.fullContentVisible !== currentSurface.fullContentVisible ||
-          nextSurface.summaryState !== currentSurface.summaryState)
+          nextSurface.summaryState !== currentSurface.summaryState ||
+          nextSurface.translationState !== currentSurface.translationState)
       ) {
         activeSurfaceRef.current = nextSurface;
         setActiveSurface(nextSurface);
@@ -1450,7 +1569,7 @@ export function ReaderPane({
     activeSurfaceRef.current = nextSurface;
     setOutgoingSurface(nextOutgoingSurface);
     setActiveSurface(nextSurface);
-  }, [article, fullContentVisible, preserveActivePresentation, summaryState]);
+  }, [article, fullContentVisible, preserveActivePresentation, summaryState, translationState]);
 
   useLayoutEffect(() => {
     const setup = transitionSetup.current;
@@ -1689,6 +1808,8 @@ export function ReaderPane({
       titleId={titleId}
       fullContentVisible={surface.fullContentVisible}
       summaryState={surface.summaryState}
+      translationState={surface.translationState}
+      translationLanguage={translationLanguage}
       onFeedAction={onFeedAction}
       onToggleFullContent={onToggleFullContent}
       onRegenerateSummary={onRegenerateSummary}
@@ -1726,6 +1847,8 @@ export function ReaderPane({
             article={activeSurface.article}
             fullContentVisible={activeSurface.fullContentVisible}
             summaryState={activeSurface.summaryState}
+            translationState={activeSurface.translationState}
+            translationLanguage={translationLanguage}
             onPrevious={() => navigateWithAnimation("previous")}
             onNext={() => navigateWithAnimation("next")}
             canPrevious={canPrevious}
@@ -1737,6 +1860,7 @@ export function ReaderPane({
             onOpenSource={onOpenSource}
             onToggleFullContent={onToggleFullContent}
             onToggleSummary={onToggleSummary}
+            onToggleTranslation={onToggleTranslation}
           />
         </div>
       </div>
@@ -1907,21 +2031,39 @@ function ArticleHeader({
 function ArticleBody({
   article,
   fullContentVisible,
+  translationState,
   onToggleFullContent,
 }: {
   article: Article;
   fullContentVisible: boolean;
+  translationState: ArticleTranslationViewState;
   onToggleFullContent: (article: Article) => void;
 }) {
   return (
     <>
       {article.media ? <ArticleMediaPlayer article={article} /> : null}
-      <ArticleText
-        article={article}
-        fullContentVisible={fullContentVisible}
-        onToggleFullContent={onToggleFullContent}
-      />
+      {translationState.visible && translationState.translation ? (
+        <ArticleTranslationText translation={translationState.translation} />
+      ) : (
+        <ArticleText
+          article={article}
+          fullContentVisible={fullContentVisible}
+          onToggleFullContent={onToggleFullContent}
+        />
+      )}
     </>
+  );
+}
+
+function ArticleTranslationText({ translation }: { translation: ArticleAiTranslation }) {
+  const paragraphs = translation.text.split(/\n{2,}/).filter((paragraph) => paragraph.trim());
+  return (
+    <div className="article-content article-translation">
+      {paragraphs.map((paragraph, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: Translation output can repeat a paragraph.
+        <p key={`${index}-${paragraph}`}>{paragraph}</p>
+      ))}
+    </div>
   );
 }
 
@@ -2044,6 +2186,8 @@ export function ExpandedStream({
   topAlignedId,
   fullContentVisibleIds,
   summaryStates,
+  translationStates,
+  translationLanguage,
   markReadOnScroll,
   hasMore,
   loadingMore,
@@ -2057,6 +2201,7 @@ export function ExpandedStream({
   onFeedAction,
   onToggleFullContent,
   onToggleSummary,
+  onToggleTranslation,
   onRegenerateSummary,
   onOpenAiSettings,
   onFilterSelection,
@@ -2066,6 +2211,8 @@ export function ExpandedStream({
   topAlignedId: number | null;
   fullContentVisibleIds: ReadonlySet<number>;
   summaryStates: ReadonlyMap<number, ArticleSummaryViewState>;
+  translationStates: ReadonlyMap<number, ArticleTranslationViewState>;
+  translationLanguage: string;
   markReadOnScroll: boolean;
   hasMore: boolean;
   loadingMore: boolean;
@@ -2079,6 +2226,7 @@ export function ExpandedStream({
   onFeedAction: (feedId: number, action: FeedManagementAction) => void;
   onToggleFullContent: (article: Article) => void;
   onToggleSummary: (article: Article) => void;
+  onToggleTranslation: (article: Article) => void;
   onRegenerateSummary: (article: Article) => void;
   onOpenAiSettings: () => void;
   onFilterSelection: (article: Article, text: string) => void;
@@ -2109,12 +2257,17 @@ export function ExpandedStream({
               article={article}
               fullContentVisible={fullContentVisibleIds.has(article.id)}
               summaryState={summaryStates.get(article.id) ?? EMPTY_ARTICLE_SUMMARY_STATE}
+              translationState={
+                translationStates.get(article.id) ?? EMPTY_ARTICLE_TRANSLATION_STATE
+              }
+              translationLanguage={translationLanguage}
               onToggleRead={onToggleRead}
               onToggleStar={onToggleStar}
               onCopy={onCopy}
               onOpenSource={onOpenSource}
               onToggleFullContent={onToggleFullContent}
               onToggleSummary={onToggleSummary}
+              onToggleTranslation={onToggleTranslation}
             />
           </div>
           <ArticleDocument
@@ -2122,6 +2275,8 @@ export function ExpandedStream({
             titleId={`expanded-${article.id}-title`}
             fullContentVisible={fullContentVisibleIds.has(article.id)}
             summaryState={summaryStates.get(article.id) ?? EMPTY_ARTICLE_SUMMARY_STATE}
+            translationState={translationStates.get(article.id) ?? EMPTY_ARTICLE_TRANSLATION_STATE}
+            translationLanguage={translationLanguage}
             onFeedAction={onFeedAction}
             onToggleFullContent={onToggleFullContent}
             onRegenerateSummary={onRegenerateSummary}

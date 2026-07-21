@@ -13,7 +13,7 @@ import type {
   SessionUser,
 } from "../shared/types";
 import { ApiError, AUTH_REQUIRED_EVENT, api, errorMessage } from "./api";
-import { fullContentToggleAction } from "./article-content";
+import { articleTranslationSourceKind, fullContentToggleAction } from "./article-content";
 import { LoginPage, SessionLoading } from "./auth";
 import { articlesWithContextReturn, type ContextArticleReturn } from "./contextual-filter";
 import {
@@ -30,7 +30,9 @@ import {
   ArticleList,
   ArticleListSkeleton,
   type ArticleSummaryViewState,
+  type ArticleTranslationViewState,
   EMPTY_ARTICLE_SUMMARY_STATE,
+  EMPTY_ARTICLE_TRANSLATION_STATE,
   EmptyArticles,
   ExpandedStream,
   InlineError,
@@ -344,6 +346,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const [articleSummaryStates, setArticleSummaryStates] = useState<
     Map<number, ArticleSummaryViewState>
   >(() => new Map());
+  const [articleTranslationStates, setArticleTranslationStates] = useState<
+    Map<number, ArticleTranslationViewState>
+  >(() => new Map());
   const [markReadPending, setMarkReadPending] = useState(false);
   const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null);
   const toastTimer = useRef<number | null>(null);
@@ -357,6 +362,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const fullContentLoadedIds = useRef(new Set<number>());
   const fullContentLoadingIds = useRef(new Set<number>());
   const summaryLoadingIds = useRef(new Set<number>());
+  const translationLoadingIds = useRef(new Set<number>());
   const manuallyUnreadArticleIds = useRef(new Set<number>());
   const lastReaderRoute = useRef<ReaderRoute>(initialReaderRoute);
   const currentRoute = useRef<AppRoute>(initialRoute);
@@ -519,6 +525,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       const nextArticles = articlesWithContextReturn(page.articles, returnTarget);
       loadedReaderRequestKey.current = requestKey;
       setArticles(nextArticles);
+      setArticleTranslationStates(new Map());
       fullContentVisibleIdsRef.current = new Set();
       setFullContentVisibleIds(new Set());
       setNextCursor(page.nextCursor);
@@ -947,6 +954,20 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     [showToast],
   );
 
+  const patchArticleTranslationState = useCallback(
+    (articleId: number, change: Partial<ArticleTranslationViewState>) => {
+      setArticleTranslationStates((current) => {
+        const next = new Map(current);
+        next.set(articleId, {
+          ...(current.get(articleId) ?? EMPTY_ARTICLE_TRANSLATION_STATE),
+          ...change,
+        });
+        return next;
+      });
+    },
+    [],
+  );
+
   const toggleFullContent = useCallback(
     async (article: Article) => {
       if (!article.url || article.media) return;
@@ -955,6 +976,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         fullContentVisibleIdsRef.current.has(article.id),
       );
       if (action === "wait") return;
+      patchArticleTranslationState(article.id, { visible: false });
       if (action === "hide") {
         fullContentVisibleIdsRef.current.delete(article.id);
         setFullContentVisibleIds((current) => {
@@ -980,7 +1002,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         void loadFullArticle(article);
       }
     },
-    [loadFullArticle, mergeFullArticle, showToast],
+    [loadFullArticle, mergeFullArticle, patchArticleTranslationState, showToast],
   );
 
   const selectScope = useCallback(
@@ -1077,6 +1099,90 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const regenerateArticleSummary = useCallback(
     (article: Article) => void generateArticleSummary(article, true),
     [generateArticleSummary],
+  );
+
+  const generateArticleTranslation = useCallback(
+    async (article: Article) => {
+      if (translationLoadingIds.current.has(article.id)) return;
+      const sourceKind = articleTranslationSourceKind(
+        article,
+        fullContentVisibleIdsRef.current.has(article.id),
+      );
+      translationLoadingIds.current.add(article.id);
+      patchArticleTranslationState(article.id, {
+        visible: false,
+        loading: true,
+        error: null,
+        configurationMissing: false,
+      });
+      try {
+        const translation = await api.translateArticle(article.id, sourceKind);
+        const currentArticle = articlesRef.current.find((item) => item.id === article.id);
+        const currentSourceKind = currentArticle
+          ? articleTranslationSourceKind(
+              currentArticle,
+              fullContentVisibleIdsRef.current.has(article.id),
+            )
+          : sourceKind;
+        patchArticleTranslationState(article.id, {
+          visible:
+            currentSourceKind === translation.sourceKind &&
+            translation.language === bootstrap?.settings.translationLanguage,
+          loading: false,
+          translation,
+        });
+      } catch (caught) {
+        const configurationMissing =
+          caught instanceof ApiError &&
+          ["AI_NOT_CONFIGURED", "AI_KEY_MISSING", "AI_CREDENTIAL_STORAGE_UNAVAILABLE"].includes(
+            caught.code ?? "",
+          );
+        patchArticleTranslationState(article.id, {
+          visible: false,
+          loading: false,
+          error: configurationMissing ? null : errorMessage(caught),
+          configurationMissing,
+        });
+      } finally {
+        translationLoadingIds.current.delete(article.id);
+      }
+    },
+    [bootstrap?.settings.translationLanguage, patchArticleTranslationState],
+  );
+
+  const toggleArticleTranslation = useCallback(
+    (article: Article) => {
+      const state = articleTranslationStates.get(article.id) ?? EMPTY_ARTICLE_TRANSLATION_STATE;
+      if (state.loading) return;
+      if (state.visible) {
+        patchArticleTranslationState(article.id, { visible: false });
+        return;
+      }
+      const sourceKind = articleTranslationSourceKind(
+        article,
+        fullContentVisibleIdsRef.current.has(article.id),
+      );
+      const { translation } = state;
+      if (
+        translation !== null &&
+        translation.language === bootstrap?.settings.translationLanguage &&
+        translation.sourceKind === sourceKind
+      ) {
+        patchArticleTranslationState(article.id, {
+          visible: true,
+          error: null,
+          configurationMissing: false,
+        });
+        return;
+      }
+      void generateArticleTranslation(article);
+    },
+    [
+      articleTranslationStates,
+      bootstrap?.settings.translationLanguage,
+      generateArticleTranslation,
+      patchArticleTranslationState,
+    ],
   );
 
   const filterSelectedText = useCallback(
@@ -1523,6 +1629,10 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           const articleVisible = view === "reader" && (readingMode === "expanded" || readerOpen);
           if (articleVisible && activeArticle) toggleArticleSummary(activeArticle);
         },
+        t: () => {
+          const articleVisible = view === "reader" && (readingMode === "expanded" || readerOpen);
+          if (articleVisible && activeArticle) toggleArticleTranslation(activeArticle);
+        },
         r: () => void refresh(),
         "[": () =>
           setArticleFontSize((current) => {
@@ -1574,6 +1684,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     selectScope,
     showToast,
     toggleArticleSummary,
+    toggleArticleTranslation,
     view,
   ]);
 
@@ -1723,6 +1834,13 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                           EMPTY_ARTICLE_SUMMARY_STATE)
                         : EMPTY_ARTICLE_SUMMARY_STATE
                     }
+                    translationState={
+                      activeArticle
+                        ? (articleTranslationStates.get(activeArticle.id) ??
+                          EMPTY_ARTICLE_TRANSLATION_STATE)
+                        : EMPTY_ARTICLE_TRANSLATION_STATE
+                    }
+                    translationLanguage={bootstrap.settings.translationLanguage}
                     onBack={returnToArticleList}
                     onPrevious={() => moveArticle(-1)}
                     onNext={() => moveArticle(1)}
@@ -1737,6 +1855,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     onFeedAction={openFeedManagementById}
                     onToggleFullContent={(article) => void toggleFullContent(article)}
                     onToggleSummary={toggleArticleSummary}
+                    onToggleTranslation={toggleArticleTranslation}
                     onRegenerateSummary={regenerateArticleSummary}
                     onOpenAiSettings={() => navigateTo("settings")}
                     onFilterSelection={filterSelectedText}
@@ -1749,6 +1868,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   topAlignedId={expandedKeyboardTargetId}
                   fullContentVisibleIds={fullContentVisibleIds}
                   summaryStates={articleSummaryStates}
+                  translationStates={articleTranslationStates}
+                  translationLanguage={bootstrap.settings.translationLanguage}
                   markReadOnScroll={bootstrap.settings.markReadOnScroll}
                   hasMore={routedArticleId === null && nextCursor !== null}
                   loadingMore={articlesLoadingMore}
@@ -1769,6 +1890,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   onFeedAction={openFeedManagementById}
                   onToggleFullContent={(article) => void toggleFullContent(article)}
                   onToggleSummary={toggleArticleSummary}
+                  onToggleTranslation={toggleArticleTranslation}
                   onRegenerateSummary={regenerateArticleSummary}
                   onOpenAiSettings={() => navigateTo("settings")}
                   onFilterSelection={filterSelectedText}
@@ -1810,9 +1932,12 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
             onMenu={() => setNavOpen(true)}
             onTheme={setTheme}
             onFontSize={setArticleFontSize}
-            onSettings={(settings) =>
-              setBootstrap((current) => (current ? { ...current, settings } : current))
-            }
+            onSettings={(settings) => {
+              if (bootstrap.settings.translationLanguage !== settings.translationLanguage) {
+                setArticleTranslationStates(new Map());
+              }
+              setBootstrap((current) => (current ? { ...current, settings } : current));
+            }}
             onAiSettings={(aiSettings) =>
               setBootstrap((current) => (current ? { ...current, aiSettings } : current))
             }

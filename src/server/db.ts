@@ -8,6 +8,7 @@ import type {
   AppSettings,
   Article,
   ArticleAiSummary,
+  ArticleAiTranslation,
   ArticleMedia,
   ArticlePage,
   ArticleQuery,
@@ -74,6 +75,11 @@ export interface AiArticleRecord {
 }
 
 export interface StoredArticleAiSummary extends ArticleAiSummary {
+  sourceRevision: number;
+  promptVersion: number;
+}
+
+export interface StoredArticleAiTranslation extends ArticleAiTranslation {
   sourceRevision: number;
   promptVersion: number;
 }
@@ -676,6 +682,26 @@ const migrations: Migration[] = [
         CHECK(sort_direction IN ('newest', 'oldest'));
     `,
   },
+  {
+    sql: `
+      ALTER TABLE settings ADD COLUMN translation_language TEXT NOT NULL DEFAULT 'English';
+
+      CREATE TABLE article_ai_translations (
+        article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
+        target_language TEXT NOT NULL COLLATE NOCASE,
+        source_kind TEXT NOT NULL CHECK(source_kind IN ('full', 'feed', 'excerpt')),
+        source_revision INTEGER NOT NULL,
+        prompt_version INTEGER NOT NULL,
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        translation_text TEXT NOT NULL,
+        input_tokens INTEGER CHECK(input_tokens IS NULL OR input_tokens >= 0),
+        output_tokens INTEGER CHECK(output_tokens IS NULL OR output_tokens >= 0),
+        generated_at TEXT NOT NULL,
+        PRIMARY KEY(article_id, target_language, source_kind)
+      );
+    `,
+  },
 ];
 
 function now(): string {
@@ -839,6 +865,26 @@ function mapStoredArticleAiSummary(row: Row): StoredArticleAiSummary | null {
   };
 }
 
+function mapStoredArticleAiTranslation(row: Row): StoredArticleAiTranslation | null {
+  if (row.aiTranslationText === null || row.aiTranslationText === undefined) return null;
+  return {
+    text: String(row.aiTranslationText),
+    language: String(row.aiTranslationLanguage),
+    provider: row.aiTranslationProvider as AiProvider,
+    model: String(row.aiTranslationModel),
+    sourceKind: row.aiTranslationSourceKind as AiArticleSourceKind,
+    sourceRevision: Number(row.aiTranslationSourceRevision),
+    promptVersion: Number(row.aiTranslationPromptVersion),
+    generatedAt: String(row.aiTranslationGeneratedAt),
+    usage: {
+      inputTokens:
+        row.aiTranslationInputTokens === null ? null : Number(row.aiTranslationInputTokens),
+      outputTokens:
+        row.aiTranslationOutputTokens === null ? null : Number(row.aiTranslationOutputTokens),
+    },
+  };
+}
+
 function mapRule(row: Row): Rule {
   return {
     id: Number(row.id),
@@ -960,7 +1006,8 @@ export class AppDatabase {
       .prepare(
         `SELECT poll_interval_minutes AS pollIntervalMinutes,
                 single_key_shortcuts AS singleKeyShortcuts,
-                mark_read_on_scroll AS markReadOnScroll
+                mark_read_on_scroll AS markReadOnScroll,
+                translation_language AS translationLanguage
          FROM settings WHERE user_id = ?`,
       )
       .get(userId) as Row;
@@ -968,6 +1015,7 @@ export class AppDatabase {
       pollIntervalMinutes: Number(row.pollIntervalMinutes),
       singleKeyShortcuts: toBoolean(row.singleKeyShortcuts),
       markReadOnScroll: toBoolean(row.markReadOnScroll),
+      translationLanguage: String(row.translationLanguage),
     };
   }
 
@@ -976,13 +1024,15 @@ export class AppDatabase {
     this.sqlite
       .prepare(
         `UPDATE settings
-         SET poll_interval_minutes = ?, single_key_shortcuts = ?, mark_read_on_scroll = ?
+         SET poll_interval_minutes = ?, single_key_shortcuts = ?, mark_read_on_scroll = ?,
+             translation_language = ?
          WHERE user_id = ?`,
       )
       .run(
         input.pollIntervalMinutes ?? current.pollIntervalMinutes,
         (input.singleKeyShortcuts ?? current.singleKeyShortcuts) ? 1 : 0,
         (input.markReadOnScroll ?? current.markReadOnScroll) ? 1 : 0,
+        input.translationLanguage?.trim() || current.translationLanguage,
         userId,
       );
     return this.getSettings(userId);
@@ -1923,7 +1973,7 @@ export class AppDatabase {
     return row ? mapArticle(row) : null;
   }
 
-  getArticleForAiSummary(userId: number, id: number): AiArticleRecord | null {
+  getArticleForAi(userId: number, id: number): AiArticleRecord | null {
     const row = this.sqlite
       .prepare(
         `SELECT articles.id,
@@ -2040,6 +2090,94 @@ export class AppDatabase {
           now(),
         );
       return this.getArticleAiSummary(userId, id);
+    });
+    return save();
+  }
+
+  getArticleAiTranslation(
+    userId: number,
+    id: number,
+    language: string,
+    sourceKind: AiArticleSourceKind,
+  ): StoredArticleAiTranslation | null {
+    const row = this.sqlite
+      .prepare(
+        `SELECT article_ai_translations.source_revision AS aiTranslationSourceRevision,
+                article_ai_translations.prompt_version AS aiTranslationPromptVersion,
+                article_ai_translations.target_language AS aiTranslationLanguage,
+                article_ai_translations.source_kind AS aiTranslationSourceKind,
+                article_ai_translations.provider AS aiTranslationProvider,
+                article_ai_translations.model AS aiTranslationModel,
+                article_ai_translations.translation_text AS aiTranslationText,
+                article_ai_translations.input_tokens AS aiTranslationInputTokens,
+                article_ai_translations.output_tokens AS aiTranslationOutputTokens,
+                article_ai_translations.generated_at AS aiTranslationGeneratedAt
+         FROM article_ai_translations
+         JOIN articles ON articles.id = article_ai_translations.article_id
+         JOIN feeds ON feeds.id = articles.feed_id
+         WHERE article_ai_translations.article_id = ?
+           AND article_ai_translations.target_language = ? COLLATE NOCASE
+           AND article_ai_translations.source_kind = ?
+           AND article_ai_translations.source_revision = articles.content_revision
+           AND feeds.user_id = ?`,
+      )
+      .get(id, language, sourceKind, userId) as Row | undefined;
+    return row ? mapStoredArticleAiTranslation(row) : null;
+  }
+
+  saveArticleAiTranslation(
+    userId: number,
+    id: number,
+    sourceRevision: number,
+    input: {
+      promptVersion: number;
+      language: string;
+      sourceKind: AiArticleSourceKind;
+      provider: AiProvider;
+      model: string;
+      text: string;
+      usage: AiUsage;
+    },
+  ): StoredArticleAiTranslation | null {
+    const save = this.sqlite.transaction(() => {
+      const current = this.sqlite
+        .prepare(
+          `SELECT articles.content_revision AS revision
+           FROM articles JOIN feeds ON feeds.id = articles.feed_id
+           WHERE articles.id = ? AND feeds.user_id = ?`,
+        )
+        .get(id, userId) as { revision: number } | undefined;
+      if (!current || current.revision !== sourceRevision) return null;
+      this.sqlite
+        .prepare(
+          `INSERT INTO article_ai_translations (
+             article_id, target_language, source_kind, source_revision, prompt_version,
+             provider, model, translation_text, input_tokens, output_tokens, generated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(article_id, target_language, source_kind) DO UPDATE SET
+             source_revision = excluded.source_revision,
+             prompt_version = excluded.prompt_version,
+             provider = excluded.provider,
+             model = excluded.model,
+             translation_text = excluded.translation_text,
+             input_tokens = excluded.input_tokens,
+             output_tokens = excluded.output_tokens,
+             generated_at = excluded.generated_at`,
+        )
+        .run(
+          id,
+          input.language,
+          input.sourceKind,
+          sourceRevision,
+          input.promptVersion,
+          input.provider,
+          input.model,
+          input.text,
+          input.usage.inputTokens,
+          input.usage.outputTokens,
+          now(),
+        );
+      return this.getArticleAiTranslation(userId, id, input.language, input.sourceKind);
     });
     return save();
   }

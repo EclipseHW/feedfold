@@ -188,6 +188,7 @@ describe("database migrations", () => {
         pollIntervalMinutes: 20,
         singleKeyShortcuts: true,
         markReadOnScroll: true,
+        translationLanguage: "English",
       });
       expect(authService.register("READER", "another-password")).toBeNull();
 
@@ -281,7 +282,7 @@ describe("database migrations", () => {
         name: "Default order",
         sortDirection: "newest",
       });
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(13);
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(14);
     } finally {
       database.close();
     }
@@ -293,7 +294,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(13);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(14);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");
