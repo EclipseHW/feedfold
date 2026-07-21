@@ -4,6 +4,7 @@ import type {
   Article,
   ArticleState,
   BootstrapData,
+  Feed,
   Folder as FolderType,
   MarkReadAgeDays,
   ReadingMode,
@@ -14,6 +15,12 @@ import { AUTH_REQUIRED_EVENT, api, errorMessage } from "./api";
 import { fullContentToggleAction } from "./article-content";
 import { LoginPage, SessionLoading } from "./auth";
 import { articlesWithContextReturn, type ContextArticleReturn } from "./contextual-filter";
+import {
+  ContextManagementDialog,
+  type FeedManagementAction,
+  type FolderManagementAction,
+  type ManagementRequest,
+} from "./feed-management";
 import { FeedsPage, type RuleFormDraft, RulesPage, SettingsPage, ShortcutHelp } from "./management";
 import { motionExitDuration } from "./motion";
 import { type AppView, ReaderToolbar, Sidebar } from "./navigation";
@@ -45,6 +52,14 @@ const ARTICLE_FONT_MAX = 23;
 const ARTICLE_FONT_DEFAULT = 18;
 const FILTER_RULE_NAME_TEXT_LIMIT = 72;
 const APP_BASE_PATH = import.meta.env.BASE_URL;
+
+function feedManagementRequest(feedId: number, action: FeedManagementAction): ManagementRequest {
+  if (action === "settings") return { kind: "feed-settings", feedId };
+  if (action === "rename") return { kind: "rename-feed", feedId };
+  if (action === "move") return { kind: "move-feed", feedId };
+  if (action === "rule") return { kind: "create-feed-rule", feedId };
+  return { kind: "unsubscribe-feed", feedId };
+}
 
 interface AppHistoryState {
   echovale?: true;
@@ -266,6 +281,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const [rulesLoading, setRulesLoading] = useState(false);
   const [rulesError, setRulesError] = useState<string | null>(null);
   const [ruleDraft, setRuleDraft] = useState<RuleFormDraft | null>(null);
+  const [managementRequest, setManagementRequest] = useState<ManagementRequest | null>(null);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [readerOpen, setReaderOpen] = useState(initialRoute.kind === "article");
@@ -1002,6 +1018,121 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
 
   const clearRuleDraft = useCallback(() => setRuleDraft(null), []);
 
+  const openFeedManagement = useCallback((feed: Feed, action: FeedManagementAction) => {
+    setManagementRequest(feedManagementRequest(feed.id, action));
+  }, []);
+
+  const openFeedManagementById = useCallback(
+    (feedId: number, action: FeedManagementAction) => {
+      const feed = bootstrap?.feeds.find((candidate) => candidate.id === feedId);
+      if (feed) openFeedManagement(feed, action);
+    },
+    [bootstrap, openFeedManagement],
+  );
+
+  const openFolderManagement = useCallback((folder: FolderType, action: FolderManagementAction) => {
+    if (action === "settings") {
+      setManagementRequest({ kind: "folder-settings", folderId: folder.id });
+    } else if (action === "add-feed") {
+      setManagementRequest({ kind: "add-feed-to-folder", folderId: folder.id });
+    } else if (action === "add-folder") {
+      setManagementRequest({ kind: "add-folder", parentId: folder.id });
+    } else {
+      setManagementRequest({ kind: "create-folder-rule", folderId: folder.id });
+    }
+  }, []);
+
+  const reloadContextManagement = useCallback(async () => {
+    const route = currentRoute.current;
+    const readerRoute =
+      route.kind === "reader" ? route : route.kind === "article" ? lastReaderRoute.current : null;
+    const routePath = appRoutePath(route);
+    const activeIndex = articlesRef.current.findIndex((article) => article.id === activeArticleId);
+    const preserveActive =
+      activeIndex >= 0 && (route.kind === "article" || readingMode === "expanded")
+        ? articlesRef.current[activeIndex]
+        : null;
+    const requestId = readerRoute ? articleListRequestId.current + 1 : null;
+    if (requestId !== null) {
+      articleListRequestId.current = requestId;
+      setArticlesLoadingMore(false);
+    }
+
+    const articleReload = readerRoute
+      ? (async () => {
+          const targetCount = Math.max(
+            articlesRef.current.length,
+            readingMode === "expanded" ? 20 : 100,
+          );
+          const reloaded: Article[] = [];
+          let cursor: string | null = null;
+          do {
+            const page = await api.articles({
+              state: readerRoute.state,
+              ...(readerRoute.scope === "feed" && readerRoute.scopeId !== null
+                ? { feedId: readerRoute.scopeId }
+                : {}),
+              ...(readerRoute.scope === "folder" && readerRoute.scopeId !== null
+                ? { folderId: readerRoute.scopeId }
+                : {}),
+              ...(readerRoute.search ? { search: readerRoute.search } : {}),
+              limit: Math.min(500, targetCount - reloaded.length),
+              includeContent: readingMode === "expanded",
+              ...(cursor ? { cursor } : {}),
+            });
+            reloaded.push(...page.articles);
+            cursor = page.nextCursor;
+          } while (cursor && reloaded.length < targetCount);
+
+          return {
+            articles: reloaded,
+            nextCursor: cursor,
+            activeArticle: preserveActive ? await api.article(preserveActive.id) : null,
+          };
+        })()
+      : Promise.resolve(null);
+
+    const [bootstrapResult, , articleResult] = await Promise.allSettled([
+      api.bootstrap(),
+      loadRules(),
+      articleReload,
+    ]);
+    if (bootstrapResult.status === "fulfilled") {
+      setBootstrap(bootstrapResult.value);
+    }
+    if (
+      readerRoute &&
+      requestId !== null &&
+      articleResult.status === "fulfilled" &&
+      articleResult.value &&
+      articleListRequestId.current === requestId &&
+      appRoutePath(currentRoute.current) === routePath
+    ) {
+      const refreshed = articleResult.value;
+      const nextArticles = articlesWithContextReturn(
+        refreshed.articles,
+        refreshed.activeArticle
+          ? { article: refreshed.activeArticle, index: activeIndex }
+          : preserveActive
+            ? { article: preserveActive, index: activeIndex }
+            : null,
+      );
+      setArticles(nextArticles);
+      setNextCursor(refreshed.nextCursor);
+      setActiveArticleId((current) =>
+        current !== null && nextArticles.some((article) => article.id === current)
+          ? current
+          : (nextArticles[0]?.id ?? null),
+      );
+      if (readingMode === "expanded") {
+        for (const article of refreshed.articles) fullContentLoadedIds.current.add(article.id);
+      }
+      loadedReaderRequestKey.current = `${appRoutePath(readerRoute)}:${readingMode}`;
+    } else {
+      loadedReaderRequestKey.current = null;
+    }
+  }, [activeArticleId, loadRules, readingMode]);
+
   const returnToContextArticle = useCallback(
     (draft: RuleFormDraft) => {
       contextArticleReturn.current = { article: draft.article, index: draft.articleIndex };
@@ -1056,10 +1187,10 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   }, [navigateToRoute]);
 
   const unsubscribeFromFeed = useCallback(
-    async (article: Article) => {
+    async (feed: Feed): Promise<boolean> => {
       try {
-        await api.deleteFeed(article.feedId);
-        showToast(`Unsubscribed from ${article.feedTitle}`);
+        await api.deleteFeed(feed.id);
+        showToast(`Unsubscribed from ${feed.title}`);
         await loadBootstrap();
 
         const current = currentRoute.current;
@@ -1070,18 +1201,20 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               ? current
               : DEFAULT_READER_ROUTE;
         const nextRoute: ReaderRoute =
-          readerRoute.scope === "feed" && readerRoute.scopeId === article.feedId
+          readerRoute.scope === "feed" && readerRoute.scopeId === feed.id
             ? { ...readerRoute, scope: "all", scopeId: null }
             : readerRoute;
         loadedReaderRequestKey.current = null;
 
         if (current.kind === "article" || appRoutePath(current) !== appRoutePath(nextRoute)) {
           navigateToRoute(nextRoute, "replace");
-          return;
+          return true;
         }
         await loadArticles();
+        return true;
       } catch (error) {
         showToast(`Could not unsubscribe: ${errorMessage(error)}`);
+        return false;
       }
     },
     [loadArticles, loadBootstrap, navigateToRoute, showToast],
@@ -1231,6 +1364,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
+      if (managementRequest) return;
       if (event.key === "Escape") {
         setShortcutHelpOpen(false);
         setNavOpen(false);
@@ -1336,6 +1470,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     readerOpen,
     readingMode,
     moveArticle,
+    managementRequest,
     navigateTo,
     refresh,
     returnToArticleList,
@@ -1373,6 +1508,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         onSelectState={(state) => selectScope(null, null, state)}
         onSelectScope={selectScope}
         onNavigate={navigateTo}
+        onFeedAction={openFeedManagement}
+        onFolderAction={openFolderManagement}
         onRefresh={() => void refresh()}
         onLogout={onLogout}
       />
@@ -1495,7 +1632,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     }
                     onCopy={(article) => void copyArticleUrl(article)}
                     onOpenSource={openArticleSource}
-                    onUnsubscribe={(article) => void unsubscribeFromFeed(article)}
+                    onFeedAction={openFeedManagementById}
                     onToggleFullContent={(article) => void toggleFullContent(article)}
                     onToggleSummary={toggleArticleSummary}
                     onRegenerateSummary={regenerateArticleSummary}
@@ -1527,7 +1664,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   }
                   onCopy={(article) => void copyArticleUrl(article)}
                   onOpenSource={openArticleSource}
-                  onUnsubscribe={(article) => void unsubscribeFromFeed(article)}
+                  onFeedAction={openFeedManagementById}
                   onToggleFullContent={(article) => void toggleFullContent(article)}
                   onToggleSummary={toggleArticleSummary}
                   onRegenerateSummary={regenerateArticleSummary}
@@ -1588,6 +1725,24 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         enabled={bootstrap.settings.singleKeyShortcuts}
         onClose={() => setShortcutHelpOpen(false)}
       />
+      {managementRequest ? (
+        <ContextManagementDialog
+          key={
+            "feedId" in managementRequest
+              ? `${managementRequest.kind}:${managementRequest.feedId}`
+              : "folderId" in managementRequest
+                ? `${managementRequest.kind}:${managementRequest.folderId}`
+                : `${managementRequest.kind}:${managementRequest.parentId}`
+          }
+          request={managementRequest}
+          bootstrap={bootstrap}
+          onClose={() => setManagementRequest(null)}
+          onReload={reloadContextManagement}
+          onRefresh={(feedId) => refresh(feedId)}
+          onUnsubscribe={unsubscribeFromFeed}
+          showToast={showToast}
+        />
+      ) : null}
       <button
         className={`nav-scrim${navOpen ? " is-open" : ""}`}
         type="button"

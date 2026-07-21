@@ -90,6 +90,8 @@ export interface Feed {
   title: string;
   feedUrl: string;
   siteUrl: string | null;
+  createdAt: string;
+  pollIntervalMinutes: number;
   unreadCount: number;
   totalCount: number;
   paused: boolean;
