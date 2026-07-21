@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { articleSwipeDirection } from "../../src/client/article-swipe.js";
+import {
+  articleSwipeDirection,
+  articleSwipeIntent,
+  articleSwipeOffset,
+} from "../../src/client/article-swipe.js";
 
 describe("article swipe navigation", () => {
   it("commits a normal 100px swipe in either direction", () => {
@@ -35,16 +39,38 @@ describe("article swipe navigation", () => {
     ).toBe("next");
   });
 
-  it("uses recent velocity when a short flick reverses near its release point", () => {
+  it("does not let a one-pixel threshold crossing reverse the release direction", () => {
     expect(
       articleSwipeDirection({
         startX: 200,
         startY: 360,
-        endX: 204,
+        endX: 137,
         endY: 362,
-        horizontalVelocity: -0.4,
+        horizontalVelocity: 0.5,
       }),
-    ).toBe("next");
+    ).toBeNull();
+    expect(
+      articleSwipeDirection({
+        startX: 200,
+        startY: 360,
+        endX: 136,
+        endY: 362,
+        horizontalVelocity: 0.5,
+      }),
+    ).toBeNull();
+  });
+
+  it("uses the projected release endpoint to continue, cancel, or reverse", () => {
+    const gesture = {
+      startX: 200,
+      startY: 360,
+      endX: 100,
+      endY: 362,
+    };
+
+    expect(articleSwipeDirection({ ...gesture, horizontalVelocity: 0.2 })).toBe("next");
+    expect(articleSwipeDirection({ ...gesture, horizontalVelocity: 0.5 })).toBeNull();
+    expect(articleSwipeDirection({ ...gesture, horizontalVelocity: 1.8 })).toBe("previous");
   });
 
   it("commits a deliberate 100px drag even after 850ms", () => {
@@ -78,5 +104,37 @@ describe("article swipe navigation", () => {
         horizontalVelocity: -0.8,
       }),
     ).toBeNull();
+  });
+
+  it("does not turn a small touch wobble into a navigation flick", () => {
+    expect(
+      articleSwipeDirection({
+        startX: 200,
+        startY: 360,
+        endX: 212,
+        endY: 362,
+        horizontalVelocity: 0.24,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("article swipe intent", () => {
+  it("waits through ambiguous diagonal movement before choosing an axis", () => {
+    expect(articleSwipeIntent(6, 2)).toBe("pending");
+    expect(articleSwipeIntent(8, 8)).toBe("pending");
+    expect(articleSwipeIntent(12, 4)).toBe("horizontal");
+    expect(articleSwipeIntent(4, 12)).toBe("vertical");
+  });
+});
+
+describe("article swipe boundaries", () => {
+  it("tracks available directions directly and resists unavailable ones", () => {
+    expect(articleSwipeOffset(200, 390, true)).toBe(200);
+
+    const resisted = articleSwipeOffset(200, 390, false);
+    expect(resisted).toBeGreaterThan(0);
+    expect(resisted).toBeLessThan(200);
+    expect(articleSwipeOffset(-200, 390, false)).toBeCloseTo(-resisted);
   });
 });

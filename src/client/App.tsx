@@ -98,6 +98,7 @@ function articleQueryForReaderRoute(
     limit: number;
     includeContent: boolean;
     cursor?: string;
+    anchorId?: number;
   },
 ): ArticleQuery {
   return {
@@ -640,10 +641,11 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     window.localStorage.setItem(accountStorageKey(user.id, "reading-mode"), readingMode);
   }, [readingMode, user.id]);
 
-  const activeArticle = useMemo(
-    () => articles.find((article) => article.id === activeArticleId) ?? null,
+  const activeArticleIndex = useMemo(
+    () => articles.findIndex((article) => article.id === activeArticleId),
     [activeArticleId, articles],
   );
+  const activeArticle = activeArticleIndex < 0 ? null : (articles[activeArticleIndex] ?? null);
 
   const mergeFullArticle = useCallback((updated: Article) => {
     fullContentLoadedIds.current.add(updated.id);
@@ -723,14 +725,29 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       } catch (error) {
         if (wasManuallyUnread) manuallyUnreadArticleIds.current.add(article.id);
         else manuallyUnreadArticleIds.current.delete(article.id);
+        setArticles((current) =>
+          current.map((item) =>
+            item.id === article.id
+              ? {
+                  ...item,
+                  isRead:
+                    change.isRead !== undefined && item.isRead === nextRead
+                      ? article.isRead
+                      : item.isRead,
+                  isStarred:
+                    change.isStarred !== undefined && item.isStarred === nextStarred
+                      ? article.isStarred
+                      : item.isStarred,
+                }
+              : item,
+          ),
+        );
+        setBootstrap((current) =>
+          current ? updateBootstrapCounts(current, article, -unreadDelta, -starredDelta) : current,
+        );
         showToast(`Could not update article: ${errorMessage(error)}`);
         await loadBootstrap();
-        if (currentRoute.current.kind === "article") {
-          setArticles((current) => current.filter((item) => item.id !== article.id));
-          setRoutedArticleRetry((current) => current + 1);
-        } else {
-          await loadArticles();
-        }
+        if (currentRoute.current.kind !== "article") await loadArticles();
       }
     },
     [loadArticles, loadBootstrap, showToast],
@@ -805,6 +822,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           articleQueryForReaderRoute(queueRoute, {
             limit: readingMode === "expanded" ? 20 : 100,
             includeContent: readingMode === "expanded",
+            anchorId: article.id,
           }),
         );
         return { article, page, queueRoute, articleIndex: state.articleIndex };
@@ -814,8 +832,16 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         const pageIndex = page.articles.findIndex((item) => item.id === article.id);
         const nextArticles = articlesWithContextReturn(page.articles, {
           article,
-          index: articleIndex ?? Math.max(0, pageIndex),
+          index: page.anchorIndex ?? (pageIndex >= 0 ? pageIndex : (articleIndex ?? 0)),
         });
+        const actualArticleIndex = nextArticles.findIndex((item) => item.id === article.id);
+        if (actualArticleIndex >= 0) {
+          const historyState = (window.history.state ?? {}) as AppHistoryState;
+          window.history.replaceState(
+            { ...historyState, echovale: true, articleIndex: actualArticleIndex },
+            "",
+          );
+        }
         loadedReaderRequestKey.current = `${appRoutePath(queueRoute)}:${readingMode}`;
         fullContentLoadedIds.current.add(article.id);
         setArticles(nextArticles);
@@ -1682,6 +1708,12 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   />
                   <ReaderPane
                     article={activeArticle}
+                    canPrevious={activeArticleIndex > 0}
+                    canNext={
+                      activeArticleIndex >= 0 &&
+                      (activeArticleIndex < articles.length - 1 ||
+                        (nextCursor !== null && !articlesLoadingMore))
+                    }
                     fullContentVisible={
                       activeArticle ? fullContentVisibleIds.has(activeArticle.id) : false
                     }

@@ -33,7 +33,13 @@ import { createPortal } from "react-dom";
 import type { Article, ArticleState, ReadingMode } from "../shared/types";
 import { articleContentView } from "./article-content";
 import { extractHttpLinks } from "./article-links";
-import { type ArticleSwipeDirection, articleSwipeDirection } from "./article-swipe";
+import {
+  type ArticleSwipeDirection,
+  type ArticleSwipeIntent,
+  articleSwipeDirection,
+  articleSwipeIntent,
+  articleSwipeOffset,
+} from "./article-swipe";
 import {
   FeedActionMenuItems,
   type FeedManagementAction,
@@ -50,15 +56,13 @@ import {
 const ARTICLE_SWIPE_TARGETS =
   "a, button, input, select, textarea, summary, video, audio, iframe, pre, .article-table-scroll, [contenteditable]";
 const ARTICLE_SWIPE_SURFACE = "[data-article-swipe-surface]";
-const SWIPE_INTENT_DISTANCE = 10;
 const SWIPE_SAMPLE_WINDOW = 100;
 const SWIPE_SAMPLE_LIMIT = 5;
-const SWIPE_SPRING_RESPONSE = 0.4;
+const SWIPE_SPRING_RESPONSE = 0.32;
 const SWIPE_SPRING_DAMPING = 1;
 const REDUCED_SWIPE_DURATION = 200;
 
 type ArticleNavigationHandler = () => boolean | Promise<boolean>;
-type SwipeIntent = "pending" | "horizontal" | "vertical";
 
 function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -678,6 +682,9 @@ interface ArticleActionsProps {
   summaryState: ArticleSummaryViewState;
   onPrevious?: () => void;
   onNext?: () => void;
+  canPrevious?: boolean;
+  canNext?: boolean;
+  navigationPending?: boolean;
   onToggleRead: (article: Article) => void;
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
@@ -692,6 +699,9 @@ function ArticleActions({
   summaryState,
   onPrevious,
   onNext,
+  canPrevious = true,
+  canNext = true,
+  navigationPending = false,
   onToggleRead,
   onToggleStar,
   onCopy,
@@ -732,6 +742,7 @@ function ArticleActions({
         <button
           className="article-navigation-action"
           type="button"
+          disabled={!canPrevious || navigationPending}
           onClick={onPrevious}
           aria-label="Previous article (K)"
           data-tooltip="Previous article (K)"
@@ -743,6 +754,7 @@ function ArticleActions({
         <button
           className="article-navigation-action"
           type="button"
+          disabled={!canNext || navigationPending}
           onClick={onNext}
           aria-label="Next article (J)"
           data-tooltip="Next article (J)"
@@ -1156,7 +1168,7 @@ interface SwipeGestureState {
   surfaceX: number;
   surfaceOpacity: number;
   reducedMotion: boolean;
-  intent: SwipeIntent;
+  intent: ArticleSwipeIntent;
   startedOnSwipeSurface: boolean;
   samples: PointerSample[];
 }
@@ -1200,6 +1212,8 @@ export function ReaderPane({
   article,
   fullContentVisible,
   summaryState,
+  canPrevious,
+  canNext,
   onBack,
   onPrevious,
   onNext,
@@ -1217,6 +1231,8 @@ export function ReaderPane({
   article: Article | null;
   fullContentVisible: boolean;
   summaryState: ArticleSummaryViewState;
+  canPrevious: boolean;
+  canNext: boolean;
   onBack: () => void;
   onPrevious: ArticleNavigationHandler;
   onNext: ArticleNavigationHandler;
@@ -1234,7 +1250,7 @@ export function ReaderPane({
   const initialSurface = article ? { article, fullContentVisible, summaryState } : null;
   const [activeSurface, setActiveSurface] = useState<ArticleSurfaceSnapshot | null>(initialSurface);
   const [outgoingSurface, setOutgoingSurface] = useState<OutgoingArticleSurface | null>(null);
-  const readerPaneRef = useRef<HTMLElement>(null);
+  const [navigationPending, setNavigationPending] = useState(false);
   const activeLayerRef = useRef<HTMLDivElement>(null);
   const outgoingLayerRef = useRef<HTMLDivElement>(null);
   const activeSurfaceRef = useRef(activeSurface);
@@ -1287,6 +1303,7 @@ export function ReaderPane({
         activeMotion.current = controller;
         animation.onfinish = () => {
           if (activeMotion.current !== controller) return;
+          animation.cancel();
           activeMotion.current = null;
           clearSwipeSurface(surface);
         };
@@ -1321,6 +1338,11 @@ export function ReaderPane({
       releaseVelocity = 0,
       reducedMotion = prefersReducedMotion(),
     ) => {
+      const directionAvailable = direction === "next" ? canNext : canPrevious;
+      if (!directionAvailable) {
+        restoreActiveSurface(0, reducedMotion);
+        return;
+      }
       if (pendingNavigation.current) {
         restoreActiveSurface(releaseVelocity, reducedMotion);
         return;
@@ -1348,17 +1370,19 @@ export function ReaderPane({
         restoreFrameHandle,
       });
       pendingNavigation.current = request;
+      setNavigationPending(true);
       const navigationResult = navigate();
       void Promise.resolve(navigationResult).then((moved) => {
         if (pendingNavigation.current?.id !== requestId || moved) return;
         pendingNavigation.current = null;
+        setNavigationPending(false);
         window.cancelAnimationFrame(restoreFrameHandle);
         const alreadyRestoring = paginationRestoreRequestId.current === requestId;
         paginationRestoreRequestId.current = null;
         if (!alreadyRestoring) restoreActiveSurface(releaseVelocity, reducedMotion);
       });
     },
-    [onNext, onPrevious, restoreActiveSurface],
+    [canNext, canPrevious, onNext, onPrevious, restoreActiveSurface],
   );
 
   useLayoutEffect(() => {
@@ -1377,13 +1401,13 @@ export function ReaderPane({
       return;
     }
 
-    if (readerPaneRef.current) readerPaneRef.current.scrollTop = 0;
     if (!nextSurface || !currentSurface) {
       activeMotion.current?.cancel();
       activeMotion.current = null;
       const request = pendingNavigation.current;
       if (request) window.cancelAnimationFrame(request.restoreFrameHandle);
       pendingNavigation.current = null;
+      setNavigationPending(false);
       paginationRestoreRequestId.current = null;
       transitionSetup.current = null;
       outgoingSurfaceRef.current = null;
@@ -1397,6 +1421,7 @@ export function ReaderPane({
     if (!request) {
       activeMotion.current?.cancel();
       activeMotion.current = null;
+      setNavigationPending(false);
       paginationRestoreRequestId.current = null;
       transitionSetup.current = null;
       outgoingSurfaceRef.current = null;
@@ -1409,6 +1434,7 @@ export function ReaderPane({
     const { position, opacity } = preserveActivePresentation();
     window.cancelAnimationFrame(request.restoreFrameHandle);
     pendingNavigation.current = null;
+    setNavigationPending(false);
     const wasRestoringPagination = paginationRestoreRequestId.current === request.id;
     paginationRestoreRequestId.current = null;
     transitionSetup.current = {
@@ -1468,7 +1494,12 @@ export function ReaderPane({
         },
       };
       activeMotion.current = controller;
-      incomingAnimation.onfinish = () => complete(controller);
+      incomingAnimation.onfinish = () => {
+        if (activeMotion.current !== controller) return;
+        outgoingAnimation.cancel();
+        incomingAnimation.cancel();
+        complete(controller);
+      };
       return;
     }
 
@@ -1508,15 +1539,7 @@ export function ReaderPane({
   const handlePointerDown = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
       if (event.pointerType !== "touch") return;
-      if (!event.isPrimary) {
-        const activeSwipe = swipeStart.current;
-        if (activeSwipe && event.currentTarget.hasPointerCapture(activeSwipe.pointerId)) {
-          event.currentTarget.releasePointerCapture(activeSwipe.pointerId);
-        }
-        swipeStart.current = null;
-        restoreActiveSurface(0, activeSwipe?.reducedMotion);
-        return;
-      }
+      if (!event.isPrimary || pendingNavigation.current) return;
 
       const target = event.target instanceof Element ? event.target : null;
       const swipeSurface = target?.closest(ARTICLE_SWIPE_SURFACE);
@@ -1544,36 +1567,43 @@ export function ReaderPane({
         samples: [{ x: event.clientX, timeStamp: event.timeStamp }],
       };
     },
-    [preserveActivePresentation, restoreActiveSurface],
+    [preserveActivePresentation],
   );
 
-  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
-    const start = swipeStart.current;
-    if (!start || event.pointerId !== start.pointerId) return;
-    start.samples = appendPointerSample(start.samples, {
-      x: event.clientX,
-      timeStamp: event.timeStamp,
-    });
+  const handlePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLElement>) => {
+      const start = swipeStart.current;
+      if (!start || event.pointerId !== start.pointerId) return;
+      start.samples = appendPointerSample(start.samples, {
+        x: event.clientX,
+        timeStamp: event.timeStamp,
+      });
 
-    const horizontalDistance = event.clientX - start.x;
-    const verticalDistance = event.clientY - start.y;
-    if (start.intent === "pending") {
-      if (Math.hypot(horizontalDistance, verticalDistance) < SWIPE_INTENT_DISTANCE) return;
-      start.intent =
-        Math.abs(horizontalDistance) > Math.abs(verticalDistance) ? "horizontal" : "vertical";
-    }
-    if (start.intent !== "horizontal") return;
+      const horizontalDistance = event.clientX - start.x;
+      const verticalDistance = event.clientY - start.y;
+      if (start.intent === "pending") {
+        start.intent = articleSwipeIntent(horizontalDistance, verticalDistance);
+      }
+      if (start.intent !== "horizontal") return;
 
-    event.preventDefault();
-    const surface = activeLayerRef.current;
-    if (!surface) return;
-    const nextX = start.surfaceX + horizontalDistance;
-    const fadeProgress = Math.min(Math.abs(horizontalDistance) / surface.clientWidth, 1);
-    if (!start.reducedMotion) {
-      surface.style.transform = `translate3d(${nextX}px, 0, 0)`;
-    }
-    surface.style.opacity = String(Math.max(0.18, start.surfaceOpacity - fadeProgress * 0.18));
-  }, []);
+      event.preventDefault();
+      const surface = activeLayerRef.current;
+      if (!surface) return;
+      const directionAvailable = horizontalDistance < 0 ? canNext : canPrevious;
+      const visualDistance = articleSwipeOffset(
+        horizontalDistance,
+        surface.clientWidth,
+        directionAvailable,
+      );
+      const nextX = start.surfaceX + visualDistance;
+      const fadeProgress = Math.min(Math.abs(visualDistance) / surface.clientWidth, 1);
+      if (!start.reducedMotion) {
+        surface.style.transform = `translate3d(${nextX}px, 0, 0)`;
+      }
+      surface.style.opacity = String(Math.max(0.18, start.surfaceOpacity - fadeProgress * 0.18));
+    },
+    [canNext, canPrevious],
+  );
 
   const finishPointerGesture = useCallback(
     (event: ReactPointerEvent<HTMLElement>) => {
@@ -1584,8 +1614,14 @@ export function ReaderPane({
         timeStamp: event.timeStamp,
       });
       const velocity = horizontalReleaseVelocity(samples);
+      const horizontalDistance = event.clientX - start.x;
+      const verticalDistance = event.clientY - start.y;
+      const finalIntent =
+        start.intent === "pending"
+          ? articleSwipeIntent(horizontalDistance, verticalDistance)
+          : start.intent;
       swipeStart.current = null;
-      if (start.intent === "horizontal" && start.startedOnSwipeSurface) {
+      if (finalIntent === "horizontal" && start.startedOnSwipeSurface) {
         suppressSwipeSurfaceClick.current = true;
         window.setTimeout(() => {
           suppressSwipeSurfaceClick.current = false;
@@ -1593,6 +1629,11 @@ export function ReaderPane({
       }
       if (event.currentTarget.hasPointerCapture(event.pointerId)) {
         event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+
+      if (finalIntent !== "horizontal") {
+        restoreActiveSurface(0, start.reducedMotion);
+        return;
       }
 
       const direction = articleSwipeDirection({
@@ -1607,9 +1648,15 @@ export function ReaderPane({
         return;
       }
 
+      const directionAvailable = direction === "next" ? canNext : canPrevious;
+      if (!directionAvailable) {
+        restoreActiveSurface(0, start.reducedMotion);
+        return;
+      }
+
       navigateWithAnimation(direction, velocity * 1000, start.reducedMotion);
     },
-    [navigateWithAnimation, restoreActiveSurface],
+    [canNext, canPrevious, navigateWithAnimation, restoreActiveSurface],
   );
 
   const handleClickCapture = useCallback((event: ReactMouseEvent<HTMLElement>) => {
@@ -1629,15 +1676,39 @@ export function ReaderPane({
 
   if (!activeSurface) {
     return (
-      <section ref={readerPaneRef} className="reader-pane reader-placeholder">
+      <section className="reader-pane reader-placeholder">
         <BookOpen aria-hidden="true" size={24} />
         <p>Choose an article to read it here.</p>
       </section>
     );
   }
 
-  const renderArticleSurface = (surface: ArticleSurfaceSnapshot, titleId: string) => (
-    <>
+  const renderArticleDocument = (surface: ArticleSurfaceSnapshot, titleId: string) => (
+    <ArticleDocument
+      article={surface.article}
+      titleId={titleId}
+      fullContentVisible={surface.fullContentVisible}
+      summaryState={surface.summaryState}
+      onFeedAction={onFeedAction}
+      onToggleFullContent={onToggleFullContent}
+      onRegenerateSummary={onRegenerateSummary}
+      onOpenAiSettings={onOpenAiSettings}
+      onFilterSelection={onFilterSelection}
+    />
+  );
+  const activeTitleId = `article-${activeSurface.article.id}-title`;
+
+  return (
+    <article
+      className="reader-pane"
+      aria-labelledby={activeTitleId}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={finishPointerGesture}
+      onPointerCancel={cancelPointerGesture}
+      onLostPointerCapture={cancelPointerGesture}
+      onClickCapture={handleClickCapture}
+    >
       <div className="reader-action-bar">
         <div className="reader-action-row">
           <button
@@ -1652,11 +1723,14 @@ export function ReaderPane({
           </button>
           <span className="reader-action-divider" aria-hidden="true" />
           <ArticleActions
-            article={surface.article}
-            fullContentVisible={surface.fullContentVisible}
-            summaryState={surface.summaryState}
+            article={activeSurface.article}
+            fullContentVisible={activeSurface.fullContentVisible}
+            summaryState={activeSurface.summaryState}
             onPrevious={() => navigateWithAnimation("previous")}
             onNext={() => navigateWithAnimation("next")}
+            canPrevious={canPrevious}
+            canNext={canNext}
+            navigationPending={navigationPending}
             onToggleRead={onToggleRead}
             onToggleStar={onToggleStar}
             onCopy={onCopy}
@@ -1666,33 +1740,6 @@ export function ReaderPane({
           />
         </div>
       </div>
-      <ArticleDocument
-        article={surface.article}
-        titleId={titleId}
-        fullContentVisible={surface.fullContentVisible}
-        summaryState={surface.summaryState}
-        onFeedAction={onFeedAction}
-        onToggleFullContent={onToggleFullContent}
-        onRegenerateSummary={onRegenerateSummary}
-        onOpenAiSettings={onOpenAiSettings}
-        onFilterSelection={onFilterSelection}
-      />
-    </>
-  );
-  const activeTitleId = `article-${activeSurface.article.id}-title`;
-
-  return (
-    <article
-      ref={readerPaneRef}
-      className="reader-pane"
-      aria-labelledby={activeTitleId}
-      onPointerDown={handlePointerDown}
-      onPointerMove={handlePointerMove}
-      onPointerUp={finishPointerGesture}
-      onPointerCancel={cancelPointerGesture}
-      onLostPointerCapture={cancelPointerGesture}
-      onClickCapture={handleClickCapture}
-    >
       <div className="article-swipe-stage">
         {outgoingSurface ? (
           <div
@@ -1702,7 +1749,7 @@ export function ReaderPane({
             aria-hidden="true"
             inert
           >
-            {renderArticleSurface(
+            {renderArticleDocument(
               outgoingSurface.snapshot,
               `article-${outgoingSurface.snapshot.article.id}-outgoing-${outgoingSurface.requestId}-title`,
             )}
@@ -1713,7 +1760,7 @@ export function ReaderPane({
           className="article-swipe-layer is-active"
           key={`article-${activeSurface.article.id}`}
         >
-          {renderArticleSurface(activeSurface, activeTitleId)}
+          {renderArticleDocument(activeSurface, activeTitleId)}
         </div>
       </div>
     </article>

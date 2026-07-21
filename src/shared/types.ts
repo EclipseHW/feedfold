@@ -182,6 +182,7 @@ export interface ArticleQuery {
   search?: string;
   limit?: number;
   cursor?: string;
+  anchorId?: number;
   includeContent?: boolean;
 }
 
@@ -195,6 +196,7 @@ export interface MarkReadRequest {
 export interface ArticlePage {
   articles: Article[];
   nextCursor: string | null;
+  anchorIndex: number | null;
 }
 
 export interface ImportResult {
