@@ -2614,6 +2614,41 @@ kbd {
 .toast svg {
   color: var(--accent);
 }
+
+.pwa-update {
+  position: fixed;
+  right: 18px;
+  bottom: 68px;
+  z-index: var(--z-toast);
+  display: flex;
+  max-width: min(430px, calc(100vw - 36px));
+  align-items: center;
+  gap: 14px;
+  padding: 11px 12px 11px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: 0 4px 12px oklch(0 0 0 / 0.32);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.pwa-update-actions {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pwa-update .secondary-button {
+  min-height: 32px;
+  padding: 6px 10px;
+}
+
+.pwa-update .icon-button {
+  width: 32px;
+  height: 32px;
+}
+
 .nav-scrim {
   display: none;
 }

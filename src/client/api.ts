@@ -29,7 +29,7 @@ export function appUrl(path: string): string {
   return `${appBase}${path}`;
 }
 
-class ApiError extends Error {
+export class ApiError extends Error {
   status: number;
 
   constructor(message: string, status: number) {

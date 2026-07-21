@@ -468,7 +468,13 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
   });
 
   if (services.staticDir && existsSync(join(services.staticDir, "index.html"))) {
-    await app.register(fastifyStatic, { root: services.staticDir, wildcard: false });
+    await app.register(fastifyStatic, {
+      root: services.staticDir,
+      wildcard: false,
+      setHeaders(response, path) {
+        if (path.endsWith("sw.js")) response.header("Cache-Control", "no-cache");
+      },
+    });
     app.setNotFoundHandler((request, reply) => {
       if (request.url.startsWith("/api/") || request.url === "/health") {
         return reply.code(404).send({ error: "Not found" });

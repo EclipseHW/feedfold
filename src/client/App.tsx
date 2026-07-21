@@ -12,7 +12,7 @@ import type {
   Rule,
   SessionUser,
 } from "../shared/types";
-import { AUTH_REQUIRED_EVENT, api, errorMessage } from "./api";
+import { ApiError, AUTH_REQUIRED_EVENT, api, errorMessage } from "./api";
 import { fullContentToggleAction } from "./article-content";
 import { LoginPage, SessionLoading } from "./auth";
 import { articlesWithContextReturn, type ContextArticleReturn } from "./contextual-filter";
@@ -198,28 +198,44 @@ function updateBootstrapCounts(
 export function App() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [user, setUser] = useState<SessionUser | null>(null);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const sessionRequestId = useRef(0);
 
   useEffect(() => {
     document.documentElement.dataset.theme = "dark";
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    void api
-      .session()
-      .then((sessionUser) => {
-        if (active) setUser(sessionUser);
-      })
-      .catch(() => {
-        if (active) setUser(null);
-      })
-      .finally(() => {
-        if (active) setCheckingSession(false);
-      });
-    return () => {
-      active = false;
-    };
+  const loadSession = useCallback(async () => {
+    const requestId = sessionRequestId.current + 1;
+    sessionRequestId.current = requestId;
+    setCheckingSession(true);
+    setSessionError(null);
+    try {
+      const sessionUser = await api.session();
+      if (sessionRequestId.current === requestId) setUser(sessionUser);
+    } catch (error) {
+      if (sessionRequestId.current !== requestId) return;
+      setUser(null);
+      if (!(error instanceof ApiError && error.status === 401)) {
+        setSessionError(
+          !navigator.onLine
+            ? "You are offline. Reconnect to reach your private reading queue."
+            : error instanceof ApiError
+              ? errorMessage(error)
+              : "The server could not be reached. Check your connection and try again.",
+        );
+      }
+    } finally {
+      if (sessionRequestId.current === requestId) setCheckingSession(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void loadSession();
+    return () => {
+      sessionRequestId.current += 1;
+    };
+  }, [loadSession]);
 
   useEffect(() => {
     const requireAuthentication = () => {
@@ -239,6 +255,9 @@ export function App() {
   }, []);
 
   if (checkingSession) return <SessionLoading />;
+  if (sessionError) {
+    return <StartupError message={sessionError} retry={() => void loadSession()} />;
+  }
   if (!user) return <LoginPage onAuthenticated={setUser} />;
   return <ReaderApp key={user.id} user={user} onLogout={logout} />;
 }
