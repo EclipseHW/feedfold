@@ -1506,12 +1506,31 @@ kbd {
   touch-action: pan-y pinch-zoom;
 }
 
-.article-swipe-surface {
+.article-swipe-stage,
+.article-swipe-layer {
   min-height: 100%;
   background: var(--bg);
 }
 
-.article-swipe-surface[data-swiping="true"] {
+.article-swipe-stage {
+  position: relative;
+}
+
+.article-swipe-layer {
+  width: 100%;
+}
+
+.article-swipe-layer.is-active {
+  position: relative;
+}
+
+.article-swipe-layer.is-outgoing {
+  position: absolute;
+  inset: 0 0 auto;
+  pointer-events: none;
+}
+
+.article-swipe-layer[data-swiping="true"] {
   will-change: transform, opacity;
 }
 

@@ -1,5 +1,5 @@
 const MINIMUM_SWIPE_DISTANCE = 64;
-const MAXIMUM_SWIPE_DURATION = 700;
+const MINIMUM_SWIPE_VELOCITY = 0.11;
 const HORIZONTAL_DOMINANCE = 1.25;
 
 export type ArticleSwipeDirection = "previous" | "next";
@@ -9,7 +9,7 @@ interface ArticleSwipeGesture {
   startY: number;
   endX: number;
   endY: number;
-  durationMs: number;
+  horizontalVelocity: number;
 }
 
 export function articleSwipeDirection({
@@ -17,19 +17,20 @@ export function articleSwipeDirection({
   startY,
   endX,
   endY,
-  durationMs,
+  horizontalVelocity,
 }: ArticleSwipeGesture): ArticleSwipeDirection | null {
   const horizontalDistance = endX - startX;
   const verticalDistance = endY - startY;
+  const distanceCommits = Math.abs(horizontalDistance) >= MINIMUM_SWIPE_DISTANCE;
+  const velocityCommits = Math.abs(horizontalVelocity) > MINIMUM_SWIPE_VELOCITY;
 
   if (
-    durationMs < 0 ||
-    durationMs > MAXIMUM_SWIPE_DURATION ||
-    Math.abs(horizontalDistance) < MINIMUM_SWIPE_DISTANCE ||
+    (!distanceCommits && !velocityCommits) ||
     Math.abs(horizontalDistance) < Math.abs(verticalDistance) * HORIZONTAL_DOMINANCE
   ) {
     return null;
   }
 
-  return horizontalDistance < 0 ? "next" : "previous";
+  const committedDirection = distanceCommits ? horizontalDistance : horizontalVelocity;
+  return committedDirection < 0 ? "next" : "previous";
 }
