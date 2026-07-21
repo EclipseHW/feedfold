@@ -4594,6 +4594,12 @@ kbd {
   .reader-action-row {
     padding-inline: 7px;
   }
+  :where(.mode-magazine.is-reading-article) .reader-back-button,
+  .article-actions button.article-navigation-action {
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+  }
   .article-card-content {
     grid-template-columns: 92px minmax(0, 1fr);
     gap: 9px;
@@ -5021,6 +5027,9 @@ kbd {
     width: 34px;
     min-width: 34px;
     height: 34px;
+  }
+  .article-actions .action-divider {
+    display: none;
   }
 }
 
