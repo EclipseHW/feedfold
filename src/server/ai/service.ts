@@ -19,6 +19,7 @@ import {
   ARTICLE_TRANSLATION_PROMPT_VERSION,
   ARTICLE_TRANSLATION_SYSTEM_PROMPT,
   prepareArticleTranslation,
+  renderArticleTranslation,
 } from "./article-translation.js";
 import type { CredentialCipher } from "./credential-cipher.js";
 import { AiError } from "./errors.js";
@@ -57,7 +58,7 @@ function publicSummary(summary: StoredArticleAiSummary): ArticleAiSummary {
 
 function publicTranslation(translation: StoredArticleAiTranslation): ArticleAiTranslation {
   return {
-    text: translation.text,
+    html: translation.html,
     language: translation.language,
     provider: translation.provider,
     model: translation.model,
@@ -263,13 +264,14 @@ export class AiService {
       input: prepared.input,
       maxOutputTokens: ARTICLE_TRANSLATION_MAX_OUTPUT_TOKENS,
     });
+    const html = renderArticleTranslation(prepared, generated.text);
     const saved = this.database.saveArticleAiTranslation(userId, articleId, article.revision, {
       promptVersion: ARTICLE_TRANSLATION_PROMPT_VERSION,
       language,
       sourceKind: prepared.sourceKind,
       provider: generated.provider,
       model: generated.model,
-      text: generated.text,
+      html,
       usage: generated.usage,
     });
     if (!saved) {

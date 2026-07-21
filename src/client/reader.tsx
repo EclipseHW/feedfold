@@ -32,9 +32,9 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { extractHttpLinks } from "../shared/article-links";
 import type { Article, ArticleAiTranslation, ArticleState, ReadingMode } from "../shared/types";
 import { articleContentView } from "./article-content";
-import { extractHttpLinks } from "./article-links";
 import {
   type ArticleSwipeDirection,
   type ArticleSwipeIntent,
@@ -2056,14 +2056,10 @@ function ArticleBody({
 }
 
 function ArticleTranslationText({ translation }: { translation: ArticleAiTranslation }) {
-  const paragraphs = translation.text.split(/\n{2,}/).filter((paragraph) => paragraph.trim());
+  const html = { __html: translation.html };
   return (
-    <div className="article-content article-translation">
-      {paragraphs.map((paragraph, index) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: Translation output can repeat a paragraph.
-        <p key={`${index}-${paragraph}`}>{paragraph}</p>
-      ))}
-    </div>
+    // biome-ignore lint/security/noDangerouslySetInnerHtml: The server rebuilds translated text inside the sanitized source article HTML.
+    <div className="article-content article-translation" dangerouslySetInnerHTML={html} />
   );
 }
 

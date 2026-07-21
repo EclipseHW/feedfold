@@ -282,7 +282,15 @@ describe("database migrations", () => {
         name: "Default order",
         sortDirection: "newest",
       });
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(14);
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(15);
+      expect(
+        database.sqlite
+          .prepare(
+            "SELECT name FROM pragma_table_info('article_ai_translations') WHERE name LIKE 'translation_%'",
+          )
+          .pluck()
+          .all(),
+      ).toEqual(["translation_html"]);
     } finally {
       database.close();
     }
@@ -294,7 +302,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(14);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(15);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");

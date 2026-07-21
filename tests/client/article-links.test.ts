@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { extractHttpLinks } from "../../src/client/article-links.js";
+import { extractHttpLinks } from "../../src/shared/article-links.js";
 
 describe("article summary links", () => {
   it("turns labelled absolute URLs from any feed summary into links", () => {
