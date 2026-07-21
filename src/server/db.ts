@@ -760,6 +760,8 @@ function mapFeed(row: Row): Feed {
     title: String(row.title),
     feedUrl: String(row.feedUrl),
     siteUrl: row.siteUrl === null ? null : String(row.siteUrl),
+    createdAt: String(row.createdAt),
+    pollIntervalMinutes: Number(row.pollIntervalMinutes),
     unreadCount: Number(row.unreadCount),
     totalCount: Number(row.totalCount),
     paused: toBoolean(row.paused),
@@ -1213,6 +1215,8 @@ export class AppDatabase {
                 feeds.title,
                 feeds.feed_url AS feedUrl,
                 feeds.site_url AS siteUrl,
+                feeds.created_at AS createdAt,
+                settings.poll_interval_minutes AS pollIntervalMinutes,
                 feeds.paused,
                 feeds.refreshing,
                 feeds.last_attempt_at AS lastAttemptAt,
@@ -1223,6 +1227,7 @@ export class AppDatabase {
                 SUM(CASE WHEN articles.id IS NOT NULL AND articles.is_read = 0 AND ${visibleClause} THEN 1 ELSE 0 END) AS unreadCount,
                 SUM(CASE WHEN articles.id IS NOT NULL AND ${visibleClause} THEN 1 ELSE 0 END) AS totalCount
          FROM feeds
+         JOIN settings ON settings.user_id = feeds.user_id
          LEFT JOIN articles ON articles.feed_id = feeds.id
          WHERE feeds.user_id = ?
          GROUP BY feeds.id

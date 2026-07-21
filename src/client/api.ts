@@ -168,6 +168,8 @@ export const api = {
   createFeed: (input: FeedInput) =>
     request<Feed>("/api/feeds", { method: "POST", body: JSON.stringify(input) }),
 
+  feed: (id: number) => request<Feed>(`/api/feeds/${id}`),
+
   updateFeed: (id: number, input: Partial<FeedInput> & { paused?: boolean }) =>
     request<Feed>(`/api/feeds/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
 

@@ -25,6 +25,11 @@ import { createPortal } from "react-dom";
 import type { Article, ArticleState, ReadingMode } from "../shared/types";
 import { articleContentView } from "./article-content";
 import { extractHttpLinks } from "./article-links";
+import {
+  FeedActionMenuItems,
+  type FeedManagementAction,
+  handleActionMenuKeyDown,
+} from "./feed-management";
 import { useMotionPresence } from "./motion";
 import {
   captureTextSelection,
@@ -937,7 +942,7 @@ function ArticleDocument({
   titleId,
   fullContentVisible,
   summaryState,
-  onUnsubscribe,
+  onFeedAction,
   onToggleFullContent,
   onRegenerateSummary,
   onOpenAiSettings,
@@ -947,7 +952,7 @@ function ArticleDocument({
   titleId: string;
   fullContentVisible: boolean;
   summaryState: ArticleSummaryViewState;
-  onUnsubscribe: (article: Article) => void;
+  onFeedAction: (feedId: number, action: FeedManagementAction) => void;
   onToggleFullContent: (article: Article) => void;
   onRegenerateSummary: (article: Article) => void;
   onOpenAiSettings: () => void;
@@ -1046,7 +1051,7 @@ function ArticleDocument({
   return (
     <>
       <div ref={documentRef} className="article-document">
-        <ArticleHeader article={article} id={titleId} onUnsubscribe={onUnsubscribe} />
+        <ArticleHeader article={article} id={titleId} onFeedAction={onFeedAction} />
         <ArticleSummaryPanel
           article={article}
           state={summaryState}
@@ -1104,7 +1109,7 @@ export function ReaderPane({
   onToggleStar,
   onCopy,
   onOpenSource,
-  onUnsubscribe,
+  onFeedAction,
   onToggleFullContent,
   onToggleSummary,
   onRegenerateSummary,
@@ -1121,7 +1126,7 @@ export function ReaderPane({
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onOpenSource: (article: Article) => void;
-  onUnsubscribe: (article: Article) => void;
+  onFeedAction: (feedId: number, action: FeedManagementAction) => void;
   onToggleFullContent: (article: Article) => void;
   onToggleSummary: (article: Article) => void;
   onRegenerateSummary: (article: Article) => void;
@@ -1145,6 +1150,7 @@ export function ReaderPane({
       <div className="reader-action-bar">
         <div className="reader-action-row">
           <button
+            data-management-focus-fallback
             className="reader-back-button"
             type="button"
             aria-label="Back to articles"
@@ -1174,7 +1180,7 @@ export function ReaderPane({
         titleId={`article-${article.id}-title`}
         fullContentVisible={fullContentVisible}
         summaryState={summaryState}
-        onUnsubscribe={onUnsubscribe}
+        onFeedAction={onFeedAction}
         onToggleFullContent={onToggleFullContent}
         onRegenerateSummary={onRegenerateSummary}
         onOpenAiSettings={onOpenAiSettings}
@@ -1186,10 +1192,10 @@ export function ReaderPane({
 
 function ArticleSourceMenu({
   article,
-  onUnsubscribe,
+  onFeedAction,
 }: {
   article: Article;
-  onUnsubscribe: (article: Article) => void;
+  onFeedAction: (feedId: number, action: FeedManagementAction) => void;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -1202,6 +1208,7 @@ function ArticleSourceMenu({
     <>
       <button
         ref={triggerRef}
+        data-management-feed-id={article.feedId}
         className="article-source-trigger"
         type="button"
         aria-label={`${article.feedTitle} feed actions`}
@@ -1235,7 +1242,7 @@ function ArticleSourceMenu({
       <div
         ref={menuRef}
         id={menuId}
-        className="article-source-menu"
+        className="article-source-menu context-action-menu"
         popover="auto"
         role="menu"
         aria-label={`${article.feedTitle} feed actions`}
@@ -1249,24 +1256,20 @@ function ArticleSourceMenu({
           });
         }}
         onKeyDown={(event) => {
-          if (event.key !== "Escape") return;
-          event.preventDefault();
           event.stopPropagation();
-          menuRef.current?.hidePopover();
-          triggerRef.current?.focus();
-        }}
-      >
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => {
+          handleActionMenuKeyDown(event, () => {
             menuRef.current?.hidePopover();
             triggerRef.current?.focus();
-            onUnsubscribe(article);
+          });
+        }}
+      >
+        <FeedActionMenuItems
+          onAction={(action) => {
+            menuRef.current?.hidePopover();
+            triggerRef.current?.focus();
+            onFeedAction(article.feedId, action);
           }}
-        >
-          Unsubscribe
-        </button>
+        />
       </div>
     </>
   );
@@ -1275,16 +1278,16 @@ function ArticleSourceMenu({
 function ArticleHeader({
   article,
   id,
-  onUnsubscribe,
+  onFeedAction,
 }: {
   article: Article;
   id: string;
-  onUnsubscribe: (article: Article) => void;
+  onFeedAction: (feedId: number, action: FeedManagementAction) => void;
 }) {
   return (
     <header className="article-header" id={id}>
       <div className="article-source-row">
-        <ArticleSourceMenu article={article} onUnsubscribe={onUnsubscribe} />
+        <ArticleSourceMenu article={article} onFeedAction={onFeedAction} />
         <span aria-hidden="true">·</span>
         <time dateTime={article.publishedAt ?? article.discoveredAt}>{articleDate(article)}</time>
         {article.media ? (
@@ -1463,7 +1466,7 @@ export function ExpandedStream({
   onToggleStar,
   onCopy,
   onOpenSource,
-  onUnsubscribe,
+  onFeedAction,
   onToggleFullContent,
   onToggleSummary,
   onRegenerateSummary,
@@ -1485,7 +1488,7 @@ export function ExpandedStream({
   onToggleStar: (article: Article) => void;
   onCopy: (article: Article) => void;
   onOpenSource: (article: Article) => void;
-  onUnsubscribe: (article: Article) => void;
+  onFeedAction: (feedId: number, action: FeedManagementAction) => void;
   onToggleFullContent: (article: Article) => void;
   onToggleSummary: (article: Article) => void;
   onRegenerateSummary: (article: Article) => void;
@@ -1531,7 +1534,7 @@ export function ExpandedStream({
             titleId={`expanded-${article.id}-title`}
             fullContentVisible={fullContentVisibleIds.has(article.id)}
             summaryState={summaryStates.get(article.id) ?? EMPTY_ARTICLE_SUMMARY_STATE}
-            onUnsubscribe={onUnsubscribe}
+            onFeedAction={onFeedAction}
             onToggleFullContent={onToggleFullContent}
             onRegenerateSummary={onRegenerateSummary}
             onOpenAiSettings={onOpenAiSettings}

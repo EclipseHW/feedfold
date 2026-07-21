@@ -92,7 +92,15 @@ export interface RuleFormDraft {
   pattern: string;
 }
 
-function formatDate(value: string | null): string {
+export interface RuleFormPreset {
+  name?: string;
+  feedId?: number;
+  folderId?: number;
+  field?: RuleField;
+  pattern?: string;
+}
+
+export function formatDate(value: string | null): string {
   if (!value) return "Never";
   return new Intl.DateTimeFormat(undefined, {
     dateStyle: "medium",
@@ -979,26 +987,45 @@ function FeedRow({
   );
 }
 
-function FolderForm({
+export function FolderForm({
   folders,
   initial,
+  defaultParentId = null,
   onCancel,
   onSaved,
   showToast,
 }: {
   folders: Folder[];
   initial?: Folder;
+  defaultParentId?: number | null;
   onCancel: () => void;
   onSaved: (folder: Folder) => Promise<void> | void;
   showToast: (message: string) => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
-  const [parentId, setParentId] = useState<number | null>(initial?.parentId ?? null);
+  const [parentId, setParentId] = useState<number | null>(initial?.parentId ?? defaultParentId);
   const [sortDirection, setSortDirection] = useState<FolderSortDirection>(
     initial?.sortDirection ?? "newest",
   );
   const [saving, setSaving] = useState(false);
-  const availableParents = folders.filter((folder) => folder.id !== initial?.id);
+  const unavailableParentIds = new Set(initial ? [initial.id] : []);
+  if (initial) {
+    let foundDescendant = true;
+    while (foundDescendant) {
+      foundDescendant = false;
+      for (const folder of folders) {
+        if (
+          folder.parentId !== null &&
+          unavailableParentIds.has(folder.parentId) &&
+          !unavailableParentIds.has(folder.id)
+        ) {
+          unavailableParentIds.add(folder.id);
+          foundDescendant = true;
+        }
+      }
+    }
+  }
+  const availableParents = folders.filter((folder) => !unavailableParentIds.has(folder.id));
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -1019,7 +1046,12 @@ function FolderForm({
     <form className="compact-form" onSubmit={(event) => void submit(event)}>
       <label className="field">
         <span>Folder name</span>
-        <input required value={name} onChange={(event) => setName(event.target.value)} />
+        <input
+          data-dialog-initial-focus
+          required
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
       </label>
       <label className="field">
         <span>Parent folder</span>
@@ -1336,7 +1368,7 @@ function RuleActionIcon({ action, size }: { action: RuleAction; size: number }) 
   return <CheckCircle2 aria-hidden="true" size={size} />;
 }
 
-function RuleForm({
+export function RuleForm({
   bootstrap,
   initial,
   preset,
@@ -1347,7 +1379,7 @@ function RuleForm({
 }: {
   bootstrap: BootstrapData;
   initial?: Rule;
-  preset?: RuleFormDraft;
+  preset?: RuleFormPreset;
   motionState: MotionState;
   onCancel: () => void;
   onSaved: (rule: Rule) => Promise<void> | void;
@@ -1359,9 +1391,11 @@ function RuleForm({
       ? `feed:${initial.feedId}`
       : initial?.folderId
         ? `folder:${initial.folderId}`
-        : preset
+        : preset?.feedId
           ? `feed:${preset.feedId}`
-          : "all",
+          : preset?.folderId
+            ? `folder:${preset.folderId}`
+            : "all",
   );
   const nextConditionId = useRef(initial?.conditions.length ?? 1);
   const conditionInputRefs = useRef(new Map<number, HTMLInputElement>());
@@ -1436,14 +1470,14 @@ function RuleForm({
     >
       <div className="inline-editor-heading">
         <div>
-          <h2>{initial ? "Edit rule" : preset ? "Filter selected text" : "Add rule"}</h2>
+          <h2>{initial ? "Edit rule" : preset?.pattern ? "Filter selected text" : "Add rule"}</h2>
           <p>Saving checks existing articles now and new articles during future refreshes.</p>
         </div>
         <button
           className="icon-button"
           type="button"
           onClick={onCancel}
-          aria-label={preset ? "Back to article" : "Close rule form"}
+          aria-label={preset?.pattern ? "Back to article" : "Close rule form"}
         >
           <X aria-hidden="true" size={18} />
         </button>
@@ -1457,6 +1491,7 @@ function RuleForm({
             <label className="field">
               <span>Rule name</span>
               <input
+                data-dialog-initial-focus
                 required
                 value={name}
                 placeholder="Skip weekly sponsor posts"
@@ -1662,7 +1697,7 @@ function RuleForm({
       </div>
       <div className="form-actions">
         <button className="secondary-button" type="button" onClick={onCancel}>
-          {preset ? "Back to article" : "Cancel"}
+          {preset?.pattern ? "Back to article" : "Cancel"}
         </button>
         <button
           className="primary-button"
@@ -1676,7 +1711,7 @@ function RuleForm({
           ) : (
             <Check aria-hidden="true" size={16} />
           )}
-          {saving ? "Saving rule" : preset ? "Save and return" : "Save rule"}
+          {saving ? "Saving rule" : preset?.pattern ? "Save and return" : "Save rule"}
         </button>
       </div>
     </form>

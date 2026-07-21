@@ -214,6 +214,7 @@ kbd {
 }
 
 .primary-button,
+.danger-button,
 .secondary-button,
 .quiet-button,
 .icon-button {
@@ -237,6 +238,24 @@ kbd {
   border: 1px solid var(--accent);
   background: var(--accent);
   color: var(--on-accent);
+}
+
+.danger-button {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 12px;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius-sm);
+  background: var(--danger);
+  color: var(--on-accent);
+  font-weight: 650;
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) ease,
+    border-color var(--duration-fast) ease;
 }
 
 .secondary-button,
@@ -265,6 +284,11 @@ kbd {
     background: var(--accent-strong);
   }
 
+  .danger-button:hover:not(:disabled) {
+    border-color: color-mix(in oklch, var(--danger) 82%, black);
+    background: color-mix(in oklch, var(--danger) 82%, black);
+  }
+
   .secondary-button:hover:not(:disabled),
   .quiet-button:hover:not(:disabled) {
     border-color: var(--border-strong);
@@ -280,6 +304,7 @@ kbd {
 }
 
 .primary-button:active:not(:disabled, :focus-visible),
+.danger-button:active:not(:disabled, :focus-visible),
 .secondary-button:active:not(:disabled, :focus-visible),
 .quiet-button:active:not(:disabled, :focus-visible) {
   transform: scale(0.97);
@@ -968,32 +993,72 @@ kbd {
   transform: translateY(0) scale(1);
 }
 
-.article-source-menu > button {
+.context-action-menu > button {
   display: flex;
   width: 100%;
   min-height: 38px;
   align-items: center;
+  gap: 9px;
   padding: 7px 10px;
   border: 0;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--danger);
+  color: var(--text-secondary);
   font-size: 13px;
   font-weight: 550;
   text-align: left;
   transition:
     background-color var(--duration-fast) ease,
+    color var(--duration-fast) ease,
     transform var(--duration-fast) var(--ease-out);
 }
 
+.context-action-menu > button svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+.context-action-menu > .danger-menu-item {
+  color: var(--danger);
+}
+
+.context-action-menu > .danger-menu-item svg {
+  color: currentColor;
+}
+
+.context-menu-separator {
+  height: 1px;
+  margin: 5px 4px;
+  padding: 0;
+  border: 0;
+  background: var(--border);
+}
+
 @media (hover: hover) and (pointer: fine) {
-  .article-source-menu > button:hover {
+  .context-action-menu > button:hover {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .context-action-menu > .danger-menu-item:hover {
     background: var(--danger-surface);
+    color: var(--danger);
   }
 }
 
-.article-source-menu > button:active:not(:focus-visible) {
+.context-action-menu > button:active:not(:focus-visible) {
   transform: scale(0.98);
+}
+
+.sidebar-context-menu {
+  position: fixed;
+  z-index: var(--z-context-menu);
+  width: min(214px, calc(100vw - 16px));
+  padding: 6px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
+  box-shadow: 0 4px 8px oklch(0 0 0 / 0.3);
 }
 
 @starting-style {
@@ -3846,6 +3911,294 @@ kbd {
   background: var(--bg);
 }
 
+.management-dialog {
+  width: min(680px, calc(100vw - 28px));
+  max-height: min(820px, calc(100dvh - 28px));
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 8px 8px oklch(0 0 0 / 0.34);
+  opacity: 0;
+  transform: scale(0.98);
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    transform var(--duration-surface) var(--ease-out),
+    display var(--duration-surface) allow-discrete,
+    overlay var(--duration-surface) allow-discrete;
+}
+
+.management-dialog.is-wide {
+  width: min(980px, calc(100vw - 28px));
+}
+
+.management-dialog[open] {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.management-dialog::backdrop {
+  background: oklch(0 0 0 / 0.7);
+  opacity: 0;
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    display var(--duration-surface) allow-discrete,
+    overlay var(--duration-surface) allow-discrete;
+}
+
+.management-dialog[open]::backdrop {
+  opacity: 1;
+}
+
+@starting-style {
+  .management-dialog[open] {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  .management-dialog[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+.management-dialog-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 17px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.management-dialog-heading h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.management-dialog-heading p {
+  margin: 1px 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.management-dialog-body {
+  padding: 18px;
+}
+
+.management-dialog-body > .compact-form {
+  grid-template-columns: 1fr;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.management-dialog-body > .compact-form .form-actions {
+  margin-top: 6px;
+}
+
+.management-dialog-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 17px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.management-dialog-footer > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.management-dialog-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 10px;
+  border: 1px solid color-mix(in oklch, var(--danger) 38%, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--danger-surface);
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.management-dialog-error svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.management-dialog-empty {
+  display: flex;
+  min-height: 100px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: var(--text-secondary);
+}
+
+.management-dialog-empty svg {
+  color: var(--accent);
+}
+
+.management-dialog-empty p,
+.unsubscribe-copy p {
+  margin: 0;
+}
+
+.feed-settings-body {
+  padding-top: 14px;
+}
+
+.feed-settings-loading {
+  display: grid;
+  gap: 12px;
+  padding-block: 6px;
+}
+
+.feed-settings-loading .skeleton-line:nth-child(2) {
+  width: 82%;
+}
+
+.feed-settings-loading .skeleton-line:nth-child(3) {
+  width: 66%;
+}
+
+.feed-settings-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 14px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.feed-settings-summary strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.feed-settings-status {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-surface);
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.feed-settings-status.has-error {
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+
+.feed-settings-list {
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+
+.feed-settings-list > div {
+  display: grid;
+  min-height: 58px;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(0, 1.5fr);
+  align-items: center;
+  gap: 16px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.feed-settings-list dt {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.feed-settings-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.feed-settings-list a {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.feed-settings-list a svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .feed-settings-list a:hover {
+    color: var(--accent);
+  }
+}
+
+.management-dialog > .rule-form {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  transform: none;
+}
+
+.management-dialog > .rule-form > .inline-editor-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 15px 17px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.management-dialog > .rule-form > .rule-form-sections {
+  padding: 18px;
+}
+
+.management-dialog > .rule-form > .form-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 13px 17px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
 .shortcut-dialog {
   width: min(680px, calc(100vw - 28px));
   max-height: min(720px, calc(100vh - 28px));
@@ -4464,6 +4817,38 @@ kbd {
     align-items: stretch;
     flex-direction: column;
   }
+  .management-dialog,
+  .management-dialog.is-wide {
+    width: calc(100vw - 16px);
+    max-height: calc(100dvh - 16px);
+  }
+  .management-dialog-heading,
+  .management-dialog > .rule-form > .inline-editor-heading {
+    padding: 13px;
+  }
+  .management-dialog-body,
+  .management-dialog > .rule-form > .rule-form-sections {
+    padding: 14px 13px;
+  }
+  .management-dialog-footer,
+  .management-dialog > .rule-form > .form-actions {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 12px 13px;
+  }
+  .management-dialog-footer > div {
+    width: 100%;
+  }
+  .management-dialog-footer > div > button,
+  .management-dialog-footer > button {
+    flex: 1;
+  }
+  .feed-settings-list > div {
+    min-height: 0;
+    grid-template-columns: 1fr;
+    gap: 4px;
+    padding-block: 11px;
+  }
 }
 
 .check-check svg + svg {
@@ -4522,14 +4907,16 @@ kbd {
     transition: opacity var(--duration-reduced) ease;
   }
 
-  .shortcut-dialog {
+  .shortcut-dialog,
+  .management-dialog {
     transition:
       opacity var(--duration-reduced) ease,
       display var(--duration-reduced) allow-discrete,
       overlay var(--duration-reduced) allow-discrete;
   }
 
-  .shortcut-dialog::backdrop {
+  .shortcut-dialog::backdrop,
+  .management-dialog::backdrop {
     transition:
       opacity var(--duration-reduced) ease,
       display var(--duration-reduced) allow-discrete,
@@ -4546,7 +4933,9 @@ kbd {
   .toast > span,
   .toast > span[data-state="open"],
   .shortcut-dialog,
-  .shortcut-dialog[open] {
+  .shortcut-dialog[open],
+  .management-dialog,
+  .management-dialog[open] {
     transform: none;
   }
 
@@ -4572,6 +4961,7 @@ kbd {
   }
 
   .primary-button:active:not(:disabled, :focus-visible),
+  .danger-button:active:not(:disabled, :focus-visible),
   .secondary-button:active:not(:disabled, :focus-visible),
   .quiet-button:active:not(:disabled, :focus-visible),
   .icon-button:active:not(:disabled, :focus-visible),
@@ -4587,7 +4977,7 @@ kbd {
   .reader-back-button:active:not(:disabled, :focus-visible),
   .article-actions button:active:not(:disabled, :focus-visible),
   .article-source-trigger:active:not(:focus-visible),
-  .article-source-menu > button:active:not(:focus-visible),
+  .context-action-menu > button:active:not(:focus-visible),
   .row-actions button:active:not(:disabled, :focus-visible),
   .rule-action-option:active,
   .font-stepper button:active:not(:disabled, :focus-visible) {

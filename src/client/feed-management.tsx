@@ -1,0 +1,861 @@
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  Edit3,
+  ExternalLink,
+  Folder,
+  FolderPlus,
+  ListFilter,
+  LoaderCircle,
+  Pause,
+  Play,
+  RefreshCw,
+  Rss,
+  Settings,
+  Trash2,
+  X,
+} from "lucide-react";
+import {
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import type { BootstrapData, Feed, Folder as FolderType } from "../shared/types";
+import { api, errorMessage } from "./api";
+import { FolderForm, formatDate, RuleForm } from "./management";
+
+export type FeedManagementAction = "settings" | "rename" | "move" | "rule" | "unsubscribe";
+
+export type FolderManagementAction = "settings" | "add-feed" | "add-folder" | "rule";
+
+export type ManagementRequest =
+  | { kind: "feed-settings"; feedId: number }
+  | { kind: "rename-feed"; feedId: number }
+  | { kind: "move-feed"; feedId: number }
+  | { kind: "create-feed-rule"; feedId: number }
+  | { kind: "unsubscribe-feed"; feedId: number }
+  | { kind: "folder-settings"; folderId: number }
+  | { kind: "add-feed-to-folder"; folderId: number }
+  | { kind: "add-folder"; parentId: number }
+  | { kind: "create-folder-rule"; folderId: number };
+
+function firstFocusable(selectors: string[]): HTMLElement | null {
+  for (const selector of selectors) {
+    for (const candidate of document.querySelectorAll<HTMLElement>(selector)) {
+      const bounds = candidate.getBoundingClientRect();
+      if (
+        candidate.isConnected &&
+        !candidate.closest("[inert]") &&
+        bounds.width > 0 &&
+        bounds.height > 0 &&
+        bounds.right > 0 &&
+        bounds.bottom > 0 &&
+        bounds.left < window.innerWidth &&
+        bounds.top < window.innerHeight &&
+        (!(candidate instanceof HTMLButtonElement) || !candidate.disabled)
+      ) {
+        return candidate;
+      }
+    }
+  }
+  return null;
+}
+
+export function FeedActionMenuItems({
+  onAction,
+}: {
+  onAction: (action: FeedManagementAction) => void;
+}) {
+  return (
+    <>
+      <button type="button" role="menuitem" onClick={() => onAction("settings")}>
+        <Settings aria-hidden="true" size={15} />
+        Feed settings
+      </button>
+      <button type="button" role="menuitem" onClick={() => onAction("rename")}>
+        <Edit3 aria-hidden="true" size={15} />
+        Rename feed
+      </button>
+      <button type="button" role="menuitem" onClick={() => onAction("move")}>
+        <Folder aria-hidden="true" size={15} />
+        Add to folder
+      </button>
+      <button type="button" role="menuitem" onClick={() => onAction("rule")}>
+        <ListFilter aria-hidden="true" size={15} />
+        Create rule
+      </button>
+      <hr className="context-menu-separator" />
+      <button
+        className="danger-menu-item"
+        type="button"
+        role="menuitem"
+        onClick={() => onAction("unsubscribe")}
+      >
+        <Trash2 aria-hidden="true" size={15} />
+        Unsubscribe
+      </button>
+    </>
+  );
+}
+
+export function FolderActionMenuItems({
+  onAction,
+}: {
+  onAction: (action: FolderManagementAction) => void;
+}) {
+  return (
+    <>
+      <button type="button" role="menuitem" onClick={() => onAction("settings")}>
+        <Settings aria-hidden="true" size={15} />
+        Folder settings
+      </button>
+      <button type="button" role="menuitem" onClick={() => onAction("add-feed")}>
+        <Rss aria-hidden="true" size={15} />
+        Add feed to folder
+      </button>
+      <button type="button" role="menuitem" onClick={() => onAction("add-folder")}>
+        <FolderPlus aria-hidden="true" size={15} />
+        Add new folder
+      </button>
+      <button type="button" role="menuitem" onClick={() => onAction("rule")}>
+        <ListFilter aria-hidden="true" size={15} />
+        Create rule
+      </button>
+    </>
+  );
+}
+
+export function handleActionMenuKeyDown(
+  event: ReactKeyboardEvent<HTMLElement>,
+  onEscape: () => void,
+) {
+  if (event.key === "Escape") {
+    event.preventDefault();
+    event.stopPropagation();
+    onEscape();
+    return;
+  }
+  if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+  event.preventDefault();
+  const items = Array.from(
+    event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'),
+  );
+  if (items.length === 0) return;
+  const current = items.indexOf(document.activeElement as HTMLButtonElement);
+  const next =
+    event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? items.length - 1
+        : event.key === "ArrowDown"
+          ? (Math.max(current, -1) + 1) % items.length
+          : (current <= 0 ? items.length : current) - 1;
+  items[next]?.focus();
+}
+
+function DialogHeading({
+  icon,
+  title,
+  detail,
+  onClose,
+}: {
+  icon: ReactNode;
+  title: string;
+  detail: string;
+  onClose: () => void;
+}) {
+  return (
+    <header className="management-dialog-heading">
+      <span className="dialog-icon" aria-hidden="true">
+        {icon}
+      </span>
+      <div>
+        <h2 id="management-dialog-title">{title}</h2>
+        <p>{detail}</p>
+      </div>
+      <button className="icon-button" type="button" onClick={onClose} aria-label="Close window">
+        <X aria-hidden="true" size={18} />
+      </button>
+    </header>
+  );
+}
+
+function DialogError({ message }: { message: string }) {
+  return (
+    <p className="management-dialog-error" role="alert">
+      <AlertTriangle aria-hidden="true" size={16} />
+      {message}
+    </p>
+  );
+}
+
+function FeedSettingsPanel({
+  feed,
+  onClose,
+  onReload,
+  onRefresh,
+  showToast,
+}: {
+  feed: Feed;
+  onClose: () => void;
+  onReload: () => Promise<void>;
+  onRefresh: (feedId: number) => Promise<void>;
+  showToast: (message: string) => void;
+}) {
+  const [details, setDetails] = useState(feed);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<"pause" | "refresh" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadDetails = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      setDetails(await api.feed(feed.id));
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setLoading(false);
+    }
+  }, [feed.id]);
+
+  useEffect(() => {
+    void loadDetails();
+  }, [loadDetails]);
+
+  const togglePaused = async () => {
+    setBusy("pause");
+    setError(null);
+    try {
+      const updated = await api.updateFeed(details.id, { paused: !details.paused });
+      setDetails(updated);
+      showToast(updated.paused ? `Paused ${updated.title}` : `Resumed ${updated.title}`);
+      await onReload();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const refresh = async () => {
+    setBusy("refresh");
+    setError(null);
+    try {
+      await onRefresh(details.id);
+      setDetails(await api.feed(details.id));
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const status = details.lastError
+    ? "Needs attention"
+    : details.paused
+      ? "Paused"
+      : details.refreshing
+        ? "Refreshing"
+        : "Healthy";
+
+  return (
+    <>
+      <div className="management-dialog-body feed-settings-body">
+        {loading ? (
+          <div className="feed-settings-loading" role="status" aria-label="Loading feed settings">
+            <span className="skeleton-line" />
+            <span className="skeleton-line" />
+            <span className="skeleton-line" />
+          </div>
+        ) : (
+          <>
+            <div className="feed-settings-summary">
+              <span className={`feed-settings-status${details.lastError ? " has-error" : ""}`}>
+                {details.lastError ? (
+                  <AlertTriangle aria-hidden="true" size={15} />
+                ) : (
+                  <CheckCircle2 aria-hidden="true" size={15} />
+                )}
+                {status}
+              </span>
+              <span>
+                <strong>{details.totalCount}</strong> articles
+              </span>
+              <span>
+                <strong>{details.unreadCount}</strong> unread
+              </span>
+            </div>
+
+            <dl className="feed-settings-list">
+              <div>
+                <dt>Website</dt>
+                <dd>
+                  {details.siteUrl ? (
+                    <a href={details.siteUrl} target="_blank" rel="noreferrer">
+                      {details.siteUrl}
+                      <ExternalLink aria-hidden="true" size={14} />
+                    </a>
+                  ) : (
+                    <span className="muted">Not provided</span>
+                  )}
+                </dd>
+              </div>
+              <div>
+                <dt>Feed URL</dt>
+                <dd>
+                  <a href={details.feedUrl} target="_blank" rel="noreferrer">
+                    {details.feedUrl}
+                    <ExternalLink aria-hidden="true" size={14} />
+                  </a>
+                </dd>
+              </div>
+              <div>
+                <dt>Followed</dt>
+                <dd>{formatDate(details.createdAt)}</dd>
+              </div>
+              <div>
+                <dt>Account refresh interval</dt>
+                <dd>Every {details.pollIntervalMinutes} minutes</dd>
+              </div>
+              <div>
+                <dt>Last refresh attempt</dt>
+                <dd>{formatDate(details.lastAttemptAt)}</dd>
+              </div>
+              <div>
+                <dt>Last successful refresh</dt>
+                <dd>{formatDate(details.lastSuccessAt)}</dd>
+              </div>
+              <div>
+                <dt>Next scheduled refresh</dt>
+                <dd>{details.paused ? "Paused" : formatDate(details.nextPollAt)}</dd>
+              </div>
+              <div>
+                <dt>Last HTTP response</dt>
+                <dd>{details.lastHttpStatus ?? "No response recorded"}</dd>
+              </div>
+            </dl>
+
+            {details.lastError ? <DialogError message={details.lastError} /> : null}
+          </>
+        )}
+        {error ? <DialogError message={error} /> : null}
+      </div>
+      <footer className="management-dialog-footer">
+        <div>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={busy !== null || loading || details.paused}
+            onClick={() => void refresh()}
+          >
+            {busy === "refresh" ? (
+              <LoaderCircle className="spin" aria-hidden="true" size={15} />
+            ) : (
+              <RefreshCw aria-hidden="true" size={15} />
+            )}
+            Refresh feed
+          </button>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={busy !== null || loading}
+            onClick={() => void togglePaused()}
+          >
+            {busy === "pause" ? (
+              <LoaderCircle className="spin" aria-hidden="true" size={15} />
+            ) : details.paused ? (
+              <Play aria-hidden="true" size={15} />
+            ) : (
+              <Pause aria-hidden="true" size={15} />
+            )}
+            {details.paused ? "Resume feed" : "Pause feed"}
+          </button>
+        </div>
+        <button className="primary-button" type="button" onClick={onClose}>
+          Close
+        </button>
+      </footer>
+    </>
+  );
+}
+
+function RenameFeedForm({
+  feed,
+  onClose,
+  onReload,
+  showToast,
+}: {
+  feed: Feed;
+  onClose: () => void;
+  onReload: () => Promise<void>;
+  showToast: (message: string) => void;
+}) {
+  const [title, setTitle] = useState(feed.title);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await api.updateFeed(feed.id, { title: title.trim() });
+      await onReload();
+      showToast(`Renamed feed to ${updated.title}`);
+      onClose();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form className="management-dialog-form" onSubmit={(event) => void submit(event)}>
+      <div className="management-dialog-body">
+        <label className="field">
+          <span>Feed name</span>
+          <input
+            data-dialog-initial-focus
+            required
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+          />
+          <small>The feed URL and saved articles stay unchanged.</small>
+        </label>
+        {error ? <DialogError message={error} /> : null}
+      </div>
+      <div className="management-dialog-footer">
+        <span />
+        <div>
+          <button className="secondary-button" type="button" disabled={saving} onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary-button" type="submit" disabled={saving || !title.trim()}>
+            {saving ? (
+              <LoaderCircle className="spin" aria-hidden="true" size={15} />
+            ) : (
+              <Check aria-hidden="true" size={15} />
+            )}
+            Save name
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function MoveFeedForm({
+  feed,
+  folders,
+  onClose,
+  onReload,
+  showToast,
+}: {
+  feed: Feed;
+  folders: FolderType[];
+  onClose: () => void;
+  onReload: () => Promise<void>;
+  showToast: (message: string) => void;
+}) {
+  const [folderId, setFolderId] = useState<number | null>(feed.folderId);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await api.updateFeed(feed.id, { folderId });
+      await onReload();
+      const folderName = folders.find((folder) => folder.id === folderId)?.name ?? "Top level";
+      showToast(`Moved ${feed.title} to ${folderName}`);
+      onClose();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form className="management-dialog-form" onSubmit={(event) => void submit(event)}>
+      <div className="management-dialog-body">
+        <label className="field">
+          <span>Folder</span>
+          <select
+            data-dialog-initial-focus
+            value={folderId ?? ""}
+            onChange={(event) =>
+              setFolderId(event.target.value ? Number(event.target.value) : null)
+            }
+          >
+            <option value="">Top level</option>
+            {folders.map((folder) => (
+              <option key={folder.id} value={folder.id}>
+                {folder.name}
+              </option>
+            ))}
+          </select>
+          <small>A feed belongs to one folder. Choosing another folder moves it there.</small>
+        </label>
+        {error ? <DialogError message={error} /> : null}
+      </div>
+      <div className="management-dialog-footer">
+        <span />
+        <div>
+          <button className="secondary-button" type="button" disabled={saving} onClick={onClose}>
+            Cancel
+          </button>
+          <button className="primary-button" type="submit" disabled={saving}>
+            {saving ? (
+              <LoaderCircle className="spin" aria-hidden="true" size={15} />
+            ) : (
+              <Folder aria-hidden="true" size={15} />
+            )}
+            Save folder
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function AddFeedToFolderForm({
+  folder,
+  feeds,
+  onClose,
+  onReload,
+  showToast,
+}: {
+  folder: FolderType;
+  feeds: Feed[];
+  onClose: () => void;
+  onReload: () => Promise<void>;
+  showToast: (message: string) => void;
+}) {
+  const availableFeeds = feeds.filter((feed) => feed.folderId !== folder.id);
+  const [feedId, setFeedId] = useState<number | null>(availableFeeds[0]?.id ?? null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (feedId === null) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const feed = feeds.find((candidate) => candidate.id === feedId);
+      await api.updateFeed(feedId, { folderId: folder.id });
+      await onReload();
+      showToast(`Moved ${feed?.title ?? "feed"} to ${folder.name}`);
+      onClose();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form className="management-dialog-form" onSubmit={(event) => void submit(event)}>
+      <div className="management-dialog-body">
+        {availableFeeds.length === 0 ? (
+          <div className="management-dialog-empty">
+            <CheckCircle2 aria-hidden="true" size={20} />
+            <p>Every feed is already in {folder.name}.</p>
+          </div>
+        ) : (
+          <label className="field">
+            <span>Feed</span>
+            <select
+              data-dialog-initial-focus
+              required
+              value={feedId ?? ""}
+              onChange={(event) => setFeedId(Number(event.target.value))}
+            >
+              {availableFeeds.map((feed) => (
+                <option key={feed.id} value={feed.id}>
+                  {feed.title}
+                </option>
+              ))}
+            </select>
+            <small>If the feed is in another folder, it moves to {folder.name}.</small>
+          </label>
+        )}
+        {error ? <DialogError message={error} /> : null}
+      </div>
+      <div className="management-dialog-footer">
+        <span />
+        <div>
+          <button className="secondary-button" type="button" disabled={saving} onClick={onClose}>
+            {availableFeeds.length === 0 ? "Close" : "Cancel"}
+          </button>
+          {availableFeeds.length > 0 ? (
+            <button className="primary-button" type="submit" disabled={saving || feedId === null}>
+              {saving ? (
+                <LoaderCircle className="spin" aria-hidden="true" size={15} />
+              ) : (
+                <Folder aria-hidden="true" size={15} />
+              )}
+              Add to folder
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </form>
+  );
+}
+
+function UnsubscribeForm({
+  feed,
+  onClose,
+  onUnsubscribe,
+}: {
+  feed: Feed;
+  onClose: () => void;
+  onUnsubscribe: (feed: Feed) => Promise<boolean>;
+}) {
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    if (await onUnsubscribe(feed)) onClose();
+    else setBusy(false);
+  };
+
+  return (
+    <form className="management-dialog-form" onSubmit={(event) => void submit(event)}>
+      <div className="management-dialog-body unsubscribe-copy">
+        <p>
+          This removes the subscription and its stored articles. Rules scoped only to this feed are
+          removed too.
+        </p>
+      </div>
+      <div className="management-dialog-footer">
+        <span />
+        <div>
+          <button className="secondary-button" type="button" disabled={busy} onClick={onClose}>
+            Keep feed
+          </button>
+          <button className="danger-button" type="submit" disabled={busy}>
+            {busy ? (
+              <LoaderCircle className="spin" aria-hidden="true" size={15} />
+            ) : (
+              <Trash2 aria-hidden="true" size={15} />
+            )}
+            Unsubscribe
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
+export function ContextManagementDialog({
+  request,
+  bootstrap,
+  onClose,
+  onReload,
+  onRefresh,
+  onUnsubscribe,
+  showToast,
+}: {
+  request: ManagementRequest;
+  bootstrap: BootstrapData;
+  onClose: () => void;
+  onReload: () => Promise<void>;
+  onRefresh: (feedId: number) => Promise<void>;
+  onUnsubscribe: (feed: Feed) => Promise<boolean>;
+  showToast: (message: string) => void;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(
+    document.activeElement instanceof HTMLElement ? document.activeElement : null,
+  );
+  const closedRef = useRef(false);
+  const feed =
+    "feedId" in request
+      ? bootstrap.feeds.find((candidate) => candidate.id === request.feedId)
+      : undefined;
+  const folder =
+    "folderId" in request
+      ? bootstrap.folders.find((candidate) => candidate.id === request.folderId)
+      : "parentId" in request
+        ? bootstrap.folders.find((candidate) => candidate.id === request.parentId)
+        : undefined;
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    dialog?.showModal();
+    const focusFrame = window.requestAnimationFrame(() => {
+      dialog?.querySelector<HTMLElement>("[data-dialog-initial-focus]")?.focus();
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, []);
+
+  const finishClose = useCallback(() => {
+    if (closedRef.current) return;
+    closedRef.current = true;
+    onClose();
+    window.requestAnimationFrame(() => {
+      const original = returnFocusRef.current;
+      const feedSelector =
+        "feedId" in request ? `[data-management-feed-id="${request.feedId}"]` : null;
+      const folderId =
+        "folderId" in request ? request.folderId : "parentId" in request ? request.parentId : null;
+      const folderSelector = folderId === null ? null : `[data-management-folder-id="${folderId}"]`;
+      const target =
+        (original?.isConnected ? original : null) ??
+        firstFocusable([
+          ...(feedSelector ? [feedSelector] : []),
+          ...(folderSelector ? [folderSelector] : []),
+          ".menu-button",
+          "[data-management-focus-fallback]",
+        ]);
+      target?.focus({ preventScroll: true });
+    });
+  }, [onClose, request]);
+
+  const close = () => {
+    if (dialogRef.current?.open) dialogRef.current.close();
+    else finishClose();
+  };
+  const isRule = request.kind === "create-feed-rule" || request.kind === "create-folder-rule";
+
+  if (
+    ("feedId" in request && !feed) ||
+    (("folderId" in request || "parentId" in request) && !folder)
+  ) {
+    return null;
+  }
+
+  const title =
+    request.kind === "feed-settings"
+      ? (feed?.title ?? "Feed settings")
+      : request.kind === "rename-feed"
+        ? "Rename feed"
+        : request.kind === "move-feed"
+          ? "Add to folder"
+          : request.kind === "unsubscribe-feed"
+            ? "Unsubscribe from feed?"
+            : request.kind === "folder-settings"
+              ? "Folder settings"
+              : request.kind === "add-feed-to-folder"
+                ? "Add feed to folder"
+                : request.kind === "add-folder"
+                  ? "Add new folder"
+                  : "Create rule";
+  const detail =
+    request.kind === "feed-settings"
+      ? "Feed settings and refresh status"
+      : (feed?.title ?? folder?.name ?? "Feed management");
+  const icon =
+    request.kind === "folder-settings" ||
+    request.kind === "add-feed-to-folder" ||
+    request.kind === "add-folder" ? (
+      <Folder size={16} />
+    ) : request.kind === "unsubscribe-feed" ? (
+      <Trash2 size={16} />
+    ) : (
+      <Rss size={16} />
+    );
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className={`management-dialog${isRule ? " is-wide" : ""}`}
+      aria-labelledby={isRule ? undefined : "management-dialog-title"}
+      aria-label={isRule ? "Create rule" : undefined}
+      onClose={finishClose}
+    >
+      {isRule ? (
+        <RuleForm
+          bootstrap={bootstrap}
+          preset={
+            request.kind === "create-feed-rule"
+              ? { feedId: request.feedId }
+              : { folderId: request.folderId }
+          }
+          motionState="open"
+          onCancel={close}
+          onSaved={async (rule) => {
+            showToast(`Added ${rule.name}`);
+            await onReload();
+            close();
+          }}
+          showToast={showToast}
+        />
+      ) : (
+        <>
+          <DialogHeading icon={icon} title={title} detail={detail} onClose={close} />
+          {request.kind === "feed-settings" && feed ? (
+            <FeedSettingsPanel
+              feed={feed}
+              onClose={close}
+              onReload={onReload}
+              onRefresh={onRefresh}
+              showToast={showToast}
+            />
+          ) : request.kind === "rename-feed" && feed ? (
+            <RenameFeedForm feed={feed} onClose={close} onReload={onReload} showToast={showToast} />
+          ) : request.kind === "move-feed" && feed ? (
+            <MoveFeedForm
+              feed={feed}
+              folders={bootstrap.folders}
+              onClose={close}
+              onReload={onReload}
+              showToast={showToast}
+            />
+          ) : request.kind === "unsubscribe-feed" && feed ? (
+            <UnsubscribeForm feed={feed} onClose={close} onUnsubscribe={onUnsubscribe} />
+          ) : request.kind === "folder-settings" && folder ? (
+            <div className="management-dialog-body">
+              <FolderForm
+                folders={bootstrap.folders}
+                initial={folder}
+                onCancel={close}
+                onSaved={async (savedFolder) => {
+                  showToast(`Saved ${savedFolder.name}`);
+                  await onReload();
+                  close();
+                }}
+                showToast={showToast}
+              />
+            </div>
+          ) : request.kind === "add-feed-to-folder" && folder ? (
+            <AddFeedToFolderForm
+              folder={folder}
+              feeds={bootstrap.feeds}
+              onClose={close}
+              onReload={onReload}
+              showToast={showToast}
+            />
+          ) : request.kind === "add-folder" && folder ? (
+            <div className="management-dialog-body">
+              <FolderForm
+                folders={bootstrap.folders}
+                defaultParentId={folder.id}
+                onCancel={close}
+                onSaved={async (savedFolder) => {
+                  showToast(`Created ${savedFolder.name}`);
+                  await onReload();
+                  close();
+                }}
+                showToast={showToast}
+              />
+            </div>
+          ) : null}
+        </>
+      )}
+    </dialog>
+  );
+}

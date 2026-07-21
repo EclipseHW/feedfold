@@ -31,6 +31,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -45,6 +46,13 @@ import type {
   SessionUser,
 } from "../shared/types";
 import { MARK_READ_AGE_DAYS } from "../shared/types";
+import {
+  FeedActionMenuItems,
+  type FeedManagementAction,
+  FolderActionMenuItems,
+  type FolderManagementAction,
+  handleActionMenuKeyDown,
+} from "./feed-management";
 import { useMotionPresence } from "./motion";
 
 export type AppView = "reader" | "feeds" | "rules" | "settings";
@@ -114,9 +122,27 @@ interface SidebarProps {
   onSelectState: (state: ArticleState) => void;
   onSelectScope: (feedId: number | null, folderId: number | null) => void;
   onNavigate: (view: AppView) => void;
+  onFeedAction: (feed: Feed, action: FeedManagementAction) => void;
+  onFolderAction: (folder: FolderType, action: FolderManagementAction) => void;
   onRefresh: () => void;
   onLogout: () => Promise<void>;
 }
+
+type SidebarContextMenuState =
+  | {
+      kind: "feed";
+      feed: Feed;
+      trigger: HTMLButtonElement;
+      left: number;
+      top: number;
+    }
+  | {
+      kind: "folder";
+      folder: FolderType;
+      trigger: HTMLButtonElement;
+      left: number;
+      top: number;
+    };
 
 export function Sidebar({
   bootstrap,
@@ -130,9 +156,12 @@ export function Sidebar({
   onSelectState,
   onSelectScope,
   onNavigate,
+  onFeedAction,
+  onFolderAction,
   onRefresh,
   onLogout,
 }: SidebarProps) {
+  const [contextMenu, setContextMenu] = useState<SidebarContextMenuState | null>(null);
   const rootFolders = bootstrap.folders.filter((folder) => folder.parentId === null);
   const uncategorized = bootstrap.feeds.filter((feed) => feed.folderId === null);
   const hasFeedErrors = bootstrap.feeds.some((feed) => feed.lastError);
@@ -142,6 +171,27 @@ export function Sidebar({
     bootstrap.feeds,
     selectedFeedId,
     selectedFolderId,
+  );
+
+  const closeContextMenu = useCallback(() => {
+    contextMenu?.trigger.focus();
+    setContextMenu(null);
+  }, [contextMenu]);
+
+  const openFeedMenu = useCallback(
+    (feed: Feed, trigger: HTMLButtonElement, left: number, top: number) => {
+      trigger.focus();
+      setContextMenu({ kind: "feed", feed, trigger, left, top });
+    },
+    [],
+  );
+
+  const openFolderMenu = useCallback(
+    (folder: FolderType, trigger: HTMLButtonElement, left: number, top: number) => {
+      trigger.focus();
+      setContextMenu({ kind: "folder", folder, trigger, left, top });
+    },
+    [],
   );
 
   return (
@@ -266,6 +316,8 @@ export function Sidebar({
                   selectedFolderPathIds={selectedFolderPathIds}
                   currentView={currentView}
                   onSelectScope={onSelectScope}
+                  onOpenFeedMenu={openFeedMenu}
+                  onOpenFolderMenu={openFolderMenu}
                 />
               ))}
               {uncategorized.map((feed) => (
@@ -274,6 +326,7 @@ export function Sidebar({
                   feed={feed}
                   selected={currentView === "reader" && selectedFeedId === feed.id}
                   onSelect={() => onSelectScope(feed.id, null)}
+                  onOpenMenu={openFeedMenu}
                 />
               ))}
             </ul>
@@ -283,6 +336,7 @@ export function Sidebar({
 
       <div className="sidebar-footer">
         <button
+          data-management-focus-fallback
           className="nav-item"
           aria-current={currentView === "feeds" ? "page" : undefined}
           type="button"
@@ -332,7 +386,92 @@ export function Sidebar({
           </button>
         </div>
       </div>
+      {contextMenu ? (
+        <SidebarContextMenu
+          state={contextMenu}
+          onClose={closeContextMenu}
+          onFeedAction={(feed, action) => {
+            closeContextMenu();
+            onFeedAction(feed, action);
+          }}
+          onFolderAction={(folder, action) => {
+            closeContextMenu();
+            onFolderAction(folder, action);
+          }}
+        />
+      ) : null}
     </aside>
+  );
+}
+
+function SidebarContextMenu({
+  state,
+  onClose,
+  onFeedAction,
+  onFolderAction,
+}: {
+  state: SidebarContextMenuState;
+  onClose: () => void;
+  onFeedAction: (feed: Feed, action: FeedManagementAction) => void;
+  onFolderAction: (folder: FolderType, action: FolderManagementAction) => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState({ left: state.left, top: state.top });
+
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const bounds = menu.getBoundingClientRect();
+    setPosition({
+      left: Math.max(8, Math.min(state.left, window.innerWidth - bounds.width - 8)),
+      top: Math.max(8, Math.min(state.top, window.innerHeight - bounds.height - 8)),
+    });
+  }, [state]);
+
+  useEffect(() => {
+    const focusFrame = window.requestAnimationFrame(() => {
+      menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    });
+    const dismissPointer = (event: PointerEvent) => {
+      if (!menuRef.current?.contains(event.target as Node)) onClose();
+    };
+    const dismissFocus = (event: FocusEvent) => {
+      const target = event.target as Node;
+      if (!menuRef.current?.contains(target) && target !== state.trigger) onClose();
+    };
+    document.addEventListener("pointerdown", dismissPointer, true);
+    document.addEventListener("focusin", dismissFocus);
+    window.addEventListener("resize", onClose);
+    window.addEventListener("scroll", onClose, true);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("pointerdown", dismissPointer, true);
+      document.removeEventListener("focusin", dismissFocus);
+      window.removeEventListener("resize", onClose);
+      window.removeEventListener("scroll", onClose, true);
+    };
+  }, [onClose, state.trigger]);
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="sidebar-context-menu context-action-menu"
+      role="menu"
+      aria-label={`${state.kind === "feed" ? state.feed.title : state.folder.name} actions`}
+      style={position}
+      onContextMenu={(event) => event.preventDefault()}
+      onKeyDown={(event) => {
+        event.stopPropagation();
+        handleActionMenuKeyDown(event, onClose);
+      }}
+    >
+      {state.kind === "feed" ? (
+        <FeedActionMenuItems onAction={(action) => onFeedAction(state.feed, action)} />
+      ) : (
+        <FolderActionMenuItems onAction={(action) => onFolderAction(state.folder, action)} />
+      )}
+    </div>,
+    document.body,
   );
 }
 
@@ -345,6 +484,8 @@ function SidebarFolder({
   selectedFolderPathIds,
   currentView,
   onSelectScope,
+  onOpenFeedMenu,
+  onOpenFolderMenu,
 }: {
   folder: FolderType;
   folders: FolderType[];
@@ -354,7 +495,15 @@ function SidebarFolder({
   selectedFolderPathIds: Set<number>;
   currentView: AppView;
   onSelectScope: (feedId: number | null, folderId: number | null) => void;
+  onOpenFeedMenu: (feed: Feed, trigger: HTMLButtonElement, left: number, top: number) => void;
+  onOpenFolderMenu: (
+    folder: FolderType,
+    trigger: HTMLButtonElement,
+    left: number,
+    top: number,
+  ) => void;
 }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const revealsSelection = selectedFolderPathIds.has(folder.id);
   const [expanded, setExpanded] = useState(revealsSelection);
   const childFolders = folders.filter((candidate) => candidate.parentId === folder.id);
@@ -389,6 +538,8 @@ function SidebarFolder({
           )}
         </button>
         <button
+          ref={triggerRef}
+          data-management-folder-id={folder.id}
           className="nav-item tree-nav-item"
           aria-current={
             currentView === "reader" && selectedFolderId === folder.id && selectedFeedId === null
@@ -397,6 +548,18 @@ function SidebarFolder({
           }
           type="button"
           onClick={() => onSelectScope(null, folder.id)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onOpenFolderMenu(folder, event.currentTarget, event.clientX, event.clientY);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+            event.preventDefault();
+            const bounds = event.currentTarget.getBoundingClientRect();
+            onOpenFolderMenu(folder, event.currentTarget, bounds.left + 24, bounds.bottom - 4);
+          }}
+          aria-haspopup="menu"
         >
           <Folder aria-hidden="true" size={15} />
           <span>{folder.name}</span>
@@ -416,6 +579,8 @@ function SidebarFolder({
               selectedFolderPathIds={selectedFolderPathIds}
               currentView={currentView}
               onSelectScope={onSelectScope}
+              onOpenFeedMenu={onOpenFeedMenu}
+              onOpenFolderMenu={onOpenFolderMenu}
             />
           ))}
           {childFeeds.map((feed) => (
@@ -424,6 +589,7 @@ function SidebarFolder({
               feed={feed}
               selected={currentView === "reader" && selectedFeedId === feed.id}
               onSelect={() => onSelectScope(feed.id, null)}
+              onOpenMenu={onOpenFeedMenu}
             />
           ))}
         </ul>
@@ -436,18 +602,33 @@ function SidebarFeed({
   feed,
   selected,
   onSelect,
+  onOpenMenu,
 }: {
   feed: Feed;
   selected: boolean;
   onSelect: () => void;
+  onOpenMenu: (feed: Feed, trigger: HTMLButtonElement, left: number, top: number) => void;
 }) {
   return (
     <li>
       <button
+        data-management-feed-id={feed.id}
         className="nav-item feed-nav-item"
         aria-current={selected ? "page" : undefined}
+        aria-haspopup="menu"
         type="button"
         onClick={onSelect}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onOpenMenu(feed, event.currentTarget, event.clientX, event.clientY);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+          event.preventDefault();
+          const bounds = event.currentTarget.getBoundingClientRect();
+          onOpenMenu(feed, event.currentTarget, bounds.left + 24, bounds.bottom - 4);
+        }}
       >
         <span className={`feed-dot${feed.lastError ? " has-error" : ""}`} aria-hidden="true" />
         <span className="truncate">{feed.title}</span>

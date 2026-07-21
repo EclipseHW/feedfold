@@ -255,6 +255,12 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     feeds: services.database.listFeeds(userId(request)),
   }));
 
+  app.get("/api/feeds/:id", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const feed = services.database.getFeed(userId(request), id);
+    return feed ?? missing(reply, "Feed");
+  });
+
   app.post("/api/feeds/discover", async (request, reply) => {
     const { url } = z.object({ url: httpUrl }).parse(request.body);
     try {
