@@ -17,6 +17,7 @@ It deliberately has no social, discovery, recommendation, or public account-mana
 - Manual refresh and server-side background polling.
 - Per-feed last attempt, last success, HTTP status, and error details.
 - Persistent article font sizing, visible keyboard focus, and reduced-motion support.
+- Installable Progressive Web App with standalone windows, home-screen shortcuts, and an offline app shell.
 - In-app account registration and password login, with separate subscriptions, rules, settings, and reading state per account.
 
 ## Deploy with Docker Compose
@@ -81,6 +82,8 @@ tailscale serve status
 ```
 
 HTTPS is important here: browsers allow copy-to-clipboard from a secure context. Plain HTTP on a remote tailnet address may load the reader but block the copy shortcut. Tailscale Serve terminates HTTPS with an automatically provisioned certificate and persists a `--bg` configuration across restarts. See the official [Tailscale Serve command documentation](https://tailscale.com/docs/reference/tailscale-cli/serve).
+
+Once the HTTPS page has loaded, use the browser's **Install app** or **Add to Home Screen** action. Echovale then launches in a standalone window and provides shortcuts to unread and starred articles. The app shell can open without a network connection and explains that the private reading queue is unavailable; feed and account data remain server-backed and are never stored in a shared service-worker response cache.
 
 Disable the proxy with:
 
