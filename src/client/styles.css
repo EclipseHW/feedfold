@@ -4730,20 +4730,69 @@ kbd {
     min-width: 44px;
     height: 44px;
   }
+  .article-list ol {
+    gap: 4px;
+    padding: 8px;
+  }
+  .article-list-item {
+    min-height: 0;
+  }
   .article-card-content {
-    grid-template-columns: 92px minmax(0, 1fr);
-    gap: 9px;
+    grid-template-columns: 76px minmax(0, 1fr);
+    gap: 8px;
     padding: 8px;
   }
   .article-card-image {
-    width: 92px;
-    height: 80px;
+    width: 76px;
+    height: 76px;
   }
   .article-list-copy {
-    min-height: 80px;
+    min-height: 76px;
+    gap: 2px;
+    padding: 0;
+  }
+  .article-list-title {
+    padding-right: 72px;
+    font-size: 16px;
+    line-height: 1.25;
+  }
+  .article-list-meta {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    line-height: 1.3;
+  }
+  .article-list-meta .feed-name {
+    min-width: 0;
+    flex: 1;
+  }
+  .article-list-meta .article-media-badge {
+    flex: 0 0 auto;
+    margin-top: 0;
+  }
+  .article-list-meta time {
+    position: static;
+    flex: 0 0 auto;
+    margin-left: auto;
+    white-space: nowrap;
   }
   .article-list-summary-text {
+    font-size: 12px;
+    line-height: 1.35;
     -webkit-line-clamp: 1;
+  }
+  .article-card-state-actions {
+    top: 8px;
+    right: 8px;
+    bottom: auto;
+    opacity: 1;
+  }
+  .list-read-button,
+  .list-star-button {
+    width: 32px;
+    height: 32px;
   }
   .article-list-summary > span:last-child {
     display: none;
