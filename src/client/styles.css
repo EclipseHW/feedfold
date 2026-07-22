@@ -3885,24 +3885,12 @@ kbd {
   color: var(--danger);
 }
 
-.ai-prompt-form {
+.ai-prompt-dialog-body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px 16px;
-  padding: 16px;
-  border-top: 1px solid var(--border);
+  gap: 18px;
 }
 
-.ai-settings-error + .ai-prompt-form {
-  border-top: 0;
-}
-
-.ai-prompt-intro,
-.ai-prompt-actions {
-  grid-column: 1 / -1;
-}
-
-.ai-prompt-intro strong,
 .ai-prompt-field > span {
   display: block;
   color: var(--text);
@@ -3910,7 +3898,6 @@ kbd {
   font-weight: 650;
 }
 
-.ai-prompt-intro p,
 .ai-prompt-field p {
   margin: 2px 0 0;
   color: var(--muted);
@@ -3919,7 +3906,7 @@ kbd {
 
 .ai-prompt-field textarea {
   width: 100%;
-  min-height: 168px;
+  min-height: 320px;
   margin-top: 8px;
   padding: 10px 11px;
   resize: vertical;
@@ -3930,12 +3917,6 @@ kbd {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 12px;
   line-height: 1.5;
-}
-
-.ai-prompt-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 7px;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -4218,6 +4199,11 @@ kbd {
 .management-dialog-error svg {
   flex: 0 0 auto;
   margin-top: 1px;
+}
+
+.ai-prompt-dialog-body > .management-dialog-error {
+  grid-column: 1 / -1;
+  margin-top: 0;
 }
 
 .management-dialog-empty {
@@ -4643,12 +4629,8 @@ kbd {
     flex-direction: column;
     gap: 12px;
   }
-  .ai-prompt-form {
+  .ai-prompt-dialog-body {
     grid-template-columns: 1fr;
-  }
-  .ai-prompt-intro,
-  .ai-prompt-actions {
-    grid-column: auto;
   }
   .ai-key-form {
     width: 100%;

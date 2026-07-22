@@ -1872,6 +1872,8 @@ function AiSettingsSection({
   const [promptError, setPromptError] = useState<string | null>(null);
   const modelInputRef = useRef<HTMLInputElement>(null);
   const keyInputRef = useRef<HTMLInputElement>(null);
+  const promptDialogRef = useRef<HTMLDialogElement>(null);
+  const summaryPromptRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
     const feature = aiSettings.features.articleSummary;
@@ -1987,6 +1989,24 @@ function AiSettingsSection({
     }
   };
 
+  const openPromptDialog = () => {
+    setSummaryPrompt(settings.summaryPrompt);
+    setTranslationPrompt(settings.translationPrompt);
+    setPromptError(null);
+    promptDialogRef.current?.showModal();
+    window.requestAnimationFrame(() => summaryPromptRef.current?.focus());
+  };
+
+  const closePromptDialog = () => {
+    if (!savingPrompts) promptDialogRef.current?.close();
+  };
+
+  const resetPromptDraft = () => {
+    setSummaryPrompt(settings.summaryPrompt);
+    setTranslationPrompt(settings.translationPrompt);
+    setPromptError(null);
+  };
+
   const savePrompts = async (event: FormEvent) => {
     event.preventDefault();
     const nextSummaryPrompt = summaryPrompt.trim();
@@ -2003,6 +2023,7 @@ function AiSettingsSection({
         }),
       );
       showToast("AI prompts saved");
+      promptDialogRef.current?.close();
     } catch (caught) {
       setPromptError(errorMessage(caught));
     } finally {
@@ -2176,78 +2197,142 @@ function AiSettingsSection({
         </div>
       ) : null}
 
-      <form className="ai-prompt-form" onSubmit={(event) => void savePrompts(event)}>
-        <div className="ai-prompt-intro">
+      <div className="setting-row">
+        <div>
           <strong>Prompts</strong>
-          <p>Account-specific instructions used the next time content is generated.</p>
+          <p>Customize how summaries and translations are generated.</p>
         </div>
-        <label className="ai-prompt-field" htmlFor="ai-summary-prompt">
-          <span>Summary prompt</span>
-          <p id="ai-summary-prompt-help">Controls the structure, detail, and tone of summaries.</p>
-          <textarea
-            id="ai-summary-prompt"
-            value={summaryPrompt}
-            rows={7}
-            maxLength={AI_PROMPT_MAX_LENGTH}
-            required
-            disabled={busy}
-            aria-describedby="ai-summary-prompt-help"
-            onChange={(event) => {
-              setSummaryPrompt(event.target.value);
-              setPromptError(null);
-            }}
-          />
-        </label>
-        <label className="ai-prompt-field" htmlFor="ai-translation-prompt">
-          <span>Translation prompt</span>
-          <p id="ai-translation-prompt-help">
-            Keep the JSON and data-translation-id requirements so translated articles can be
-            rebuilt.
-          </p>
-          <textarea
-            id="ai-translation-prompt"
-            value={translationPrompt}
-            rows={9}
-            maxLength={AI_PROMPT_MAX_LENGTH}
-            required
-            disabled={busy}
-            aria-describedby="ai-translation-prompt-help"
-            onChange={(event) => {
-              setTranslationPrompt(event.target.value);
-              setPromptError(null);
-            }}
-          />
-        </label>
-        <div className="ai-prompt-actions">
-          <button
-            className="secondary-button"
-            type="button"
-            disabled={busy || defaultPromptsSelected}
-            onClick={() => {
-              setSummaryPrompt(DEFAULT_ARTICLE_SUMMARY_PROMPT);
-              setTranslationPrompt(DEFAULT_ARTICLE_TRANSLATION_PROMPT);
-              setPromptError(null);
-            }}
-          >
-            Restore defaults
-          </button>
-          <button
-            className="primary-button"
-            type="submit"
-            disabled={busy || !summaryPrompt.trim() || !translationPrompt.trim() || !promptsChanged}
-          >
-            {savingPrompts ? <LoaderCircle className="spin" aria-hidden="true" size={15} /> : null}
-            Save prompts
-          </button>
-        </div>
-      </form>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={busy}
+          onClick={openPromptDialog}
+        >
+          <Edit3 aria-hidden="true" size={15} />
+          Edit prompts
+        </button>
+      </div>
 
-      {promptError ? (
-        <div className="ai-settings-error" role="alert">
-          <AlertTriangle aria-hidden="true" size={16} />
-          <span>{promptError}</span>
-        </div>
-      ) : null}
+      <dialog
+        ref={promptDialogRef}
+        className="management-dialog is-wide ai-prompt-dialog"
+        aria-labelledby="ai-prompt-dialog-title"
+        onClose={resetPromptDraft}
+        onCancel={(event) => {
+          if (savingPrompts) event.preventDefault();
+        }}
+      >
+        <form className="ai-prompt-dialog-form" onSubmit={(event) => void savePrompts(event)}>
+          <header className="management-dialog-heading">
+            <span className="dialog-icon" aria-hidden="true">
+              <Edit3 size={16} />
+            </span>
+            <div>
+              <h2 id="ai-prompt-dialog-title">Edit AI prompts</h2>
+              <p>Account-specific instructions used the next time content is generated.</p>
+            </div>
+            <button
+              className="icon-button"
+              type="button"
+              disabled={savingPrompts}
+              onClick={closePromptDialog}
+              aria-label="Close prompt editor"
+            >
+              <X aria-hidden="true" size={18} />
+            </button>
+          </header>
+
+          <div className="management-dialog-body ai-prompt-dialog-body">
+            <label className="ai-prompt-field" htmlFor="ai-summary-prompt">
+              <span>Summary prompt</span>
+              <p id="ai-summary-prompt-help">
+                Controls the structure, detail, and tone of summaries.
+              </p>
+              <textarea
+                ref={summaryPromptRef}
+                id="ai-summary-prompt"
+                value={summaryPrompt}
+                rows={12}
+                maxLength={AI_PROMPT_MAX_LENGTH}
+                required
+                disabled={savingPrompts}
+                aria-describedby="ai-summary-prompt-help"
+                onChange={(event) => {
+                  setSummaryPrompt(event.target.value);
+                  setPromptError(null);
+                }}
+              />
+            </label>
+            <label className="ai-prompt-field" htmlFor="ai-translation-prompt">
+              <span>Translation prompt</span>
+              <p id="ai-translation-prompt-help">
+                Keep the JSON and data-translation-id requirements so translated articles can be
+                rebuilt.
+              </p>
+              <textarea
+                id="ai-translation-prompt"
+                value={translationPrompt}
+                rows={12}
+                maxLength={AI_PROMPT_MAX_LENGTH}
+                required
+                disabled={savingPrompts}
+                aria-describedby="ai-translation-prompt-help"
+                onChange={(event) => {
+                  setTranslationPrompt(event.target.value);
+                  setPromptError(null);
+                }}
+              />
+            </label>
+
+            {promptError ? (
+              <div className="management-dialog-error" role="alert">
+                <AlertTriangle aria-hidden="true" size={16} />
+                <span>{promptError}</span>
+              </div>
+            ) : null}
+          </div>
+
+          <footer className="management-dialog-footer">
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={savingPrompts || defaultPromptsSelected}
+              onClick={() => {
+                setSummaryPrompt(DEFAULT_ARTICLE_SUMMARY_PROMPT);
+                setTranslationPrompt(DEFAULT_ARTICLE_TRANSLATION_PROMPT);
+                setPromptError(null);
+              }}
+            >
+              Restore defaults
+            </button>
+            <div>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={savingPrompts}
+                onClick={closePromptDialog}
+              >
+                Cancel
+              </button>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={
+                  savingPrompts ||
+                  !summaryPrompt.trim() ||
+                  !translationPrompt.trim() ||
+                  !promptsChanged
+                }
+              >
+                {savingPrompts ? (
+                  <LoaderCircle className="spin" aria-hidden="true" size={15} />
+                ) : null}
+                Save prompts
+              </button>
+            </div>
+          </footer>
+        </form>
+      </dialog>
     </section>
   );
 }
