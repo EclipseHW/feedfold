@@ -1938,8 +1938,17 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
             onTheme={setTheme}
             onFontSize={setArticleFontSize}
             onSettings={(settings) => {
-              if (bootstrap.settings.translationLanguage !== settings.translationLanguage) {
+              if (
+                bootstrap.settings.translationLanguage !== settings.translationLanguage ||
+                bootstrap.settings.translationPrompt !== settings.translationPrompt
+              ) {
                 setArticleTranslationStates(new Map());
+              }
+              if (bootstrap.settings.summaryPrompt !== settings.summaryPrompt) {
+                setArticleSummaryStates(new Map());
+                setArticles((current) =>
+                  current.map((article) => ({ ...article, aiSummary: null })),
+                );
               }
               setBootstrap((current) => (current ? { ...current, settings } : current));
             }}

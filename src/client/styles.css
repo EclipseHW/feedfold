@@ -3885,6 +3885,59 @@ kbd {
   color: var(--danger);
 }
 
+.ai-prompt-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.ai-settings-error + .ai-prompt-form {
+  border-top: 0;
+}
+
+.ai-prompt-intro,
+.ai-prompt-actions {
+  grid-column: 1 / -1;
+}
+
+.ai-prompt-intro strong,
+.ai-prompt-field > span {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.ai-prompt-intro p,
+.ai-prompt-field p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.ai-prompt-field textarea {
+  width: 100%;
+  min-height: 168px;
+  margin-top: 8px;
+  padding: 10px 11px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ai-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
 @media (hover: hover) and (pointer: fine) {
   .ai-key-remove:hover:not(:disabled) {
     color: var(--danger);
@@ -4589,6 +4642,13 @@ kbd {
     align-items: flex-start;
     flex-direction: column;
     gap: 12px;
+  }
+  .ai-prompt-form {
+    grid-template-columns: 1fr;
+  }
+  .ai-prompt-intro,
+  .ai-prompt-actions {
+    grid-column: auto;
   }
   .ai-key-form {
     width: 100%;

@@ -9,6 +9,10 @@ import { AuthService } from "../../src/server/auth.js";
 import { AppDatabase } from "../../src/server/db.js";
 import { ExtractionQueue } from "../../src/server/extraction.js";
 import { FeedRefreshService } from "../../src/server/refresh.js";
+import {
+  DEFAULT_ARTICLE_SUMMARY_PROMPT,
+  DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+} from "../../src/shared/ai-prompts.js";
 import type { Article, BootstrapData, ImportResult, Rule } from "../../src/shared/types.js";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -333,11 +337,18 @@ describe("live API, OPML, and filtering rules", () => {
       method: "PATCH",
       url: "/api/settings",
       headers: { cookie: readerCookie },
-      payload: { markReadOnScroll: false, translationLanguage: "Polish" },
+      payload: {
+        markReadOnScroll: false,
+        translationLanguage: "Polish",
+        summaryPrompt: "Summarize with one concise paragraph.",
+        translationPrompt: "Translate every marked fragment and return the required JSON object.",
+      },
     });
     expect(savedSettings.json()).toMatchObject({
       markReadOnScroll: false,
       translationLanguage: "Polish",
+      summaryPrompt: "Summarize with one concise paragraph.",
+      translationPrompt: "Translate every marked fragment and return the required JSON object.",
     });
     expect(
       (
@@ -352,12 +363,27 @@ describe("live API, OPML, and filtering rules", () => {
     expect(
       (
         await app.inject({
+          method: "PATCH",
+          url: "/api/settings",
+          headers: { cookie: readerCookie },
+          payload: { summaryPrompt: "   " },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
           method: "GET",
           url: "/api/settings",
           headers: { cookie: partnerCookie },
         })
       ).json(),
-    ).toMatchObject({ markReadOnScroll: true, translationLanguage: "English" });
+    ).toMatchObject({
+      markReadOnScroll: true,
+      translationLanguage: "English",
+      summaryPrompt: DEFAULT_ARTICLE_SUMMARY_PROMPT,
+      translationPrompt: DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+    });
 
     const rejectedLegacyRule = await app.inject({
       method: "POST",

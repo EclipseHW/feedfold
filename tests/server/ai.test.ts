@@ -260,6 +260,50 @@ describe("AI article summaries", () => {
     expect(requests).toHaveLength(2);
   });
 
+  it("uses account prompts and regenerates cached output after either prompt changes", async () => {
+    const { database, readerId } = databaseWithUsers();
+    const { articleId } = addArticle(database, readerId);
+    const cipher = CredentialCipher.fromHex(CREDENTIAL_KEY);
+    if (!cipher) throw new Error("Credential cipher was not created");
+    const { providers, requests } = await liveOpenAiProvider();
+    const service = new AiService(database, { credentialCipher: cipher, providers });
+    service.setApiKey(readerId, "openai", "live-provider-test-key");
+    service.setFeatureSetting(readerId, "article_summary", "openai", "shared-reader-model");
+    database.updateSettings(readerId, {
+      translationLanguage: "Polish",
+      summaryPrompt: "Write one short summary paragraph.",
+      translationPrompt: "Translate every marked fragment and return one JSON object.",
+    });
+
+    await service.summarizeArticle(readerId, articleId);
+    await service.translateArticle(readerId, articleId, "feed");
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toMatchObject({ instructions: "Write one short summary paragraph." });
+    expect(requests[1]).toMatchObject({
+      instructions: "Translate every marked fragment and return one JSON object.",
+    });
+
+    await service.summarizeArticle(readerId, articleId);
+    await service.translateArticle(readerId, articleId, "feed");
+    expect(requests).toHaveLength(2);
+
+    database.updateSettings(readerId, {
+      summaryPrompt: "Write a detailed summary with key points.",
+      translationPrompt: "Translate all marked fragments and return only their JSON object.",
+    });
+    expect(database.getArticle(readerId, articleId)?.aiSummary).toBeNull();
+
+    await service.summarizeArticle(readerId, articleId);
+    await service.translateArticle(readerId, articleId, "feed");
+    expect(requests).toHaveLength(4);
+    expect(requests[2]).toMatchObject({
+      instructions: "Write a detailed summary with key points.",
+    });
+    expect(requests[3]).toMatchObject({
+      instructions: "Translate all marked fragments and return only their JSON object.",
+    });
+  });
+
   it("keeps a summary for metadata-only refreshes and invalidates it when source text changes", () => {
     const { database, readerId, partnerId } = databaseWithUsers();
     const { feedId, articleId } = addArticle(database, readerId);

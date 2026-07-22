@@ -172,6 +172,8 @@ export interface AppSettings {
   singleKeyShortcuts: boolean;
   markReadOnScroll: boolean;
   translationLanguage: string;
+  summaryPrompt: string;
+  translationPrompt: string;
 }
 
 export interface BootstrapData {

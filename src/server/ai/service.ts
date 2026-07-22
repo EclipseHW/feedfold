@@ -1,3 +1,8 @@
+import { createHash } from "node:crypto";
+import {
+  DEFAULT_ARTICLE_SUMMARY_PROMPT,
+  DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+} from "../../shared/ai-prompts.js";
 import type {
   AiArticleSourceKind,
   AiFeature,
@@ -11,13 +16,11 @@ import type { AppDatabase, StoredArticleAiSummary, StoredArticleAiTranslation } 
 import {
   ARTICLE_SUMMARY_MAX_OUTPUT_TOKENS,
   ARTICLE_SUMMARY_PROMPT_VERSION,
-  ARTICLE_SUMMARY_SYSTEM_PROMPT,
   prepareArticleSummary,
 } from "./article-summary.js";
 import {
   ARTICLE_TRANSLATION_MAX_OUTPUT_TOKENS,
   ARTICLE_TRANSLATION_PROMPT_VERSION,
-  ARTICLE_TRANSLATION_SYSTEM_PROMPT,
   prepareArticleTranslation,
   renderArticleTranslation,
 } from "./article-translation.js";
@@ -27,6 +30,12 @@ import { createAiProviders } from "./providers.js";
 import type { AiGenerationResult, AiProviderAdapter } from "./types.js";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
+
+function promptVersion(prompt: string, defaultPrompt: string, defaultVersion: number): number {
+  if (prompt === defaultPrompt) return defaultVersion;
+  const digest = createHash("sha256").update(`${defaultVersion}\0${prompt}`).digest();
+  return -digest.readUIntBE(0, 6) - 1;
+}
 
 export interface AiServiceOptions {
   credentialCipher: CredentialCipher | null;
@@ -181,10 +190,22 @@ export class AiService {
     articleId: number,
     regenerate = false,
   ): Promise<ArticleAiSummary | null> {
-    const key = `${userId}:${articleId}`;
+    const { summaryPrompt } = this.database.getSettings(userId);
+    const version = promptVersion(
+      summaryPrompt,
+      DEFAULT_ARTICLE_SUMMARY_PROMPT,
+      ARTICLE_SUMMARY_PROMPT_VERSION,
+    );
+    const key = `${userId}:${articleId}:${version}`;
     const running = this.summariesInFlight.get(key);
     if (running) return running;
-    const summary = this.createArticleSummary(userId, articleId, regenerate).finally(() => {
+    const summary = this.createArticleSummary(
+      userId,
+      articleId,
+      regenerate,
+      summaryPrompt,
+      version,
+    ).finally(() => {
       this.summariesInFlight.delete(key);
     });
     this.summariesInFlight.set(key, summary);
@@ -196,8 +217,13 @@ export class AiService {
     articleId: number,
     sourceKind: AiArticleSourceKind,
   ): Promise<ArticleAiTranslation | null> {
-    const language = this.database.getSettings(userId).translationLanguage;
-    const key = `${userId}:${articleId}:${sourceKind}:${language.toLocaleLowerCase()}`;
+    const { translationLanguage: language, translationPrompt } = this.database.getSettings(userId);
+    const version = promptVersion(
+      translationPrompt,
+      DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+      ARTICLE_TRANSLATION_PROMPT_VERSION,
+    );
+    const key = `${userId}:${articleId}:${sourceKind}:${language.toLocaleLowerCase()}:${version}`;
     const running = this.translationsInFlight.get(key);
     if (running) return running;
     const translation = this.createArticleTranslation(
@@ -205,6 +231,8 @@ export class AiService {
       articleId,
       sourceKind,
       language,
+      translationPrompt,
+      version,
     ).finally(() => {
       this.translationsInFlight.delete(key);
     });
@@ -216,20 +244,22 @@ export class AiService {
     userId: number,
     articleId: number,
     regenerate: boolean,
+    prompt: string,
+    version: number,
   ): Promise<ArticleAiSummary | null> {
     const article = this.database.getArticleForAi(userId, articleId);
     if (!article) return null;
-    if (!regenerate && article.currentSummary?.promptVersion === ARTICLE_SUMMARY_PROMPT_VERSION) {
+    if (!regenerate && article.currentSummary?.promptVersion === version) {
       return publicSummary(article.currentSummary);
     }
     const prepared = prepareArticleSummary(article);
     const generated = await this.generateText(userId, "article_summary", {
-      system: ARTICLE_SUMMARY_SYSTEM_PROMPT,
+      system: prompt,
       input: prepared.input,
       maxOutputTokens: ARTICLE_SUMMARY_MAX_OUTPUT_TOKENS,
     });
     const saved = this.database.saveArticleAiSummary(userId, articleId, article.revision, {
-      promptVersion: ARTICLE_SUMMARY_PROMPT_VERSION,
+      promptVersion: version,
       sourceKind: prepared.sourceKind,
       provider: generated.provider,
       model: generated.model,
@@ -251,22 +281,24 @@ export class AiService {
     articleId: number,
     sourceKind: AiArticleSourceKind,
     language: string,
+    prompt: string,
+    version: number,
   ): Promise<ArticleAiTranslation | null> {
     const article = this.database.getArticleForAi(userId, articleId);
     if (!article) return null;
     const current = this.database.getArticleAiTranslation(userId, articleId, language, sourceKind);
-    if (current?.promptVersion === ARTICLE_TRANSLATION_PROMPT_VERSION) {
+    if (current?.promptVersion === version) {
       return publicTranslation(current);
     }
     const prepared = prepareArticleTranslation(article, language, sourceKind);
     const generated = await this.generateText(userId, "article_summary", {
-      system: ARTICLE_TRANSLATION_SYSTEM_PROMPT,
+      system: prompt,
       input: prepared.input,
       maxOutputTokens: ARTICLE_TRANSLATION_MAX_OUTPUT_TOKENS,
     });
     const html = renderArticleTranslation(prepared, generated.text);
     const saved = this.database.saveArticleAiTranslation(userId, articleId, article.revision, {
-      promptVersion: ARTICLE_TRANSLATION_PROMPT_VERSION,
+      promptVersion: version,
       language,
       sourceKind: prepared.sourceKind,
       provider: generated.provider,

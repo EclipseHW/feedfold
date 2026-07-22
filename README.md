@@ -123,7 +123,7 @@ Create a persistent encryption key before saving provider credentials:
 openssl rand -hex 32
 ```
 
-Save the generated value as `AI_CREDENTIALS_KEY` in the project-level `.env` file, recreate the service, then open **Settings → AI**. Choose Google Gemini, OpenAI, or Anthropic, enter the model ID you want to use, and save that provider's API key. Summaries and translations use this same model. Each provider starts with a recommended model ID, but the field accepts any model that the provider makes available to your account. Keys are encrypted per account before they enter SQLite and are never returned to the browser after saving.
+Save the generated value as `AI_CREDENTIALS_KEY` in the project-level `.env` file, recreate the service, then open **Settings → AI**. Choose Google Gemini, OpenAI, or Anthropic, enter the model ID you want to use, and save that provider's API key. Summaries and translations use this same model. Their prompts can be edited per account in the same section and restored to the built-in defaults. Each provider starts with a recommended model ID, but the field accepts any model that the provider makes available to your account. Keys are encrypted per account before they enter SQLite and are never returned to the browser after saving.
 
 ## Updating
 

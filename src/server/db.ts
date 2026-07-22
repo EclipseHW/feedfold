@@ -1,4 +1,8 @@
 import Sqlite from "better-sqlite3";
+import {
+  DEFAULT_ARTICLE_SUMMARY_PROMPT,
+  DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+} from "../shared/ai-prompts.js";
 import type {
   AiArticleSourceKind,
   AiFeature,
@@ -93,6 +97,10 @@ interface Migration {
 }
 
 type ArticleStructureTag = "blockquote" | "table";
+
+function sqlString(value: string): string {
+  return `'${value.replaceAll("'", "''")}'`;
+}
 
 function recleanStructuredArticleHtml(
   database: Sqlite.Database,
@@ -708,6 +716,14 @@ const migrations: Migration[] = [
       DELETE FROM article_ai_translations;
     `,
   },
+  {
+    sql: `
+      ALTER TABLE settings ADD COLUMN summary_prompt TEXT NOT NULL
+        DEFAULT ${sqlString(DEFAULT_ARTICLE_SUMMARY_PROMPT)};
+      ALTER TABLE settings ADD COLUMN translation_prompt TEXT NOT NULL
+        DEFAULT ${sqlString(DEFAULT_ARTICLE_TRANSLATION_PROMPT)};
+    `,
+  },
 ];
 
 function now(): string {
@@ -1013,7 +1029,9 @@ export class AppDatabase {
         `SELECT poll_interval_minutes AS pollIntervalMinutes,
                 single_key_shortcuts AS singleKeyShortcuts,
                 mark_read_on_scroll AS markReadOnScroll,
-                translation_language AS translationLanguage
+                translation_language AS translationLanguage,
+                summary_prompt AS summaryPrompt,
+                translation_prompt AS translationPrompt
          FROM settings WHERE user_id = ?`,
       )
       .get(userId) as Row;
@@ -1022,25 +1040,60 @@ export class AppDatabase {
       singleKeyShortcuts: toBoolean(row.singleKeyShortcuts),
       markReadOnScroll: toBoolean(row.markReadOnScroll),
       translationLanguage: String(row.translationLanguage),
+      summaryPrompt: String(row.summaryPrompt),
+      translationPrompt: String(row.translationPrompt),
     };
   }
 
   updateSettings(userId: number, input: Partial<AppSettings>): AppSettings {
     const current = this.getSettings(userId);
-    this.sqlite
-      .prepare(
-        `UPDATE settings
-         SET poll_interval_minutes = ?, single_key_shortcuts = ?, mark_read_on_scroll = ?,
-             translation_language = ?
-         WHERE user_id = ?`,
-      )
-      .run(
-        input.pollIntervalMinutes ?? current.pollIntervalMinutes,
-        (input.singleKeyShortcuts ?? current.singleKeyShortcuts) ? 1 : 0,
-        (input.markReadOnScroll ?? current.markReadOnScroll) ? 1 : 0,
-        input.translationLanguage?.trim() || current.translationLanguage,
-        userId,
-      );
+    const summaryPrompt = input.summaryPrompt?.trim() || current.summaryPrompt;
+    const translationPrompt = input.translationPrompt?.trim() || current.translationPrompt;
+    const update = this.sqlite.transaction(() => {
+      this.sqlite
+        .prepare(
+          `UPDATE settings
+           SET poll_interval_minutes = ?, single_key_shortcuts = ?, mark_read_on_scroll = ?,
+               translation_language = ?, summary_prompt = ?, translation_prompt = ?
+           WHERE user_id = ?`,
+        )
+        .run(
+          input.pollIntervalMinutes ?? current.pollIntervalMinutes,
+          (input.singleKeyShortcuts ?? current.singleKeyShortcuts) ? 1 : 0,
+          (input.markReadOnScroll ?? current.markReadOnScroll) ? 1 : 0,
+          input.translationLanguage?.trim() || current.translationLanguage,
+          summaryPrompt,
+          translationPrompt,
+          userId,
+        );
+      if (summaryPrompt !== current.summaryPrompt) {
+        this.sqlite
+          .prepare(
+            `DELETE FROM article_ai_summaries
+             WHERE article_id IN (
+               SELECT articles.id
+               FROM articles
+               JOIN feeds ON feeds.id = articles.feed_id
+               WHERE feeds.user_id = ?
+             )`,
+          )
+          .run(userId);
+      }
+      if (translationPrompt !== current.translationPrompt) {
+        this.sqlite
+          .prepare(
+            `DELETE FROM article_ai_translations
+             WHERE article_id IN (
+               SELECT articles.id
+               FROM articles
+               JOIN feeds ON feeds.id = articles.feed_id
+               WHERE feeds.user_id = ?
+             )`,
+          )
+          .run(userId);
+      }
+    });
+    update();
     return this.getSettings(userId);
   }
 
