@@ -1007,9 +1007,14 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
 
   const selectScope = useCallback(
     (feedId: number | null, folderId: number | null, state: ArticleState = articleStateFilter) => {
-      navigateToRoute(selectedReaderRoute(state, feedId, folderId, search));
+      const route = selectedReaderRoute(state, feedId, folderId, search);
+      const reloadArticles = appRoutePath(currentRoute.current) === appRoutePath(route);
+      loadedReaderRequestKey.current = null;
+      navigateToRoute(route);
+      void loadBootstrap();
+      if (reloadArticles) void loadArticles();
     },
-    [articleStateFilter, navigateToRoute, search],
+    [articleStateFilter, loadArticles, loadBootstrap, navigateToRoute, search],
   );
 
   const navigateTo = useCallback(
