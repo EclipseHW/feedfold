@@ -6,6 +6,10 @@ import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it } from "vitest";
 import { AuthService } from "../../src/server/auth.js";
 import { AppDatabase } from "../../src/server/db.js";
+import {
+  DEFAULT_ARTICLE_SUMMARY_PROMPT,
+  DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+} from "../../src/shared/ai-prompts.js";
 
 const directories: string[] = [];
 
@@ -189,6 +193,8 @@ describe("database migrations", () => {
         singleKeyShortcuts: true,
         markReadOnScroll: true,
         translationLanguage: "English",
+        summaryPrompt: DEFAULT_ARTICLE_SUMMARY_PROMPT,
+        translationPrompt: DEFAULT_ARTICLE_TRANSLATION_PROMPT,
       });
       expect(authService.register("READER", "another-password")).toBeNull();
 
@@ -282,7 +288,7 @@ describe("database migrations", () => {
         name: "Default order",
         sortDirection: "newest",
       });
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(15);
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(16);
       expect(
         database.sqlite
           .prepare(
@@ -302,7 +308,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(15);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(16);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");

@@ -26,6 +26,11 @@ import {
   X,
 } from "lucide-react";
 import { type ChangeEvent, type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import {
+  AI_PROMPT_MAX_LENGTH,
+  DEFAULT_ARTICLE_SUMMARY_PROMPT,
+  DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+} from "../shared/ai-prompts";
 import type {
   AiProvider,
   AiSettings,
@@ -1835,11 +1840,15 @@ function RuleRow({
 }
 
 function AiSettingsSection({
+  settings,
   aiSettings,
+  onSettings,
   onAiSettings,
   showToast,
 }: {
+  settings: AppSettings;
   aiSettings: AiSettings;
+  onSettings: (settings: AppSettings) => void;
   onAiSettings: (settings: AiSettings) => void;
   showToast: (message: string) => void;
 }) {
@@ -1856,7 +1865,11 @@ function AiSettingsSection({
   const [savingFeature, setSavingFeature] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
   const [removingKey, setRemovingKey] = useState(false);
+  const [savingPrompts, setSavingPrompts] = useState(false);
+  const [summaryPrompt, setSummaryPrompt] = useState(settings.summaryPrompt);
+  const [translationPrompt, setTranslationPrompt] = useState(settings.translationPrompt);
   const [error, setError] = useState<string | null>(null);
+  const [promptError, setPromptError] = useState<string | null>(null);
   const modelInputRef = useRef<HTMLInputElement>(null);
   const keyInputRef = useRef<HTMLInputElement>(null);
 
@@ -1868,12 +1881,23 @@ function AiSettingsSection({
     setModelId(feature?.model ?? nextProvider?.defaultModel ?? "");
   }, [aiSettings]);
 
+  useEffect(() => {
+    setSummaryPrompt(settings.summaryPrompt);
+    setTranslationPrompt(settings.translationPrompt);
+  }, [settings.summaryPrompt, settings.translationPrompt]);
+
   const provider = aiSettings.providers.find((option) => option.id === providerId);
   if (!provider) return null;
   const activeFeature = aiSettings.features.articleSummary;
   const modelChanged =
     activeFeature?.provider !== providerId || activeFeature?.model !== modelId.trim();
-  const busy = savingFeature || savingKey || removingKey;
+  const promptsChanged =
+    summaryPrompt.trim() !== settings.summaryPrompt ||
+    translationPrompt.trim() !== settings.translationPrompt;
+  const defaultPromptsSelected =
+    summaryPrompt.trim() === DEFAULT_ARTICLE_SUMMARY_PROMPT &&
+    translationPrompt.trim() === DEFAULT_ARTICLE_TRANSLATION_PROMPT;
+  const busy = savingFeature || savingKey || removingKey || savingPrompts;
 
   const updateFeature = async (nextProvider: AiProvider, nextModel: string) => {
     setSavingFeature(true);
@@ -1960,6 +1984,29 @@ function AiSettingsSection({
       setError(errorMessage(caught));
     } finally {
       setRemovingKey(false);
+    }
+  };
+
+  const savePrompts = async (event: FormEvent) => {
+    event.preventDefault();
+    const nextSummaryPrompt = summaryPrompt.trim();
+    const nextTranslationPrompt = translationPrompt.trim();
+    if (!nextSummaryPrompt || !nextTranslationPrompt || !promptsChanged) return;
+    setSavingPrompts(true);
+    setError(null);
+    setPromptError(null);
+    try {
+      onSettings(
+        await api.updateSettings({
+          summaryPrompt: nextSummaryPrompt,
+          translationPrompt: nextTranslationPrompt,
+        }),
+      );
+      showToast("AI prompts saved");
+    } catch (caught) {
+      setPromptError(errorMessage(caught));
+    } finally {
+      setSavingPrompts(false);
     }
   };
 
@@ -2126,6 +2173,79 @@ function AiSettingsSection({
         <div className="ai-settings-error" role="alert">
           <AlertTriangle aria-hidden="true" size={16} />
           <span>{error}</span>
+        </div>
+      ) : null}
+
+      <form className="ai-prompt-form" onSubmit={(event) => void savePrompts(event)}>
+        <div className="ai-prompt-intro">
+          <strong>Prompts</strong>
+          <p>Account-specific instructions used the next time content is generated.</p>
+        </div>
+        <label className="ai-prompt-field" htmlFor="ai-summary-prompt">
+          <span>Summary prompt</span>
+          <p id="ai-summary-prompt-help">Controls the structure, detail, and tone of summaries.</p>
+          <textarea
+            id="ai-summary-prompt"
+            value={summaryPrompt}
+            rows={7}
+            maxLength={AI_PROMPT_MAX_LENGTH}
+            required
+            disabled={busy}
+            aria-describedby="ai-summary-prompt-help"
+            onChange={(event) => {
+              setSummaryPrompt(event.target.value);
+              setPromptError(null);
+            }}
+          />
+        </label>
+        <label className="ai-prompt-field" htmlFor="ai-translation-prompt">
+          <span>Translation prompt</span>
+          <p id="ai-translation-prompt-help">
+            Keep the JSON and data-translation-id requirements so translated articles can be
+            rebuilt.
+          </p>
+          <textarea
+            id="ai-translation-prompt"
+            value={translationPrompt}
+            rows={9}
+            maxLength={AI_PROMPT_MAX_LENGTH}
+            required
+            disabled={busy}
+            aria-describedby="ai-translation-prompt-help"
+            onChange={(event) => {
+              setTranslationPrompt(event.target.value);
+              setPromptError(null);
+            }}
+          />
+        </label>
+        <div className="ai-prompt-actions">
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={busy || defaultPromptsSelected}
+            onClick={() => {
+              setSummaryPrompt(DEFAULT_ARTICLE_SUMMARY_PROMPT);
+              setTranslationPrompt(DEFAULT_ARTICLE_TRANSLATION_PROMPT);
+              setPromptError(null);
+            }}
+          >
+            Restore defaults
+          </button>
+          <button
+            className="primary-button"
+            type="submit"
+            disabled={busy || !summaryPrompt.trim() || !translationPrompt.trim() || !promptsChanged}
+          >
+            {savingPrompts ? <LoaderCircle className="spin" aria-hidden="true" size={15} /> : null}
+            Save prompts
+          </button>
+        </div>
+      </form>
+
+      {promptError ? (
+        <div className="ai-settings-error" role="alert">
+          <AlertTriangle aria-hidden="true" size={16} />
+          <span>{promptError}</span>
         </div>
       ) : null}
     </section>
@@ -2310,7 +2430,9 @@ export function SettingsPage({
       </section>
 
       <AiSettingsSection
+        settings={settings}
         aiSettings={aiSettings}
+        onSettings={onSettings}
         onAiSettings={onAiSettings}
         showToast={showToast}
       />

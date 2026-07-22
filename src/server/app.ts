@@ -3,6 +3,7 @@ import { join } from "node:path";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { ZodError, z } from "zod";
+import { AI_PROMPT_MAX_LENGTH } from "../shared/ai-prompts.js";
 import {
   type AiArticleSourceKind,
   type AiFeature,
@@ -420,6 +421,8 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         singleKeyShortcuts: z.boolean().optional(),
         markReadOnScroll: z.boolean().optional(),
         translationLanguage: z.string().trim().min(1).max(80).optional(),
+        summaryPrompt: z.string().trim().min(1).max(AI_PROMPT_MAX_LENGTH).optional(),
+        translationPrompt: z.string().trim().min(1).max(AI_PROMPT_MAX_LENGTH).optional(),
       })
       .parse(request.body);
     return services.database.updateSettings(userId(request), body);
