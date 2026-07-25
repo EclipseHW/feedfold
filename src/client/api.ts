@@ -142,10 +142,10 @@ export const api = {
   loadFullContent: (id: number) =>
     request<Article>(`/api/articles/${id}/extract`, { method: "POST" }),
 
-  summarizeArticle: (id: number, regenerate = false) =>
+  summarizeArticle: (id: number, promptId: string | null, regenerate = false) =>
     request<ArticleAiSummary>(`/api/articles/${id}/summary`, {
       method: "POST",
-      body: JSON.stringify(regenerate ? { regenerate: true } : {}),
+      body: JSON.stringify({ promptId, regenerate }),
     }),
 
   translateArticle: (id: number, sourceKind: AiArticleSourceKind) =>

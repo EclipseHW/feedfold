@@ -44,8 +44,15 @@ export interface AiUsage {
   outputTokens: number | null;
 }
 
+export interface AiCustomPrompt {
+  id: string;
+  name: string;
+  prompt: string;
+}
+
 export interface ArticleAiSummary {
   text: string;
+  promptId: string | null;
   provider: AiProvider;
   model: string;
   sourceKind: AiArticleSourceKind;
@@ -177,6 +184,7 @@ export interface AppSettings {
   translationLanguage: string;
   summaryPrompt: string;
   translationPrompt: string;
+  customPrompts: AiCustomPrompt[];
 }
 
 export interface BootstrapData {

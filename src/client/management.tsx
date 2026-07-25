@@ -12,6 +12,7 @@ import {
   ListFilter,
   LoaderCircle,
   Menu,
+  MessageSquareText,
   Minus,
   Moon,
   Pause,
@@ -32,6 +33,7 @@ import {
   DEFAULT_ARTICLE_TRANSLATION_PROMPT,
 } from "../shared/ai-prompts";
 import type {
+  AiCustomPrompt,
   AiProvider,
   AiSettings,
   AppSettings,
@@ -1868,14 +1870,21 @@ function AiSettingsSection({
   const [savingKey, setSavingKey] = useState(false);
   const [removingKey, setRemovingKey] = useState(false);
   const [savingPrompts, setSavingPrompts] = useState(false);
+  const [savingCustomPrompt, setSavingCustomPrompt] = useState(false);
   const [summaryPrompt, setSummaryPrompt] = useState(settings.summaryPrompt);
   const [translationPrompt, setTranslationPrompt] = useState(settings.translationPrompt);
+  const [editingCustomPrompt, setEditingCustomPrompt] = useState<AiCustomPrompt | null>(null);
+  const [customPromptName, setCustomPromptName] = useState("");
+  const [customPromptText, setCustomPromptText] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [promptError, setPromptError] = useState<string | null>(null);
+  const [customPromptError, setCustomPromptError] = useState<string | null>(null);
   const modelInputRef = useRef<HTMLInputElement>(null);
   const keyInputRef = useRef<HTMLInputElement>(null);
   const promptDialogRef = useRef<HTMLDialogElement>(null);
   const summaryPromptRef = useRef<HTMLTextAreaElement>(null);
+  const customPromptDialogRef = useRef<HTMLDialogElement>(null);
+  const customPromptNameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const feature = aiSettings.features.articleSummary;
@@ -1901,7 +1910,7 @@ function AiSettingsSection({
   const defaultPromptsSelected =
     summaryPrompt.trim() === DEFAULT_ARTICLE_SUMMARY_PROMPT &&
     translationPrompt.trim() === DEFAULT_ARTICLE_TRANSLATION_PROMPT;
-  const busy = savingFeature || savingKey || removingKey || savingPrompts;
+  const busy = savingFeature || savingKey || removingKey || savingPrompts || savingCustomPrompt;
 
   const updateFeature = async (nextProvider: AiProvider, nextModel: string) => {
     setSavingFeature(true);
@@ -2030,6 +2039,65 @@ function AiSettingsSection({
       setPromptError(errorMessage(caught));
     } finally {
       setSavingPrompts(false);
+    }
+  };
+
+  const openCustomPromptDialog = (prompt?: AiCustomPrompt) => {
+    setEditingCustomPrompt(prompt ?? null);
+    setCustomPromptName(prompt?.name ?? "");
+    setCustomPromptText(prompt?.prompt ?? "");
+    setCustomPromptError(null);
+    customPromptDialogRef.current?.showModal();
+    window.requestAnimationFrame(() => customPromptNameRef.current?.focus());
+  };
+
+  const closeCustomPromptDialog = () => {
+    if (!savingCustomPrompt) customPromptDialogRef.current?.close();
+  };
+
+  const saveCustomPrompt = async (event: FormEvent) => {
+    event.preventDefault();
+    const name = customPromptName.trim();
+    const prompt = customPromptText.trim();
+    if (!name || !prompt) return;
+    const nextPrompt: AiCustomPrompt = {
+      id: editingCustomPrompt?.id ?? crypto.randomUUID(),
+      name,
+      prompt,
+    };
+    const customPrompts = editingCustomPrompt
+      ? settings.customPrompts.map((item) =>
+          item.id === editingCustomPrompt.id ? nextPrompt : item,
+        )
+      : [...settings.customPrompts, nextPrompt];
+    setSavingCustomPrompt(true);
+    setCustomPromptError(null);
+    try {
+      onSettings(await api.updateSettings({ customPrompts }));
+      showToast(editingCustomPrompt ? "Custom prompt updated" : "Custom prompt added");
+      customPromptDialogRef.current?.close();
+    } catch (caught) {
+      setCustomPromptError(errorMessage(caught));
+    } finally {
+      setSavingCustomPrompt(false);
+    }
+  };
+
+  const deleteCustomPrompt = async (prompt: AiCustomPrompt) => {
+    if (!window.confirm(`Delete the custom prompt “${prompt.name}”?`)) return;
+    setSavingCustomPrompt(true);
+    setError(null);
+    try {
+      onSettings(
+        await api.updateSettings({
+          customPrompts: settings.customPrompts.filter((item) => item.id !== prompt.id),
+        }),
+      );
+      showToast("Custom prompt deleted");
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSavingCustomPrompt(false);
     }
   };
 
@@ -2201,8 +2269,8 @@ function AiSettingsSection({
 
       <div className="setting-row">
         <div>
-          <strong>Prompts</strong>
-          <p>Customize how summaries and translations are generated.</p>
+          <strong>Default prompts</strong>
+          <p>Edit the built-in summary and translation instructions.</p>
         </div>
         <button
           className="secondary-button"
@@ -2211,8 +2279,60 @@ function AiSettingsSection({
           onClick={openPromptDialog}
         >
           <Edit3 aria-hidden="true" size={15} />
-          Edit prompts
+          Edit defaults
         </button>
+      </div>
+
+      <div className="custom-prompts-setting">
+        <div className="custom-prompts-heading">
+          <div>
+            <strong>Custom prompts</strong>
+            <p>Run saved instructions on any article from the AI prompt menu.</p>
+          </div>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={busy}
+            onClick={() => openCustomPromptDialog()}
+          >
+            <Plus aria-hidden="true" size={15} />
+            Add prompt
+          </button>
+        </div>
+        {settings.customPrompts.length > 0 ? (
+          <ul className="custom-prompt-list">
+            {settings.customPrompts.map((prompt) => (
+              <li className="custom-prompt-list-item" key={prompt.id}>
+                <div>
+                  <strong>{prompt.name}</strong>
+                  <p>{prompt.prompt}</p>
+                </div>
+                <div className="custom-prompt-actions">
+                  <button
+                    className="icon-button"
+                    type="button"
+                    disabled={busy}
+                    aria-label={`Edit ${prompt.name}`}
+                    onClick={() => openCustomPromptDialog(prompt)}
+                  >
+                    <Edit3 aria-hidden="true" size={15} />
+                  </button>
+                  <button
+                    className="icon-button danger-action"
+                    type="button"
+                    disabled={busy}
+                    aria-label={`Delete ${prompt.name}`}
+                    onClick={() => void deleteCustomPrompt(prompt)}
+                  >
+                    <Trash2 aria-hidden="true" size={15} />
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="custom-prompts-empty">No custom prompts yet.</p>
+        )}
       </div>
 
       <dialog
@@ -2230,8 +2350,8 @@ function AiSettingsSection({
               <Edit3 size={16} />
             </span>
             <div>
-              <h2 id="ai-prompt-dialog-title">Edit AI prompts</h2>
-              <p>Account-specific instructions used the next time content is generated.</p>
+              <h2 id="ai-prompt-dialog-title">Edit default prompts</h2>
+              <p>These instructions are used by Summarize and Translate.</p>
             </div>
             <button
               className="icon-button"
@@ -2330,6 +2450,111 @@ function AiSettingsSection({
                   <LoaderCircle className="spin" aria-hidden="true" size={15} />
                 ) : null}
                 Save prompts
+              </button>
+            </div>
+          </footer>
+        </form>
+      </dialog>
+
+      <dialog
+        ref={customPromptDialogRef}
+        className="management-dialog custom-prompt-dialog"
+        aria-labelledby="custom-prompt-dialog-title"
+        onClose={() => setCustomPromptError(null)}
+        onCancel={(event) => {
+          if (savingCustomPrompt) event.preventDefault();
+        }}
+      >
+        <form className="custom-prompt-form" onSubmit={(event) => void saveCustomPrompt(event)}>
+          <header className="management-dialog-heading">
+            <span className="dialog-icon" aria-hidden="true">
+              <MessageSquareText size={16} />
+            </span>
+            <div>
+              <h2 id="custom-prompt-dialog-title">
+                {editingCustomPrompt ? "Edit custom prompt" : "Add custom prompt"}
+              </h2>
+              <p>The article title and text are included automatically.</p>
+            </div>
+            <button
+              className="icon-button"
+              type="button"
+              disabled={savingCustomPrompt}
+              onClick={closeCustomPromptDialog}
+              aria-label="Close custom prompt editor"
+            >
+              <X aria-hidden="true" size={18} />
+            </button>
+          </header>
+
+          <div className="management-dialog-body custom-prompt-dialog-body">
+            <label htmlFor="custom-prompt-name">
+              <span>Name</span>
+              <p id="custom-prompt-name-help">Shown in the article prompt menu.</p>
+              <input
+                ref={customPromptNameRef}
+                id="custom-prompt-name"
+                type="text"
+                value={customPromptName}
+                maxLength={80}
+                required
+                disabled={savingCustomPrompt}
+                aria-describedby="custom-prompt-name-help"
+                onChange={(event) => {
+                  setCustomPromptName(event.target.value);
+                  setCustomPromptError(null);
+                }}
+              />
+            </label>
+            <label htmlFor="custom-prompt-text">
+              <span>Prompt</span>
+              <p id="custom-prompt-text-help">
+                Tell the AI how to analyze or transform the article.
+              </p>
+              <textarea
+                id="custom-prompt-text"
+                value={customPromptText}
+                rows={10}
+                maxLength={AI_PROMPT_MAX_LENGTH}
+                required
+                disabled={savingCustomPrompt}
+                aria-describedby="custom-prompt-text-help"
+                onChange={(event) => {
+                  setCustomPromptText(event.target.value);
+                  setCustomPromptError(null);
+                }}
+              />
+            </label>
+            {customPromptError ? (
+              <div className="management-dialog-error" role="alert">
+                <AlertTriangle aria-hidden="true" size={16} />
+                <span>{customPromptError}</span>
+              </div>
+            ) : null}
+          </div>
+
+          <footer className="management-dialog-footer">
+            <span />
+            <div>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={savingCustomPrompt}
+                onClick={closeCustomPromptDialog}
+              >
+                Cancel
+              </button>
+              <button
+                className="primary-button"
+                type="submit"
+                disabled={
+                  savingCustomPrompt || !customPromptName.trim() || !customPromptText.trim()
+                }
+              >
+                {savingCustomPrompt ? (
+                  <LoaderCircle className="spin" aria-hidden="true" size={15} />
+                ) : null}
+                {editingCustomPrompt ? "Save prompt" : "Add prompt"}
               </button>
             </div>
           </footer>

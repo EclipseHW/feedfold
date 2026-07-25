@@ -196,6 +196,7 @@ describe("database migrations", () => {
         translationLanguage: "English",
         summaryPrompt: DEFAULT_ARTICLE_SUMMARY_PROMPT,
         translationPrompt: DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+        customPrompts: [],
       });
       expect(authService.register("READER", "another-password")).toBeNull();
 
@@ -289,7 +290,7 @@ describe("database migrations", () => {
         name: "Default order",
         sortDirection: "newest",
       });
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(17);
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(18);
       expect(
         database.sqlite
           .prepare(
@@ -309,7 +310,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(17);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(18);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");

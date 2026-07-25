@@ -343,6 +343,13 @@ describe("live API, OPML, and filtering rules", () => {
         translationLanguage: "Polish",
         summaryPrompt: "Summarize with one concise paragraph.",
         translationPrompt: "Translate every marked fragment and return the required JSON object.",
+        customPrompts: [
+          {
+            id: "5caa245e-f441-4d33-95cc-287f50f07b91",
+            name: "Find decisions",
+            prompt: "List the decisions and who made each one.",
+          },
+        ],
       },
     });
     expect(savedSettings.json()).toMatchObject({
@@ -351,6 +358,13 @@ describe("live API, OPML, and filtering rules", () => {
       translationLanguage: "Polish",
       summaryPrompt: "Summarize with one concise paragraph.",
       translationPrompt: "Translate every marked fragment and return the required JSON object.",
+      customPrompts: [
+        {
+          id: "5caa245e-f441-4d33-95cc-287f50f07b91",
+          name: "Find decisions",
+          prompt: "List the decisions and who made each one.",
+        },
+      ],
     });
     expect(
       (
@@ -396,6 +410,7 @@ describe("live API, OPML, and filtering rules", () => {
       translationLanguage: "English",
       summaryPrompt: DEFAULT_ARTICLE_SUMMARY_PROMPT,
       translationPrompt: DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+      customPrompts: [],
     });
 
     const rejectedLegacyRule = await app.inject({

@@ -1039,7 +1039,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   );
 
   const generateArticleSummary = useCallback(
-    async (article: Article, regenerate: boolean) => {
+    async (article: Article, promptId: string | null, regenerate: boolean) => {
       if (summaryLoadingIds.current.has(article.id)) return;
       const feature = bootstrap?.aiSettings.features.articleSummary;
       const provider = feature
@@ -1063,7 +1063,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         configurationMissing: false,
       });
       try {
-        const summary = await api.summarizeArticle(article.id, regenerate);
+        const summary = await api.summarizeArticle(article.id, promptId, regenerate);
         setArticles((current) =>
           current.map((item) => (item.id === article.id ? { ...item, aiSummary: summary } : item)),
         );
@@ -1084,11 +1084,11 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     (article: Article) => {
       const state = articleSummaryStates.get(article.id) ?? EMPTY_ARTICLE_SUMMARY_STATE;
       if (state.loading) return;
-      if (state.visible) {
+      if (state.visible && article.aiSummary?.promptId === null) {
         patchArticleSummaryState(article.id, { visible: false });
         return;
       }
-      if (article.aiSummary) {
+      if (article.aiSummary?.promptId === null) {
         patchArticleSummaryState(article.id, {
           visible: true,
           error: null,
@@ -1096,13 +1096,31 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         });
         return;
       }
-      void generateArticleSummary(article, false);
+      void generateArticleSummary(article, null, false);
+    },
+    [articleSummaryStates, generateArticleSummary, patchArticleSummaryState],
+  );
+
+  const runArticleSummaryPrompt = useCallback(
+    (article: Article, promptId: string | null) => {
+      const state = articleSummaryStates.get(article.id) ?? EMPTY_ARTICLE_SUMMARY_STATE;
+      if (state.loading) return;
+      if (article.aiSummary?.promptId === promptId) {
+        patchArticleSummaryState(article.id, {
+          visible: true,
+          error: null,
+          configurationMissing: false,
+        });
+        return;
+      }
+      void generateArticleSummary(article, promptId, false);
     },
     [articleSummaryStates, generateArticleSummary, patchArticleSummaryState],
   );
 
   const regenerateArticleSummary = useCallback(
-    (article: Article) => void generateArticleSummary(article, true),
+    (article: Article) =>
+      void generateArticleSummary(article, article.aiSummary?.promptId ?? null, true),
     [generateArticleSummary],
   );
 
@@ -1846,6 +1864,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                         : EMPTY_ARTICLE_TRANSLATION_STATE
                     }
                     translationLanguage={bootstrap.settings.translationLanguage}
+                    customPrompts={bootstrap.settings.customPrompts}
                     onBack={returnToArticleList}
                     onPrevious={() => moveArticle(-1)}
                     onNext={() => moveArticle(1)}
@@ -1859,7 +1878,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     onOpenSource={openArticleSource}
                     onFeedAction={openFeedManagementById}
                     onToggleFullContent={(article) => void toggleFullContent(article)}
-                    onToggleSummary={toggleArticleSummary}
+                    onRunSummaryPrompt={runArticleSummaryPrompt}
                     onToggleTranslation={toggleArticleTranslation}
                     onRegenerateSummary={regenerateArticleSummary}
                     onOpenAiSettings={() => navigateTo("settings")}
@@ -1875,6 +1894,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   summaryStates={articleSummaryStates}
                   translationStates={articleTranslationStates}
                   translationLanguage={bootstrap.settings.translationLanguage}
+                  customPrompts={bootstrap.settings.customPrompts}
                   markReadOnScroll={bootstrap.settings.markReadOnScroll}
                   hasMore={routedArticleId === null && nextCursor !== null}
                   loadingMore={articlesLoadingMore}
@@ -1894,7 +1914,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   onOpenSource={openArticleSource}
                   onFeedAction={openFeedManagementById}
                   onToggleFullContent={(article) => void toggleFullContent(article)}
-                  onToggleSummary={toggleArticleSummary}
+                  onRunSummaryPrompt={runArticleSummaryPrompt}
                   onToggleTranslation={toggleArticleTranslation}
                   onRegenerateSummary={regenerateArticleSummary}
                   onOpenAiSettings={() => navigateTo("settings")}
@@ -1938,16 +1958,36 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
             onTheme={setTheme}
             onFontSize={setArticleFontSize}
             onSettings={(settings) => {
+              const defaultSummaryPromptChanged =
+                bootstrap.settings.summaryPrompt !== settings.summaryPrompt;
+              const nextCustomPromptsById = new Map(
+                settings.customPrompts.map((prompt) => [prompt.id, prompt]),
+              );
+              const invalidatedCustomPromptIds = new Set(
+                bootstrap.settings.customPrompts
+                  .filter(
+                    (prompt) => nextCustomPromptsById.get(prompt.id)?.prompt !== prompt.prompt,
+                  )
+                  .map((prompt) => prompt.id),
+              );
               if (
                 bootstrap.settings.translationLanguage !== settings.translationLanguage ||
                 bootstrap.settings.translationPrompt !== settings.translationPrompt
               ) {
                 setArticleTranslationStates(new Map());
               }
-              if (bootstrap.settings.summaryPrompt !== settings.summaryPrompt) {
+              if (defaultSummaryPromptChanged || invalidatedCustomPromptIds.size > 0) {
                 setArticleSummaryStates(new Map());
                 setArticles((current) =>
-                  current.map((article) => ({ ...article, aiSummary: null })),
+                  current.map((article) => {
+                    const promptId = article.aiSummary?.promptId;
+                    const invalidated =
+                      (promptId === null && defaultSummaryPromptChanged) ||
+                      (promptId !== null &&
+                        promptId !== undefined &&
+                        invalidatedCustomPromptIds.has(promptId));
+                    return invalidated ? { ...article, aiSummary: null } : article;
+                  }),
                 );
               }
               setBootstrap((current) => (current ? { ...current, settings } : current));

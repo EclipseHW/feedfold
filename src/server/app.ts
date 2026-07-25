@@ -255,10 +255,10 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
 
   app.post("/api/articles/:id/summary", async (request, reply) => {
     const { id } = idParams.parse(request.params);
-    const { regenerate } = z
-      .object({ regenerate: z.boolean().optional() })
+    const { promptId, regenerate } = z
+      .object({ promptId: z.uuid().nullable(), regenerate: z.boolean() })
       .parse(request.body ?? {});
-    const summary = await aiService.summarizeArticle(userId(request), id, regenerate ?? false);
+    const summary = await aiService.summarizeArticle(userId(request), id, promptId, regenerate);
     return summary ?? missing(reply, "Article");
   });
 
@@ -432,6 +432,17 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         translationLanguage: z.string().trim().min(1).max(80).optional(),
         summaryPrompt: z.string().trim().min(1).max(AI_PROMPT_MAX_LENGTH).optional(),
         translationPrompt: z.string().trim().min(1).max(AI_PROMPT_MAX_LENGTH).optional(),
+        customPrompts: z
+          .array(
+            z
+              .object({
+                id: z.uuid(),
+                name: z.string().trim().min(1).max(80),
+                prompt: z.string().trim().min(1).max(AI_PROMPT_MAX_LENGTH),
+              })
+              .strict(),
+          )
+          .optional(),
       })
       .parse(request.body);
     return services.database.updateSettings(userId(request), body);
