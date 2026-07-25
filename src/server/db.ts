@@ -724,6 +724,17 @@ const migrations: Migration[] = [
         DEFAULT ${sqlString(DEFAULT_ARTICLE_TRANSLATION_PROMPT)};
     `,
   },
+  {
+    sql: `
+      ALTER TABLE settings ADD COLUMN duplicate_article_window_days INTEGER NOT NULL DEFAULT 7
+        CHECK(duplicate_article_window_days IN (1, 7, 30));
+
+      CREATE INDEX articles_url_discovered_idx
+        ON articles(url, discovered_at) WHERE url IS NOT NULL;
+      CREATE INDEX articles_title_discovered_idx
+        ON articles(title, discovered_at) WHERE title <> '';
+    `,
+  },
 ];
 
 function now(): string {
@@ -1027,6 +1038,7 @@ export class AppDatabase {
     const row = this.sqlite
       .prepare(
         `SELECT poll_interval_minutes AS pollIntervalMinutes,
+                duplicate_article_window_days AS duplicateArticleWindowDays,
                 single_key_shortcuts AS singleKeyShortcuts,
                 mark_read_on_scroll AS markReadOnScroll,
                 translation_language AS translationLanguage,
@@ -1037,6 +1049,9 @@ export class AppDatabase {
       .get(userId) as Row;
     return {
       pollIntervalMinutes: Number(row.pollIntervalMinutes),
+      duplicateArticleWindowDays: Number(
+        row.duplicateArticleWindowDays,
+      ) as AppSettings["duplicateArticleWindowDays"],
       singleKeyShortcuts: toBoolean(row.singleKeyShortcuts),
       markReadOnScroll: toBoolean(row.markReadOnScroll),
       translationLanguage: String(row.translationLanguage),
@@ -1053,12 +1068,14 @@ export class AppDatabase {
       this.sqlite
         .prepare(
           `UPDATE settings
-           SET poll_interval_minutes = ?, single_key_shortcuts = ?, mark_read_on_scroll = ?,
-               translation_language = ?, summary_prompt = ?, translation_prompt = ?
+           SET poll_interval_minutes = ?, duplicate_article_window_days = ?,
+               single_key_shortcuts = ?, mark_read_on_scroll = ?, translation_language = ?,
+               summary_prompt = ?, translation_prompt = ?
            WHERE user_id = ?`,
         )
         .run(
           input.pollIntervalMinutes ?? current.pollIntervalMinutes,
+          input.duplicateArticleWindowDays ?? current.duplicateArticleWindowDays,
           (input.singleKeyShortcuts ?? current.singleKeyShortcuts) ? 1 : 0,
           (input.markReadOnScroll ?? current.markReadOnScroll) ? 1 : 0,
           input.translationLanguage?.trim() || current.translationLanguage,
@@ -1572,6 +1589,27 @@ export class AppDatabase {
              summary, image_url, media_json, feed_content_html, extraction_status
            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         );
+        const duplicateSettings = this.sqlite
+          .prepare(
+            `SELECT feeds.user_id AS userId,
+                    settings.duplicate_article_window_days AS windowDays
+             FROM feeds
+             JOIN settings ON settings.user_id = feeds.user_id
+             WHERE feeds.id = ?`,
+          )
+          .get(id) as { userId: number; windowDays: number };
+        const duplicateCutoff = new Date(
+          Date.now() - duplicateSettings.windowDays * 24 * 60 * 60 * 1_000,
+        ).toISOString();
+        const findDuplicate = this.sqlite.prepare(
+          `SELECT 1
+           FROM articles
+           JOIN feeds ON feeds.id = articles.feed_id
+           WHERE feeds.user_id = ?
+             AND articles.discovered_at >= ?
+             AND ((? IS NOT NULL AND articles.url = ?) OR (? <> '' AND articles.title = ?))
+           LIMIT 1`,
+        );
         const update = this.sqlite.prepare(
           `UPDATE articles
            SET title = ?, url = ?, author = ?, published_at = ?, summary = ?,
@@ -1633,6 +1671,18 @@ export class AppDatabase {
               articleId,
             );
             ruleArticleIds.add(articleId);
+            continue;
+          }
+          if (
+            findDuplicate.get(
+              duplicateSettings.userId,
+              duplicateCutoff,
+              article.url,
+              article.url,
+              article.title,
+              article.title,
+            )
+          ) {
             continue;
           }
           const result = insert.run(

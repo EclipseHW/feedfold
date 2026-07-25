@@ -37,6 +37,7 @@ import type {
   AppSettings,
   Article,
   BootstrapData,
+  DuplicateArticleWindowDays,
   Feed,
   FeedPreview,
   Folder,
@@ -47,6 +48,7 @@ import type {
   RuleConditionOperator,
   RuleField,
 } from "../shared/types";
+import { DUPLICATE_ARTICLE_WINDOW_DAYS } from "../shared/types";
 import { api, appUrl, errorMessage, type RuleInput } from "./api";
 import { type MotionState, useMotionPresence } from "./motion";
 
@@ -2545,6 +2547,33 @@ export function SettingsPage({
                 {minutes < 60
                   ? `${minutes} minutes`
                   : `${minutes / 60} ${minutes === 60 ? "hour" : "hours"}`}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="setting-row">
+          <label htmlFor="duplicate-article-window">
+            <strong>Duplicate article window</strong>
+            <p>
+              Skip a new article when its exact URL or exact title appeared in any feed during this
+              period.
+            </p>
+          </label>
+          <select
+            id="duplicate-article-window"
+            value={settings.duplicateArticleWindowDays}
+            disabled={saving}
+            onChange={(event) =>
+              void saveSettings({
+                duplicateArticleWindowDays: Number(
+                  event.target.value,
+                ) as DuplicateArticleWindowDays,
+              })
+            }
+          >
+            {DUPLICATE_ARTICLE_WINDOW_DAYS.map((days) => (
+              <option key={days} value={days}>
+                {days === 1 ? "Past day" : `Past ${days} days`}
               </option>
             ))}
           </select>

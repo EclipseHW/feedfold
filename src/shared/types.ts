@@ -10,6 +10,8 @@ export type AiFeature = "article_summary";
 export type AiArticleSourceKind = "full" | "feed" | "excerpt";
 export const MARK_READ_AGE_DAYS = [1, 2, 3, 7, 14] as const;
 export type MarkReadAgeDays = (typeof MARK_READ_AGE_DAYS)[number];
+export const DUPLICATE_ARTICLE_WINDOW_DAYS = [1, 7, 30] as const;
+export type DuplicateArticleWindowDays = (typeof DUPLICATE_ARTICLE_WINDOW_DAYS)[number];
 
 export interface AiModelOption {
   id: string;
@@ -169,6 +171,7 @@ export interface Rule {
 
 export interface AppSettings {
   pollIntervalMinutes: number;
+  duplicateArticleWindowDays: DuplicateArticleWindowDays;
   singleKeyShortcuts: boolean;
   markReadOnScroll: boolean;
   translationLanguage: string;
