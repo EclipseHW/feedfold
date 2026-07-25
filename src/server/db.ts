@@ -5,6 +5,7 @@ import {
 } from "../shared/ai-prompts.js";
 import type {
   AiArticleSourceKind,
+  AiCustomPrompt,
   AiFeature,
   AiFeatureSetting,
   AiProvider,
@@ -735,6 +736,12 @@ const migrations: Migration[] = [
         ON articles(title, discovered_at) WHERE title <> '';
     `,
   },
+  {
+    sql: `
+      ALTER TABLE settings ADD COLUMN custom_prompts_json TEXT NOT NULL DEFAULT '[]';
+      ALTER TABLE article_ai_summaries ADD COLUMN prompt_id TEXT;
+    `,
+  },
 ];
 
 function now(): string {
@@ -877,6 +884,7 @@ function mapArticleAiSummary(row: Row): ArticleAiSummary | null {
   if (row.aiSummaryText === null || row.aiSummaryText === undefined) return null;
   return {
     text: String(row.aiSummaryText),
+    promptId: row.aiSummaryPromptId === null ? null : String(row.aiSummaryPromptId),
     provider: row.aiSummaryProvider as AiProvider,
     model: String(row.aiSummaryModel),
     sourceKind: row.aiSummarySourceKind as AiArticleSourceKind,
@@ -1043,7 +1051,8 @@ export class AppDatabase {
                 mark_read_on_scroll AS markReadOnScroll,
                 translation_language AS translationLanguage,
                 summary_prompt AS summaryPrompt,
-                translation_prompt AS translationPrompt
+                translation_prompt AS translationPrompt,
+                custom_prompts_json AS customPromptsJson
          FROM settings WHERE user_id = ?`,
       )
       .get(userId) as Row;
@@ -1057,6 +1066,7 @@ export class AppDatabase {
       translationLanguage: String(row.translationLanguage),
       summaryPrompt: String(row.summaryPrompt),
       translationPrompt: String(row.translationPrompt),
+      customPrompts: JSON.parse(String(row.customPromptsJson)) as AiCustomPrompt[],
     };
   }
 
@@ -1064,13 +1074,18 @@ export class AppDatabase {
     const current = this.getSettings(userId);
     const summaryPrompt = input.summaryPrompt?.trim() || current.summaryPrompt;
     const translationPrompt = input.translationPrompt?.trim() || current.translationPrompt;
+    const customPrompts = input.customPrompts ?? current.customPrompts;
+    const nextCustomPromptsById = new Map(customPrompts.map((prompt) => [prompt.id, prompt]));
+    const invalidatedCustomPromptIds = current.customPrompts
+      .filter((prompt) => nextCustomPromptsById.get(prompt.id)?.prompt !== prompt.prompt)
+      .map((prompt) => prompt.id);
     const update = this.sqlite.transaction(() => {
       this.sqlite
         .prepare(
           `UPDATE settings
            SET poll_interval_minutes = ?, duplicate_article_window_days = ?,
                single_key_shortcuts = ?, mark_read_on_scroll = ?, translation_language = ?,
-               summary_prompt = ?, translation_prompt = ?
+               summary_prompt = ?, translation_prompt = ?, custom_prompts_json = ?
            WHERE user_id = ?`,
         )
         .run(
@@ -1081,13 +1096,15 @@ export class AppDatabase {
           input.translationLanguage?.trim() || current.translationLanguage,
           summaryPrompt,
           translationPrompt,
+          JSON.stringify(customPrompts),
           userId,
         );
       if (summaryPrompt !== current.summaryPrompt) {
         this.sqlite
           .prepare(
             `DELETE FROM article_ai_summaries
-             WHERE article_id IN (
+             WHERE prompt_id IS NULL
+               AND article_id IN (
                SELECT articles.id
                FROM articles
                JOIN feeds ON feeds.id = articles.feed_id
@@ -1095,6 +1112,19 @@ export class AppDatabase {
              )`,
           )
           .run(userId);
+      }
+      const deleteCustomPromptSummaries = this.sqlite.prepare(
+        `DELETE FROM article_ai_summaries
+         WHERE prompt_id = ?
+           AND article_id IN (
+             SELECT articles.id
+             FROM articles
+             JOIN feeds ON feeds.id = articles.feed_id
+             WHERE feeds.user_id = ?
+           )`,
+      );
+      for (const promptId of invalidatedCustomPromptIds) {
+        deleteCustomPromptSummaries.run(promptId, userId);
       }
       if (translationPrompt !== current.translationPrompt) {
         this.sqlite
@@ -1867,6 +1897,7 @@ export class AppDatabase {
                 articles.extraction_status AS extractionStatus,
                 articles.extraction_error AS extractionError,
                 ${query.includeContent ? "article_ai_summaries.summary_text" : "NULL"} AS aiSummaryText,
+                ${query.includeContent ? "article_ai_summaries.prompt_id" : "NULL"} AS aiSummaryPromptId,
                 ${query.includeContent ? "article_ai_summaries.provider" : "NULL"} AS aiSummaryProvider,
                 ${query.includeContent ? "article_ai_summaries.model" : "NULL"} AS aiSummaryModel,
                 ${query.includeContent ? "article_ai_summaries.source_kind" : "NULL"} AS aiSummarySourceKind,
@@ -2063,6 +2094,7 @@ export class AppDatabase {
                 articles.extraction_status AS extractionStatus,
                 articles.extraction_error AS extractionError,
                 article_ai_summaries.summary_text AS aiSummaryText,
+                article_ai_summaries.prompt_id AS aiSummaryPromptId,
                 article_ai_summaries.provider AS aiSummaryProvider,
                 article_ai_summaries.model AS aiSummaryModel,
                 article_ai_summaries.source_kind AS aiSummarySourceKind,
@@ -2095,6 +2127,7 @@ export class AppDatabase {
                 articles.summary AS excerpt,
                 article_ai_summaries.source_revision AS aiSummarySourceRevision,
                 article_ai_summaries.prompt_version AS aiSummaryPromptVersion,
+                article_ai_summaries.prompt_id AS aiSummaryPromptId,
                 article_ai_summaries.source_kind AS aiSummarySourceKind,
                 article_ai_summaries.provider AS aiSummaryProvider,
                 article_ai_summaries.model AS aiSummaryModel,
@@ -2129,6 +2162,7 @@ export class AppDatabase {
       .prepare(
         `SELECT article_ai_summaries.source_revision AS aiSummarySourceRevision,
                 article_ai_summaries.prompt_version AS aiSummaryPromptVersion,
+                article_ai_summaries.prompt_id AS aiSummaryPromptId,
                 article_ai_summaries.source_kind AS aiSummarySourceKind,
                 article_ai_summaries.provider AS aiSummaryProvider,
                 article_ai_summaries.model AS aiSummaryModel,
@@ -2153,6 +2187,7 @@ export class AppDatabase {
     sourceRevision: number,
     input: {
       promptVersion: number;
+      promptId: string | null;
       sourceKind: AiArticleSourceKind;
       provider: AiProvider;
       model: string;
@@ -2172,12 +2207,13 @@ export class AppDatabase {
       this.sqlite
         .prepare(
           `INSERT INTO article_ai_summaries (
-             article_id, source_revision, prompt_version, source_kind, provider, model,
+             article_id, source_revision, prompt_version, prompt_id, source_kind, provider, model,
              summary_text, input_tokens, output_tokens, generated_at
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
            ON CONFLICT(article_id) DO UPDATE SET
              source_revision = excluded.source_revision,
              prompt_version = excluded.prompt_version,
+             prompt_id = excluded.prompt_id,
              source_kind = excluded.source_kind,
              provider = excluded.provider,
              model = excluded.model,
@@ -2190,6 +2226,7 @@ export class AppDatabase {
           id,
           sourceRevision,
           input.promptVersion,
+          input.promptId,
           input.sourceKind,
           input.provider,
           input.model,

@@ -57,6 +57,7 @@ interface FeatureGenerationResult extends AiGenerationResult {
 function publicSummary(summary: StoredArticleAiSummary): ArticleAiSummary {
   return {
     text: summary.text,
+    promptId: summary.promptId,
     provider: summary.provider,
     model: summary.model,
     sourceKind: summary.sourceKind,
@@ -185,25 +186,34 @@ export class AiService {
     return { ...result, provider: setting.provider, model: setting.model };
   }
 
-  summarizeArticle(
+  async summarizeArticle(
     userId: number,
     articleId: number,
+    customPromptId: string | null,
     regenerate = false,
   ): Promise<ArticleAiSummary | null> {
-    const { summaryPrompt } = this.database.getSettings(userId);
+    const { summaryPrompt, customPrompts } = this.database.getSettings(userId);
+    const customPrompt = customPromptId
+      ? customPrompts.find((prompt) => prompt.id === customPromptId)
+      : null;
+    if (customPromptId && !customPrompt) {
+      throw new AiError("CUSTOM_PROMPT_NOT_FOUND", 404, "This custom prompt no longer exists.");
+    }
+    const prompt = customPrompt?.prompt ?? summaryPrompt;
     const version = promptVersion(
-      summaryPrompt,
+      prompt,
       DEFAULT_ARTICLE_SUMMARY_PROMPT,
       ARTICLE_SUMMARY_PROMPT_VERSION,
     );
-    const key = `${userId}:${articleId}:${version}`;
+    const key = `${userId}:${articleId}:${customPromptId ?? "default"}:${version}`;
     const running = this.summariesInFlight.get(key);
     if (running) return running;
     const summary = this.createArticleSummary(
       userId,
       articleId,
       regenerate,
-      summaryPrompt,
+      prompt,
+      customPromptId,
       version,
     ).finally(() => {
       this.summariesInFlight.delete(key);
@@ -245,11 +255,16 @@ export class AiService {
     articleId: number,
     regenerate: boolean,
     prompt: string,
+    promptId: string | null,
     version: number,
   ): Promise<ArticleAiSummary | null> {
     const article = this.database.getArticleForAi(userId, articleId);
     if (!article) return null;
-    if (!regenerate && article.currentSummary?.promptVersion === version) {
+    if (
+      !regenerate &&
+      article.currentSummary?.promptVersion === version &&
+      article.currentSummary.promptId === promptId
+    ) {
       return publicSummary(article.currentSummary);
     }
     const prepared = prepareArticleSummary(article);
@@ -260,6 +275,7 @@ export class AiService {
     });
     const saved = this.database.saveArticleAiSummary(userId, articleId, article.revision, {
       promptVersion: version,
+      promptId,
       sourceKind: prepared.sourceKind,
       provider: generated.provider,
       model: generated.model,

@@ -18,6 +18,7 @@ import {
   LoaderCircle,
   Mail,
   MailOpen,
+  MessageSquareText,
   RefreshCw,
   Rss,
   Sparkles,
@@ -34,7 +35,13 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { extractHttpLinks } from "../shared/article-links";
-import type { Article, ArticleAiTranslation, ArticleState, ReadingMode } from "../shared/types";
+import type {
+  AiCustomPrompt,
+  Article,
+  ArticleAiTranslation,
+  ArticleState,
+  ReadingMode,
+} from "../shared/types";
 import { articleContentView } from "./article-content";
 import {
   type ArticleSwipeDirection,
@@ -701,6 +708,7 @@ interface ArticleActionsProps {
   summaryState: ArticleSummaryViewState;
   translationState: ArticleTranslationViewState;
   translationLanguage: string;
+  customPrompts: AiCustomPrompt[];
   onPrevious?: () => void;
   onNext?: () => void;
   canPrevious?: boolean;
@@ -711,7 +719,7 @@ interface ArticleActionsProps {
   onCopy: (article: Article) => void;
   onOpenSource: (article: Article) => void;
   onToggleFullContent: (article: Article) => void;
-  onToggleSummary: (article: Article) => void;
+  onRunSummaryPrompt: (article: Article, promptId: string | null) => void;
   onToggleTranslation: (article: Article) => void;
 }
 
@@ -721,6 +729,7 @@ function ArticleActions({
   summaryState,
   translationState,
   translationLanguage,
+  customPrompts,
   onPrevious,
   onNext,
   canPrevious = true,
@@ -731,9 +740,15 @@ function ArticleActions({
   onCopy,
   onOpenSource,
   onToggleFullContent,
-  onToggleSummary,
+  onRunSummaryPrompt,
   onToggleTranslation,
 }: ArticleActionsProps) {
+  const [summaryMenuOpen, setSummaryMenuOpen] = useState(false);
+  const summaryTriggerRef = useRef<HTMLButtonElement>(null);
+  const summaryMenuRef = useRef<HTMLDivElement>(null);
+  const focusSummaryMenuOnOpen = useRef(false);
+  const summaryMenuId = `article-${article.id}-summary-menu`;
+  const summaryAnchorName = `--article-${article.id}-summary`;
   const fullContentAvailable = Boolean(article.url) && !article.media;
   const cachedFullContent = article.extractionStatus === "complete" && Boolean(article.contentHtml);
   const fullContentLoading =
@@ -750,15 +765,6 @@ function ArticleActions({
         : cachedFullContent
           ? "Show full content"
           : "Load full content";
-  const summaryLabel = summaryState.loading
-    ? "Summarizing"
-    : summaryState.visible
-      ? "Hide summary"
-      : article.aiSummary
-        ? "Show summary"
-        : summaryState.error
-          ? "Retry summary"
-          : "Summarize";
   const translationLabel = translationState.loading
     ? `Translating to ${translationLanguage}`
     : translationState.visible
@@ -819,14 +825,36 @@ function ArticleActions({
         </button>
       ) : null}
       <button
+        ref={summaryTriggerRef}
         className="summary-action"
         type="button"
         disabled={summaryState.loading}
-        aria-expanded={summaryState.visible}
-        aria-controls={`article-${article.id}-ai-summary`}
-        onClick={() => onToggleSummary(article)}
-        aria-label={`${summaryLabel} (M)`}
-        data-tooltip={`${summaryLabel} (M)`}
+        aria-haspopup="menu"
+        aria-expanded={summaryMenuOpen}
+        aria-pressed={summaryState.visible}
+        aria-controls={summaryMenuId}
+        popoverTarget={summaryMenuId}
+        style={{ anchorName: summaryAnchorName }}
+        onPointerDown={() => {
+          focusSummaryMenuOnOpen.current = false;
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Escape" && summaryMenuOpen) {
+            event.preventDefault();
+            event.stopPropagation();
+            summaryMenuRef.current?.hidePopover();
+            summaryTriggerRef.current?.focus();
+            return;
+          }
+          if (["ArrowDown", "Enter", " "].includes(event.key)) {
+            focusSummaryMenuOnOpen.current = true;
+          }
+          if (event.key !== "ArrowDown") return;
+          event.preventDefault();
+          summaryMenuRef.current?.showPopover();
+        }}
+        aria-label="Choose AI prompt"
+        data-tooltip="Choose AI prompt"
       >
         {summaryState.loading ? (
           <LoaderCircle className="spin" aria-hidden="true" size={16} />
@@ -839,7 +867,62 @@ function ArticleActions({
             fill={summaryState.visible ? "currentColor" : "none"}
           />
         )}
+        <ChevronDown className="summary-action-chevron" aria-hidden="true" size={10} />
       </button>
+      <div
+        ref={summaryMenuRef}
+        id={summaryMenuId}
+        className="summary-prompt-menu context-action-menu"
+        popover="auto"
+        role="menu"
+        aria-label="AI prompts"
+        style={{ positionAnchor: summaryAnchorName }}
+        onToggle={(event) => {
+          const nextOpen = event.currentTarget.matches(":popover-open");
+          setSummaryMenuOpen(nextOpen);
+          if (!nextOpen || !focusSummaryMenuOnOpen.current) return;
+          window.requestAnimationFrame(() => {
+            summaryMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+          });
+        }}
+        onKeyDown={(event) => {
+          event.stopPropagation();
+          handleActionMenuKeyDown(event, () => {
+            summaryMenuRef.current?.hidePopover();
+            summaryTriggerRef.current?.focus();
+          });
+        }}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            summaryMenuRef.current?.hidePopover();
+            summaryTriggerRef.current?.focus();
+            onRunSummaryPrompt(article, null);
+          }}
+        >
+          <Sparkles aria-hidden="true" size={15} />
+          <span>Summarize</span>
+          <kbd>M</kbd>
+        </button>
+        {customPrompts.length > 0 ? <span className="context-menu-separator" /> : null}
+        {customPrompts.map((prompt) => (
+          <button
+            key={prompt.id}
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              summaryMenuRef.current?.hidePopover();
+              summaryTriggerRef.current?.focus();
+              onRunSummaryPrompt(article, prompt.id);
+            }}
+          >
+            <MessageSquareText aria-hidden="true" size={15} />
+            <span>{prompt.name}</span>
+          </button>
+        ))}
+      </div>
       <button
         className="translation-action"
         type="button"
@@ -920,11 +1003,13 @@ function summaryContent(text: string): { paragraphs: string[]; bullets: string[]
 function ArticleSummaryPanel({
   article,
   state,
+  customPrompts,
   onRegenerate,
   onOpenSettings,
 }: {
   article: Article;
   state: ArticleSummaryViewState;
+  customPrompts: AiCustomPrompt[];
   onRegenerate: (article: Article) => void;
   onOpenSettings: () => void;
 }) {
@@ -932,6 +1017,9 @@ function ArticleSummaryPanel({
   const summary = article.aiSummary;
   const content = summary ? summaryContent(summary.text) : null;
   const titleId = `article-${article.id}-ai-summary-title`;
+  const customPromptName = summary?.promptId
+    ? customPrompts.find((prompt) => prompt.id === summary.promptId)?.name
+    : null;
 
   return (
     <section
@@ -944,7 +1032,7 @@ function ArticleSummaryPanel({
       <div className="article-ai-summary-heading">
         <div>
           <Sparkles aria-hidden="true" size={17} />
-          <h3 id={titleId}>Summary</h3>
+          <h3 id={titleId}>{customPromptName ?? "Summary"}</h3>
         </div>
         {summary ? (
           <button
@@ -1094,6 +1182,7 @@ function ArticleDocument({
   summaryState,
   translationState,
   translationLanguage,
+  customPrompts,
   onFeedAction,
   onToggleFullContent,
   onRegenerateSummary,
@@ -1106,6 +1195,7 @@ function ArticleDocument({
   summaryState: ArticleSummaryViewState;
   translationState: ArticleTranslationViewState;
   translationLanguage: string;
+  customPrompts: AiCustomPrompt[];
   onFeedAction: (feedId: number, action: FeedManagementAction) => void;
   onToggleFullContent: (article: Article) => void;
   onRegenerateSummary: (article: Article) => void;
@@ -1209,6 +1299,7 @@ function ArticleDocument({
         <ArticleSummaryPanel
           article={article}
           state={summaryState}
+          customPrompts={customPrompts}
           onRegenerate={onRegenerateSummary}
           onOpenSettings={onOpenAiSettings}
         />
@@ -1323,6 +1414,7 @@ export function ReaderPane({
   summaryState,
   translationState,
   translationLanguage,
+  customPrompts,
   canPrevious,
   canNext,
   onBack,
@@ -1334,7 +1426,7 @@ export function ReaderPane({
   onOpenSource,
   onFeedAction,
   onToggleFullContent,
-  onToggleSummary,
+  onRunSummaryPrompt,
   onToggleTranslation,
   onRegenerateSummary,
   onOpenAiSettings,
@@ -1345,6 +1437,7 @@ export function ReaderPane({
   summaryState: ArticleSummaryViewState;
   translationState: ArticleTranslationViewState;
   translationLanguage: string;
+  customPrompts: AiCustomPrompt[];
   canPrevious: boolean;
   canNext: boolean;
   onBack: () => void;
@@ -1356,7 +1449,7 @@ export function ReaderPane({
   onOpenSource: (article: Article) => void;
   onFeedAction: (feedId: number, action: FeedManagementAction) => void;
   onToggleFullContent: (article: Article) => void;
-  onToggleSummary: (article: Article) => void;
+  onRunSummaryPrompt: (article: Article, promptId: string | null) => void;
   onToggleTranslation: (article: Article) => void;
   onRegenerateSummary: (article: Article) => void;
   onOpenAiSettings: () => void;
@@ -1811,6 +1904,7 @@ export function ReaderPane({
       summaryState={surface.summaryState}
       translationState={surface.translationState}
       translationLanguage={translationLanguage}
+      customPrompts={customPrompts}
       onFeedAction={onFeedAction}
       onToggleFullContent={onToggleFullContent}
       onRegenerateSummary={onRegenerateSummary}
@@ -1850,6 +1944,7 @@ export function ReaderPane({
             summaryState={activeSurface.summaryState}
             translationState={activeSurface.translationState}
             translationLanguage={translationLanguage}
+            customPrompts={customPrompts}
             onPrevious={() => navigateWithAnimation("previous")}
             onNext={() => navigateWithAnimation("next")}
             canPrevious={canPrevious}
@@ -1860,7 +1955,7 @@ export function ReaderPane({
             onCopy={onCopy}
             onOpenSource={onOpenSource}
             onToggleFullContent={onToggleFullContent}
-            onToggleSummary={onToggleSummary}
+            onRunSummaryPrompt={onRunSummaryPrompt}
             onToggleTranslation={onToggleTranslation}
           />
         </div>
@@ -2185,6 +2280,7 @@ export function ExpandedStream({
   summaryStates,
   translationStates,
   translationLanguage,
+  customPrompts,
   markReadOnScroll,
   hasMore,
   loadingMore,
@@ -2197,7 +2293,7 @@ export function ExpandedStream({
   onOpenSource,
   onFeedAction,
   onToggleFullContent,
-  onToggleSummary,
+  onRunSummaryPrompt,
   onToggleTranslation,
   onRegenerateSummary,
   onOpenAiSettings,
@@ -2210,6 +2306,7 @@ export function ExpandedStream({
   summaryStates: ReadonlyMap<number, ArticleSummaryViewState>;
   translationStates: ReadonlyMap<number, ArticleTranslationViewState>;
   translationLanguage: string;
+  customPrompts: AiCustomPrompt[];
   markReadOnScroll: boolean;
   hasMore: boolean;
   loadingMore: boolean;
@@ -2222,7 +2319,7 @@ export function ExpandedStream({
   onOpenSource: (article: Article) => void;
   onFeedAction: (feedId: number, action: FeedManagementAction) => void;
   onToggleFullContent: (article: Article) => void;
-  onToggleSummary: (article: Article) => void;
+  onRunSummaryPrompt: (article: Article, promptId: string | null) => void;
   onToggleTranslation: (article: Article) => void;
   onRegenerateSummary: (article: Article) => void;
   onOpenAiSettings: () => void;
@@ -2258,12 +2355,13 @@ export function ExpandedStream({
                 translationStates.get(article.id) ?? EMPTY_ARTICLE_TRANSLATION_STATE
               }
               translationLanguage={translationLanguage}
+              customPrompts={customPrompts}
               onToggleRead={onToggleRead}
               onToggleStar={onToggleStar}
               onCopy={onCopy}
               onOpenSource={onOpenSource}
               onToggleFullContent={onToggleFullContent}
-              onToggleSummary={onToggleSummary}
+              onRunSummaryPrompt={onRunSummaryPrompt}
               onToggleTranslation={onToggleTranslation}
             />
           </div>
@@ -2274,6 +2372,7 @@ export function ExpandedStream({
             summaryState={summaryStates.get(article.id) ?? EMPTY_ARTICLE_SUMMARY_STATE}
             translationState={translationStates.get(article.id) ?? EMPTY_ARTICLE_TRANSLATION_STATE}
             translationLanguage={translationLanguage}
+            customPrompts={customPrompts}
             onFeedAction={onFeedAction}
             onToggleFullContent={onToggleFullContent}
             onRegenerateSummary={onRegenerateSummary}

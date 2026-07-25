@@ -11,7 +11,8 @@ export type AiErrorCode =
   | "AI_RESPONSE_REFUSED"
   | "AI_RESPONSE_INVALID"
   | "ARTICLE_HAS_NO_TEXT"
-  | "ARTICLE_CHANGED";
+  | "ARTICLE_CHANGED"
+  | "CUSTOM_PROMPT_NOT_FOUND";
 
 export class AiError extends Error {
   constructor(

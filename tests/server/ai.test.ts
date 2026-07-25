@@ -275,7 +275,7 @@ describe("AI article summaries", () => {
       translationPrompt: "Translate every marked fragment and return one JSON object.",
     });
 
-    await service.summarizeArticle(readerId, articleId);
+    await service.summarizeArticle(readerId, articleId, null);
     await service.translateArticle(readerId, articleId, "feed");
     expect(requests).toHaveLength(2);
     expect(requests[0]).toMatchObject({ instructions: "Write one short summary paragraph." });
@@ -283,7 +283,7 @@ describe("AI article summaries", () => {
       instructions: "Translate every marked fragment and return one JSON object.",
     });
 
-    await service.summarizeArticle(readerId, articleId);
+    await service.summarizeArticle(readerId, articleId, null);
     await service.translateArticle(readerId, articleId, "feed");
     expect(requests).toHaveLength(2);
 
@@ -293,7 +293,7 @@ describe("AI article summaries", () => {
     });
     expect(database.getArticle(readerId, articleId)?.aiSummary).toBeNull();
 
-    await service.summarizeArticle(readerId, articleId);
+    await service.summarizeArticle(readerId, articleId, null);
     await service.translateArticle(readerId, articleId, "feed");
     expect(requests).toHaveLength(4);
     expect(requests[2]).toMatchObject({
@@ -302,6 +302,44 @@ describe("AI article summaries", () => {
     expect(requests[3]).toMatchObject({
       instructions: "Translate all marked fragments and return only their JSON object.",
     });
+
+    const customPromptId = "5caa245e-f441-4d33-95cc-287f50f07b91";
+    database.updateSettings(readerId, {
+      customPrompts: [
+        {
+          id: customPromptId,
+          name: "Find decisions",
+          prompt: "List the decisions in this article and identify who made each one.",
+        },
+      ],
+    });
+    expect(database.getArticle(readerId, articleId)?.aiSummary).toMatchObject({ promptId: null });
+    expect(await service.summarizeArticle(readerId, articleId, customPromptId)).toMatchObject({
+      promptId: customPromptId,
+    });
+    expect(requests[4]).toMatchObject({
+      instructions: "List the decisions in this article and identify who made each one.",
+    });
+    await service.summarizeArticle(readerId, articleId, customPromptId);
+    expect(requests).toHaveLength(5);
+
+    database.updateSettings(readerId, {
+      customPrompts: [
+        {
+          id: customPromptId,
+          name: "Find decisions",
+          prompt: "Return only a bullet list of decisions and their owners.",
+        },
+      ],
+    });
+    expect(database.getArticle(readerId, articleId)?.aiSummary).toBeNull();
+    await service.summarizeArticle(readerId, articleId, customPromptId);
+    expect(requests[5]).toMatchObject({
+      instructions: "Return only a bullet list of decisions and their owners.",
+    });
+    await expect(
+      service.summarizeArticle(readerId, articleId, "dfd3e6da-9d4f-4401-8e30-76b4013d5959"),
+    ).rejects.toMatchObject({ code: "CUSTOM_PROMPT_NOT_FOUND", statusCode: 404 });
   });
 
   it("keeps a summary for metadata-only refreshes and invalidates it when source text changes", () => {
@@ -311,6 +349,7 @@ describe("AI article summaries", () => {
     if (!article) throw new Error("Test article is unavailable");
     database.saveArticleAiSummary(readerId, articleId, article.revision, {
       promptVersion: 1,
+      promptId: null,
       sourceKind: "feed",
       provider: "openai",
       model: "gpt-5.6-luna",
@@ -364,7 +403,7 @@ describe("AI article summaries", () => {
     if (!cipher) throw new Error("Credential cipher was not created");
     const service = new AiService(database, { credentialCipher: cipher });
 
-    await expect(service.summarizeArticle(readerId, articleId)).rejects.toMatchObject({
+    await expect(service.summarizeArticle(readerId, articleId, null)).rejects.toMatchObject({
       code: "AI_NOT_CONFIGURED",
       statusCode: 422,
     });
@@ -373,7 +412,7 @@ describe("AI article summaries", () => {
       statusCode: 422,
     });
     service.setFeatureSetting(readerId, "article_summary", "anthropic");
-    await expect(service.summarizeArticle(readerId, articleId)).rejects.toMatchObject({
+    await expect(service.summarizeArticle(readerId, articleId, null)).rejects.toMatchObject({
       code: "AI_KEY_MISSING",
       statusCode: 422,
     });
