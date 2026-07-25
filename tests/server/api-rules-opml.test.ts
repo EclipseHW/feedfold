@@ -339,6 +339,7 @@ describe("live API, OPML, and filtering rules", () => {
       headers: { cookie: readerCookie },
       payload: {
         markReadOnScroll: false,
+        duplicateArticleWindowDays: 30,
         translationLanguage: "Polish",
         summaryPrompt: "Summarize with one concise paragraph.",
         translationPrompt: "Translate every marked fragment and return the required JSON object.",
@@ -346,6 +347,7 @@ describe("live API, OPML, and filtering rules", () => {
     });
     expect(savedSettings.json()).toMatchObject({
       markReadOnScroll: false,
+      duplicateArticleWindowDays: 30,
       translationLanguage: "Polish",
       summaryPrompt: "Summarize with one concise paragraph.",
       translationPrompt: "Translate every marked fragment and return the required JSON object.",
@@ -357,6 +359,16 @@ describe("live API, OPML, and filtering rules", () => {
           url: "/api/settings",
           headers: { cookie: readerCookie },
           payload: { translationLanguage: "   " },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: "/api/settings",
+          headers: { cookie: readerCookie },
+          payload: { duplicateArticleWindowDays: 14 },
         })
       ).statusCode,
     ).toBe(400);
@@ -380,6 +392,7 @@ describe("live API, OPML, and filtering rules", () => {
       ).json(),
     ).toMatchObject({
       markReadOnScroll: true,
+      duplicateArticleWindowDays: 7,
       translationLanguage: "English",
       summaryPrompt: DEFAULT_ARTICLE_SUMMARY_PROMPT,
       translationPrompt: DEFAULT_ARTICLE_TRANSLATION_PROMPT,

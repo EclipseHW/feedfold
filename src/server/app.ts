@@ -9,6 +9,8 @@ import {
   type AiFeature,
   type AiProvider,
   type ArticleQuery,
+  DUPLICATE_ARTICLE_WINDOW_DAYS,
+  type DuplicateArticleWindowDays,
   MARK_READ_AGE_DAYS,
   type MarkReadAgeDays,
   type MarkReadRequest,
@@ -44,6 +46,12 @@ const markReadAgeDays = z
     (value) => MARK_READ_AGE_DAYS.includes(value as MarkReadAgeDays),
     "Choose one of the available age thresholds",
   );
+const duplicateArticleWindowDays = z.custom<DuplicateArticleWindowDays>(
+  (value) =>
+    typeof value === "number" &&
+    DUPLICATE_ARTICLE_WINDOW_DAYS.includes(value as DuplicateArticleWindowDays),
+  "Choose 1, 7, or 30 days",
+);
 const credentials = z.object({
   username: z.string().trim().min(1).max(80),
   password: z.string().min(1).max(1_024),
@@ -418,6 +426,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     const body = z
       .object({
         pollIntervalMinutes: z.number().int().min(1).max(1_440).optional(),
+        duplicateArticleWindowDays: duplicateArticleWindowDays.optional(),
         singleKeyShortcuts: z.boolean().optional(),
         markReadOnScroll: z.boolean().optional(),
         translationLanguage: z.string().trim().min(1).max(80).optional(),

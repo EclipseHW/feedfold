@@ -475,6 +475,123 @@ describe("feed refresh and full-text extraction", () => {
     );
   });
 
+  it("skips exact URL or title duplicates across feeds within the configured window", async () => {
+    const database = await temporaryDatabase();
+    cleanups.push(() => database.close());
+    const authService = new AuthService(database);
+    const reader = authService.register("reader", "reader-password")?.user;
+    const partner = authService.register("partner", "partner-password")?.user;
+    if (!reader || !partner) throw new Error("Expected test accounts");
+
+    const article = (externalId: string, title: string, url: string) => ({
+      externalId,
+      title,
+      url,
+      author: null,
+      publishedAt: null,
+      summary: "",
+      imageUrl: null,
+      feedContentHtml: null,
+    });
+    const refreshFeed = (feedId: number, articles: ParsedFeed["articles"]) =>
+      database.markFeedSuccess(feedId, {
+        httpStatus: 200,
+        etag: null,
+        lastModified: null,
+        pollIntervalMinutes: 20,
+        parsed: { title: "Feed", siteUrl: "https://example.test", articles },
+      });
+    const sourceFeed = database.createFeed(reader.id, {
+      feedUrl: "https://example.test/source-feed",
+    });
+    refreshFeed(sourceFeed.id, [
+      article("recent-url", "URL source", "https://example.test/shared-url"),
+      article("recent-title", "Exact shared title", "https://example.test/title-source"),
+      article("two-day-one", "Two-day one-day window", "https://example.test/two-day-one"),
+      article("two-day-seven", "Two-day seven-day window", "https://example.test/two-day-seven"),
+      article("eight-day-thirty", "Eight-day title", "https://example.test/eight-day"),
+      article("empty-source", "", "https://example.test/empty-source"),
+    ]);
+
+    const setDiscoveredAge = (externalId: string, days: number) => {
+      database.sqlite
+        .prepare("UPDATE articles SET discovered_at = ? WHERE external_id = ?")
+        .run(new Date(Date.now() - days * 24 * 60 * 60 * 1_000).toISOString(), externalId);
+    };
+    setDiscoveredAge("two-day-one", 2);
+    setDiscoveredAge("two-day-seven", 2);
+    setDiscoveredAge("eight-day-thirty", 8);
+
+    database.updateSettings(reader.id, { duplicateArticleWindowDays: 1 });
+    const oneDayFeed = database.createFeed(reader.id, {
+      feedUrl: "https://example.test/one-day-feed",
+    });
+    refreshFeed(oneDayFeed.id, [
+      article("url-copy", "Different URL-copy title", "https://example.test/shared-url"),
+      article("title-copy", "Exact shared title", "https://example.test/title-copy"),
+      article("case-copy", "exact shared title", "https://example.test/case-copy"),
+      article("two-day-copy", "Two-day one-day window", "https://example.test/two-day-one"),
+      article("empty-copy-one", "", "https://example.test/empty-copy-one"),
+      article("empty-copy-two", "", "https://example.test/empty-copy-two"),
+      article("batch-original", "Same-batch title", "https://example.test/batch-original"),
+      article("batch-copy", "Same-batch title", "https://example.test/batch-copy"),
+    ]);
+
+    database.updateSettings(reader.id, { duplicateArticleWindowDays: 7 });
+    const sevenDayFeed = database.createFeed(reader.id, {
+      feedUrl: "https://example.test/seven-day-feed",
+    });
+    refreshFeed(sevenDayFeed.id, [
+      article("seven-day-copy", "Two-day seven-day window", "https://example.test/two-day-seven"),
+      article("seven-day-unique", "Seven-day unique", "https://example.test/seven-day-unique"),
+    ]);
+
+    database.updateSettings(reader.id, { duplicateArticleWindowDays: 30 });
+    const thirtyDayFeed = database.createFeed(reader.id, {
+      feedUrl: "https://example.test/thirty-day-feed",
+    });
+    refreshFeed(thirtyDayFeed.id, [
+      article("thirty-day-copy", "Eight-day title", "https://example.test/eight-day"),
+      article("thirty-day-unique", "Thirty-day unique", "https://example.test/thirty-day-unique"),
+    ]);
+
+    const readerArticleIds = database.sqlite
+      .prepare(
+        `SELECT articles.external_id
+         FROM articles
+         JOIN feeds ON feeds.id = articles.feed_id
+         WHERE feeds.user_id = ?`,
+      )
+      .pluck()
+      .all(reader.id) as string[];
+    expect(readerArticleIds).not.toContain("url-copy");
+    expect(readerArticleIds).not.toContain("title-copy");
+    expect(readerArticleIds).not.toContain("batch-copy");
+    expect(readerArticleIds).not.toContain("seven-day-copy");
+    expect(readerArticleIds).not.toContain("thirty-day-copy");
+    expect(readerArticleIds).toEqual(
+      expect.arrayContaining([
+        "case-copy",
+        "two-day-copy",
+        "empty-copy-one",
+        "empty-copy-two",
+        "batch-original",
+        "seven-day-unique",
+        "thirty-day-unique",
+      ]),
+    );
+
+    const partnerFeed = database.createFeed(partner.id, {
+      feedUrl: "https://example.test/partner-feed",
+    });
+    refreshFeed(partnerFeed.id, [
+      article("partner-copy", "Exact shared title", "https://example.test/shared-url"),
+    ]);
+    expect(database.listArticles(partner.id, { state: "all" })).toMatchObject([
+      { title: "Exact shared title", url: "https://example.test/shared-url" },
+    ]);
+  });
+
   it("preserves an extracted thumbnail when feed metadata changes", async () => {
     const database = await temporaryDatabase();
     cleanups.push(() => database.close());
