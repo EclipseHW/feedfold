@@ -999,7 +999,7 @@ kbd {
   position-try-fallbacks: flip-block, flip-inline;
   z-index: var(--z-context-menu);
   inset: auto;
-  width: min(260px, calc(100vw - 16px));
+  width: min(214px, calc(100vw - 16px));
   max-height: min(420px, calc(100dvh - 16px));
   margin: 6px 0 0;
   padding: 6px;

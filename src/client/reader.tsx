@@ -906,7 +906,7 @@ function ArticleActions({
           <span>Summarize</span>
           <kbd>M</kbd>
         </button>
-        {customPrompts.length > 0 ? <span className="context-menu-separator" /> : null}
+        {customPrompts.length > 0 ? <hr className="context-menu-separator" /> : null}
         {customPrompts.map((prompt) => (
           <button
             key={prompt.id}
