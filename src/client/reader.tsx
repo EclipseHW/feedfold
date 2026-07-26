@@ -43,6 +43,7 @@ import type {
   ReadingMode,
 } from "../shared/types";
 import { articleContentView } from "./article-content";
+import { ArticleHtml } from "./article-html";
 import {
   type ArticleSwipeDirection,
   type ArticleSwipeIntent,
@@ -2152,10 +2153,8 @@ function ArticleBody({
 }
 
 function ArticleTranslationText({ translation }: { translation: ArticleAiTranslation }) {
-  const html = { __html: translation.html };
   return (
-    // biome-ignore lint/security/noDangerouslySetInnerHtml: The server rebuilds translated text inside the sanitized source article HTML.
-    <div className="article-content article-translation" dangerouslySetInnerHTML={html} />
+    <ArticleHtml className="article-content article-translation" sanitizedHtml={translation.html} />
   );
 }
 
@@ -2216,10 +2215,7 @@ function ArticleText({
     );
   }
   if (contentView === "full" && article.contentHtml) {
-    return (
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: The server sanitizes extracted article HTML before returning it.
-      <div className="article-content" dangerouslySetInnerHTML={{ __html: article.contentHtml }} />
-    );
+    return <ArticleHtml sanitizedHtml={article.contentHtml} />;
   }
   if (contentView === "failed") {
     return (
@@ -2252,11 +2248,7 @@ function ArticleText({
 
 function FeedArticleText({ article }: { article: Article }) {
   if (article.feedContentHtml) {
-    const html = article.feedContentHtml;
-    return (
-      // biome-ignore lint/security/noDangerouslySetInnerHtml: The server sanitizes feed HTML before returning it.
-      <div className="article-content" dangerouslySetInnerHTML={{ __html: html }} />
-    );
+    return <ArticleHtml sanitizedHtml={article.feedContentHtml} />;
   }
   return article.summary ? (
     <div className="article-content">
