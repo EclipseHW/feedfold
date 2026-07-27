@@ -15,7 +15,9 @@ mkdir -p "$(dirname "$SHARED_DB")"
 if [ ! -f "$SHARED_DB" ] && [ -f "$SOURCE_DB" ]; then
   node --input-type=module -e 'import Database from "better-sqlite3"; const [, sourcePath, targetPath] = process.argv; const source = new Database(sourcePath, { readonly: true }); await source.backup(targetPath); source.close();' "$SOURCE_DB" "$SHARED_DB"
 fi
-npx playwright install chromium
+if [ -x ./node_modules/.bin/playwright ]; then
+  ./node_modules/.bin/playwright install chromium
+fi
 '''
 
 [[actions]]
