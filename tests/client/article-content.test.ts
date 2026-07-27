@@ -11,6 +11,7 @@ function linkedArticle(): Article {
     id: 1,
     feedId: 1,
     feedTitle: "Linked feed",
+    feedSourceKind: "published",
     folderId: null,
     title: "Commentary about an external post",
     url: "https://external.example/post",

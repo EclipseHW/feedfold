@@ -1,6 +1,6 @@
 # Echovale
 
-Echovale is a quiet, keyboard-first RSS reader designed to be self-hosted.
+Echovale is a quiet, keyboard-first feed reader designed to be self-hosted.
 
 ## Screenshots
 
@@ -13,17 +13,19 @@ Echovale is a quiet, keyboard-first RSS reader designed to be self-hosted.
 ## Features
 
 - Keyboard navigation for the complete reading loop.
+- Follow public webpages that have no RSS, Atom, or JSON feed, including content rendered by JavaScript.
 - Rules that keep wanted articles, hide noise, or mark matches as read.
 - Full-text extraction with feed content as a visible fallback.
 - One-click AI article summaries and translations through Google Gemini, OpenAI, or Anthropic.
 - Per-feed last attempt, last success, HTTP status, and error details.
+- Repair a web feed's page selection when the website changes, without losing collected articles or their state.
 - Installable Progressive Web App with standalone windows, home-screen shortcuts, and an offline app shell.
 - Import and export OPML, including feed folders.
 - Choose newest-first or oldest-first reading order for each folder or feed. Configured sorting per folder or feed persists in the aggregated view without affecting other feeds.
 
 ## Deploy with Docker Compose
 
-The included deployment runs one Node.js 24.18.0 process and stores SQLite data in a named volume. Do not scale the service to multiple replicas: polling and SQLite ownership are intentionally kept in one process.
+The included deployment runs one Node.js 24.18.0 process, a sandboxed headless Chromium process when a web feed loads, and stores SQLite data in a named volume. Do not scale the service to multiple replicas: polling and SQLite ownership are intentionally kept in one process.
 
 Requirements:
 
@@ -101,6 +103,7 @@ Compose accepts these values from a project-level `.env` file or the shell:
 | `ECHOVALE_PORT` | `3000` | Host port forwarded to Echovale. |
 | `POLL_INTERVAL_MINUTES` | `20` | Initial background polling interval for a new database. |
 | `FEED_FETCH_TIMEOUT_MS` | `15000` | Feed request timeout in milliseconds. |
+| `WEB_FEED_LOAD_TIMEOUT_MS` | `30000` | Maximum normal page-load time for JavaScript-rendered web feeds, in milliseconds. |
 | `ARTICLE_FETCH_TIMEOUT_MS` | `20000` | Full-text article request timeout in milliseconds. |
 | `AI_CREDENTIALS_KEY` | none | A persistent 64-character hexadecimal key used to encrypt provider API keys. AI setup is disabled until this is set. |
 | `AI_REQUEST_TIMEOUT_MS` | `60000` | AI provider request timeout in milliseconds. |
@@ -114,6 +117,16 @@ docker compose up -d
 ```
 
 Background polling runs in the server and continues when no browser is open. The initial interval comes from `POLL_INTERVAL_MINUTES`; later changes made in **Settings** are stored in SQLite and survive restarts. Manual refresh remains available from the interface. Feed health shows the last attempt separately from the last successful update, so a stale or failing source is distinguishable from a healthy feed with no new articles.
+
+## Web feeds
+
+Add a website through the existing **Add feed** flow. Echovale still looks for a published RSS, Atom, or JSON feed first. When none is available, choose **Create web feed** to load the page, inspect suggested groups of repeated items, select the right group on the page or from the suggestions, and review the resulting entries before saving.
+
+Web feeds reload the configured page in Chromium during scheduled and manual refreshes. Existing links are updated in place, new links are added once, and items that disappear remain in history. A missing publication date uses the time the item was first discovered. If a saved selection stops matching after the website changes, the feed keeps its history and shows a direct **Repair selection** action.
+
+Web feeds cover repeated items visible after a normal load of one publicly accessible page. Echovale does not sign in to websites, bypass paywalls, CAPTCHAs, or bot protection, crawl pagination or an entire site, monitor arbitrary text or prices, or compare screenshots. Temporary loading failures and JavaScript timeouts are reported separately from a page whose saved selection needs repair. Some websites cannot be converted and are rejected before a feed is created.
+
+The Compose deployment runs Chromium as the non-root application user with its Linux sandbox enabled. It uses the version-pinned [Playwright seccomp profile](https://github.com/microsoft/playwright/blob/v1.62.0/utils/docker/seccomp_profile.json) and restores only the `SYS_CHROOT` capability required by that sandbox.
 
 ## AI summaries and translations
 

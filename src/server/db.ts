@@ -939,6 +939,7 @@ function mapArticle(row: Row): Article {
     id: Number(row.id),
     feedId: Number(row.feedId),
     feedTitle: String(row.feedTitle),
+    feedSourceKind: row.feedSourceKind as FeedSourceKind,
     folderId: row.folderId === null ? null : Number(row.folderId),
     title: String(row.title),
     url: row.url === null ? null : String(row.url),
@@ -1594,9 +1595,6 @@ export class AppDatabase {
       throw new Error("The web feed selection did not match any items");
     }
     const config = { ...configInput, pageUrl: new URL(configInput.pageUrl).toString() };
-    if (config.pageUrl !== existing.feedUrl) {
-      throw new Error("The web feed selection belongs to a different page");
-    }
     const update = this.sqlite.transaction(() => {
       const timestamp = now();
       const changed = this.sqlite
@@ -1609,8 +1607,12 @@ export class AppDatabase {
         .run(JSON.stringify(config), parsed.articles.length, timestamp, id).changes;
       if (changed === 0) throw new Error(`Web feed ${id} is missing its page selection`);
       this.sqlite
-        .prepare("UPDATE feeds SET refreshing = 1, last_attempt_at = ? WHERE id = ?")
-        .run(timestamp, id);
+        .prepare(
+          `UPDATE feeds
+           SET feed_url = ?, site_url = ?, refreshing = 1, last_attempt_at = ?, updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(config.pageUrl, parsed.siteUrl ?? config.pageUrl, timestamp, timestamp, id);
       this.markFeedSuccess(id, {
         httpStatus: 200,
         etag: null,
@@ -1780,6 +1782,7 @@ export class AppDatabase {
       pollIntervalMinutes: number;
       parsed?: ParsedFeed;
       webMatchCount?: number;
+      expectedSelectionRevision?: number;
     },
   ): void {
     const parsed = input.parsed
@@ -1798,6 +1801,12 @@ export class AppDatabase {
       : undefined;
     const ruleArticleIds = new Set<number>();
     const complete = this.sqlite.transaction(() => {
+      if (input.expectedSelectionRevision !== undefined) {
+        const selection = this.sqlite
+          .prepare("SELECT selection_revision AS revision FROM web_feed_configs WHERE feed_id = ?")
+          .get(id) as { revision: number } | undefined;
+        if (!selection || selection.revision !== input.expectedSelectionRevision) return;
+      }
       if (parsed) {
         this.sqlite
           .prepare(
@@ -1993,10 +2002,17 @@ export class AppDatabase {
       errorKind: FeedErrorKind;
       healthStatus: FeedHealthStatus;
       retryMinutes: number;
+      expectedSelectionRevision?: number;
     },
   ): void {
     const nextPollAt = new Date(Date.now() + input.retryMinutes * 60_000).toISOString();
     const fail = this.sqlite.transaction(() => {
+      if (input.expectedSelectionRevision !== undefined) {
+        const selection = this.sqlite
+          .prepare("SELECT selection_revision AS revision FROM web_feed_configs WHERE feed_id = ?")
+          .get(id) as { revision: number } | undefined;
+        if (!selection || selection.revision !== input.expectedSelectionRevision) return;
+      }
       this.sqlite
         .prepare(
           `UPDATE feeds
@@ -2133,6 +2149,7 @@ export class AppDatabase {
           `SELECT articles.id,
                 articles.feed_id AS feedId,
                 feeds.title AS feedTitle,
+                feeds.source_kind AS feedSourceKind,
                 feeds.folder_id AS folderId,
                 articles.title,
                 articles.url,
@@ -2330,6 +2347,7 @@ export class AppDatabase {
         `SELECT articles.id,
                 articles.feed_id AS feedId,
                 feeds.title AS feedTitle,
+                feeds.source_kind AS feedSourceKind,
                 feeds.folder_id AS folderId,
                 articles.title,
                 articles.url,

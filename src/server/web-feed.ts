@@ -1,6 +1,4 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { lookup } from "node:dns/promises";
-import { BlockList, isIP } from "node:net";
 import { JSDOM } from "jsdom";
 import {
   type Browser,
@@ -8,6 +6,7 @@ import {
   chromium,
   type Page,
   errors as playwrightErrors,
+  type Request,
 } from "playwright";
 import type {
   FeedErrorKind,
@@ -19,6 +18,15 @@ import type {
   WebFeedSelectors,
 } from "../shared/types.js";
 import type { ParsedArticle, ParsedFeed } from "./db.js";
+import {
+  type PinnedAddress,
+  PinnedPublicProxy,
+  PublicNetworkError,
+  publicProxyUrl,
+  resolvePublicAddress,
+} from "./public-network.js";
+
+export { isBlockedNetworkAddress } from "./public-network.js";
 
 const DEFAULT_TIMEOUT_MS = 15_000;
 const DEFAULT_SETTLE_QUIET_MS = 500;
@@ -30,59 +38,28 @@ const DEFAULT_MAX_ELEMENTS = 50_000;
 const DEFAULT_MAX_REQUESTS = 300;
 const MAX_SNAPSHOTS = 100;
 const MAX_MATCHED_ITEMS = 2_000;
-const MAX_CANDIDATES = 8;
+const MAX_SUGGESTIONS = 8;
+const MAX_SELECTABLE_CANDIDATES = 100;
 const PREVIEW_ARTICLE_LIMIT = 5;
 const MAX_INLINE_STYLE_BYTES = 2 * 1_024 * 1_024;
+const MIN_CANDIDATE_SCORE = 28;
 
 const REPEATED_ITEM_TAGS = new Set(["a", "article", "div", "li", "section", "tr"]);
+const CONTENT_REQUEST_TYPES = new Set(["fetch", "script", "xhr"]);
 const EXCLUDED_REGION_SELECTOR =
   'nav, header, footer, aside, [role="navigation"], [role="menu"], [aria-hidden="true"], [hidden]';
+const EXCLUDED_REGION_NAME = /(?:^|[-_\s])(header|footer|nav|menu|sidebar)(?:$|[-_\s])/i;
 const STATE_CLASS_PATTERN =
   /^(?:active|current|disabled|expanded|focus|focused|hidden|hover|open|selected)$/i;
-
-const blockedAddresses = new BlockList();
-for (const [network, prefix] of [
-  ["0.0.0.0", 8],
-  ["10.0.0.0", 8],
-  ["100.64.0.0", 10],
-  ["127.0.0.0", 8],
-  ["169.254.0.0", 16],
-  ["172.16.0.0", 12],
-  ["192.0.0.0", 24],
-  ["192.0.2.0", 24],
-  ["192.88.99.0", 24],
-  ["192.168.0.0", 16],
-  ["198.18.0.0", 15],
-  ["198.51.100.0", 24],
-  ["203.0.113.0", 24],
-  ["224.0.0.0", 4],
-  ["240.0.0.0", 4],
-] as const) {
-  blockedAddresses.addSubnet(network, prefix, "ipv4");
-}
-for (const [network, prefix] of [
-  ["::", 128],
-  ["::1", 128],
-  ["::ffff:0:0", 96],
-  ["64:ff9b:1::", 48],
-  ["100::", 64],
-  ["2001::", 23],
-  ["2001:db8::", 32],
-  ["2002::", 16],
-  ["fc00::", 7],
-  ["fe80::", 10],
-  ["ff00::", 8],
-] as const) {
-  blockedAddresses.addSubnet(network, prefix, "ipv6");
-}
 
 export class WebFeedError extends Error {
   constructor(
     message: string,
     readonly kind: FeedErrorKind,
     readonly httpStatus: number | null = null,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "WebFeedError";
   }
 }
@@ -90,6 +67,7 @@ export class WebFeedError extends Error {
 export interface WebFeedServiceOptions {
   allowPrivateNetworks?: boolean;
   browserFactory?: () => Promise<Browser>;
+  publicAddressResolver?: (hostname: string) => Promise<PinnedAddress>;
   timeoutMs?: number;
   settleQuietMs?: number;
   settleTimeoutMs?: number;
@@ -112,6 +90,13 @@ interface LoadedPage {
   pageUrl: string;
   title: string;
   httpStatus: number | null;
+  domContentLoaded: boolean;
+  contentRequestFailure: ContentRequestFailure | null;
+}
+
+interface ContentRequestFailure {
+  kind: "http" | "network";
+  httpStatus: number | null;
 }
 
 interface StoredSnapshot {
@@ -128,6 +113,7 @@ interface ExtractedSelection {
 interface RankedCandidate {
   candidate: WebFeedCandidate;
   elements: Element[];
+  articleUrls: string[];
   linkKey: string;
   score: number;
 }
@@ -453,9 +439,20 @@ function itemSelector(parent: Element, elements: Element[], document: Document):
   return `${uniqueSelector(parent, document)} > ${tag}${classPart}`;
 }
 
+function isExcludedRegion(element: Element): boolean {
+  let current: Element | null = element;
+  while (current) {
+    if (current.matches(EXCLUDED_REGION_SELECTOR)) return true;
+    const name = `${current.id} ${current.getAttribute("class") ?? ""}`;
+    if (EXCLUDED_REGION_NAME.test(name)) return true;
+    current = current.parentElement;
+  }
+  return false;
+}
+
 function isPotentialItem(element: Element, pageUrl: string): boolean {
   if (!REPEATED_ITEM_TAGS.has(element.tagName.toLowerCase())) return false;
-  if (element.closest(EXCLUDED_REGION_SELECTOR)) return false;
+  if (isExcludedRegion(element)) return false;
   const style = element.getAttribute("style")?.toLowerCase() ?? "";
   if (style.includes("display:none") || style.includes("visibility:hidden")) return false;
   const link = element.matches("a[href]") ? element : element.querySelector("a[href]");
@@ -527,6 +524,7 @@ function rankedCandidate(
     minimumItemCount: Math.min(3, extracted.articles.length),
   };
   const fields = availableFields(extracted.articles);
+  const score = groupScore(parent, elements, fields);
   const candidate: WebFeedCandidate = {
     id: candidateId(config),
     label: groupLabel(parent, elements),
@@ -538,11 +536,12 @@ function rankedCandidate(
   return {
     candidate,
     elements: selectedItems,
+    articleUrls: extracted.articles.map((article) => article.url).filter((url) => url !== null),
     linkKey: extracted.articles
       .map((article) => article.externalId)
       .sort()
       .join("\n"),
-    score: groupScore(parent, elements, fields),
+    score,
   };
 }
 
@@ -552,7 +551,7 @@ function detectCandidates(document: Document, pageUrl: string): RankedCandidate[
     ? [document.body, ...document.querySelectorAll("body *")]
     : [...document.querySelectorAll("*")];
   for (const parent of parents) {
-    if (parent.closest(EXCLUDED_REGION_SELECTOR)) continue;
+    if (isExcludedRegion(parent)) continue;
     const eligible = [...parent.children].filter((child) => isPotentialItem(child, pageUrl));
     if (eligible.length < 2) continue;
     const groups = new Map<string, Element[]>();
@@ -583,7 +582,7 @@ function detectCandidates(document: Document, pageUrl: string): RankedCandidate[
     if (seenLinks.has(candidate.linkKey)) continue;
     seenLinks.add(candidate.linkKey);
     unique.push(candidate);
-    if (unique.length === MAX_CANDIDATES) break;
+    if (unique.length === MAX_SELECTABLE_CANDIDATES) break;
   }
   return unique;
 }
@@ -608,6 +607,7 @@ function candidateFromConfig(
         articles: extracted.articles.slice(0, PREVIEW_ARTICLE_LIMIT).map(previewArticle),
       },
       elements: extracted.elements,
+      articleUrls: extracted.articles.map((article) => article.url).filter((url) => url !== null),
       linkKey: extracted.articles
         .map((article) => article.externalId)
         .sort()
@@ -617,6 +617,28 @@ function candidateFromConfig(
   } catch {
     return null;
   }
+}
+
+async function publicCandidates(
+  candidates: RankedCandidate[],
+  allowPrivateNetworks: boolean,
+  cache: HostValidationCache,
+  addressResolver: (hostname: string) => Promise<PinnedAddress>,
+): Promise<RankedCandidate[]> {
+  if (allowPrivateNetworks) return candidates;
+  const accepted: RankedCandidate[] = [];
+  for (const candidate of candidates) {
+    try {
+      for (const url of candidate.articleUrls) {
+        await assertPublicPageUrl(url, false, cache, addressResolver);
+      }
+      accepted.push(candidate);
+    } catch (error) {
+      if (error instanceof WebFeedError && error.kind === "inaccessible") continue;
+      throw error;
+    }
+  }
+  return accepted;
 }
 
 function markCandidateElements(candidates: RankedCandidate[]): void {
@@ -839,13 +861,6 @@ function sanitizeSnapshot(document: Document, messageToken: string): string {
   return `<!doctype html>\n${document.documentElement.outerHTML}`;
 }
 
-function isBlockedAddress(address: string): boolean {
-  const version = isIP(address);
-  if (version === 4) return blockedAddresses.check(address, "ipv4");
-  if (version === 6) return blockedAddresses.check(address, "ipv6");
-  return true;
-}
-
 function pageUrl(value: string): URL {
   let url: URL;
   try {
@@ -872,6 +887,7 @@ async function assertPublicPageUrl(
   value: string,
   allowPrivateNetworks: boolean,
   cache: HostValidationCache,
+  addressResolver: (hostname: string) => Promise<PinnedAddress>,
 ): Promise<void> {
   const url = pageUrl(value);
   if (allowPrivateNetworks) return;
@@ -879,38 +895,16 @@ async function assertPublicPageUrl(
     .replace(/^\[|\]$/g, "")
     .toLowerCase()
     .replace(/\.$/, "");
-  if (
-    hostname === "localhost" ||
-    hostname.endsWith(".localhost") ||
-    hostname.endsWith(".local") ||
-    hostname.endsWith(".internal")
-  ) {
-    throw new WebFeedError("This address is not a publicly accessible webpage.", "inaccessible");
-  }
   let validation = cache.get(hostname);
   if (!validation) {
-    validation = (async () => {
-      let addresses: string[];
-      if (isIP(hostname)) addresses = [hostname];
-      else {
-        try {
-          addresses = (await lookup(hostname, { all: true, verbatim: true })).map(
-            (entry) => entry.address,
-          );
-        } catch {
-          throw new WebFeedError("Could not resolve this webpage's address.", "network");
+    validation = addressResolver(hostname)
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        if (error instanceof PublicNetworkError) {
+          throw new WebFeedError(error.message, error.kind);
         }
-      }
-      if (addresses.length === 0) {
-        throw new WebFeedError("Could not resolve this webpage's address.", "network");
-      }
-      if (addresses.some(isBlockedAddress)) {
-        throw new WebFeedError(
-          "This address is not a publicly accessible webpage.",
-          "inaccessible",
-        );
-      }
-    })();
+        throw error;
+      });
     cache.set(hostname, validation);
   }
   await validation;
@@ -935,55 +929,156 @@ async function detectedChallenge(page: Page): Promise<boolean> {
   return challengeDetected(content.title, content.bodyText);
 }
 
-async function settleDom(page: Page, quietMs: number, timeoutMs: number): Promise<boolean> {
-  const minimumWaitMs = Math.min(1_000, Math.max(quietMs, 250));
+function contentRequestError(loaded: LoadedPage): WebFeedError | null {
+  const failure = loaded.contentRequestFailure;
+  if (!failure) return null;
+  if (failure.kind === "http" && failure.httpStatus !== null) {
+    return new WebFeedError(
+      `This webpage could not finish loading its items because a page request returned HTTP ${failure.httpStatus}.`,
+      "http",
+      failure.httpStatus,
+    );
+  }
+  return new WebFeedError(
+    "This webpage could not finish loading its items because a page request failed.",
+    "network",
+  );
+}
+
+async function settleDom(
+  page: Page,
+  quietMs: number,
+  timeoutMs: number,
+  expectedConfig: WebFeedConfig | null,
+  pendingRequestBinding: string,
+): Promise<"ready" | "quiet_missing_selection" | "timeout"> {
+  const minimumWaitMs = Math.min(timeoutMs, Math.max(expectedConfig ? 1_000 : 3_000, quietMs, 250));
   return page.evaluate(
-    ({ minimumWaitMs, quietMs, timeoutMs }) =>
-      new Promise<boolean>((resolve) => {
+    ({ expectedConfig, minimumWaitMs, pendingRequestBinding, quietMs, timeoutMs }) =>
+      new Promise<"ready" | "quiet_missing_selection" | "timeout">((resolve) => {
         const root = document.documentElement;
         if (!root) {
-          resolve(true);
+          resolve("ready");
           return;
         }
         const startedAt = performance.now();
         let lastMutationAt = startedAt;
+        let repeatedItemsCheckedAt = -1;
+        let repeatedItemsReady = false;
         const observer = new MutationObserver(() => {
           lastMutationAt = performance.now();
         });
         observer.observe(root, { childList: true, subtree: true, characterData: true });
         const timer = setInterval(
-          () => {
+          async () => {
             const now = performance.now();
-            if (now - startedAt >= minimumWaitMs && now - lastMutationAt >= quietMs) {
+            const quiet = now - lastMutationAt >= quietMs;
+            const pendingRequests = await (
+              window as unknown as Record<string, () => Promise<number>>
+            )[pendingRequestBinding]();
+            if (
+              expectedConfig === null &&
+              pendingRequests > 0 &&
+              now - startedAt >= minimumWaitMs &&
+              quiet &&
+              repeatedItemsCheckedAt !== lastMutationAt
+            ) {
+              repeatedItemsCheckedAt = lastMutationAt;
+              for (const parent of document.querySelectorAll("body, body *")) {
+                if (
+                  parent.closest(
+                    'nav, header, footer, aside, [role="navigation"], [role="menu"], [aria-hidden="true"], [hidden]',
+                  )
+                ) {
+                  continue;
+                }
+                const counts = new Map<string, number>();
+                for (const child of parent.children) {
+                  const tag = child.tagName.toLowerCase();
+                  if (!["a", "article", "div", "li", "section", "tr"].includes(tag)) continue;
+                  const link = child.matches("a[href]") ? child : child.querySelector("a[href]");
+                  const rawHref = link?.getAttribute("href");
+                  if (!rawHref) continue;
+                  try {
+                    const url = new URL(rawHref, location.href);
+                    if (url.protocol !== "http:" && url.protocol !== "https:") continue;
+                  } catch {
+                    continue;
+                  }
+                  const count = (counts.get(tag) ?? 0) + 1;
+                  counts.set(tag, count);
+                  if (count >= 2) {
+                    repeatedItemsReady = true;
+                    break;
+                  }
+                }
+                if (repeatedItemsReady) break;
+              }
+            }
+            let expectedSelectionReady = expectedConfig === null;
+            if (expectedConfig) {
+              try {
+                let matches = 0;
+                for (const item of document.querySelectorAll(expectedConfig.selectors.item)) {
+                  const link =
+                    expectedConfig.selectors.link === ":scope"
+                      ? item
+                      : item.querySelector(expectedConfig.selectors.link);
+                  const rawHref = link?.getAttribute("href") ?? link?.getAttribute("data-href");
+                  if (!rawHref) continue;
+                  const url = new URL(rawHref, location.href);
+                  if (url.protocol !== "http:" && url.protocol !== "https:") continue;
+                  matches += 1;
+                  if (matches >= expectedConfig.minimumItemCount) {
+                    expectedSelectionReady = true;
+                    break;
+                  }
+                }
+              } catch {
+                expectedSelectionReady = false;
+              }
+            }
+            if (
+              now - startedAt >= minimumWaitMs &&
+              quiet &&
+              expectedSelectionReady &&
+              (expectedConfig !== null || pendingRequests === 0 || repeatedItemsReady)
+            ) {
               clearInterval(timer);
               observer.disconnect();
-              resolve(true);
+              resolve("ready");
             } else if (now - startedAt >= timeoutMs) {
               clearInterval(timer);
               observer.disconnect();
-              resolve(false);
+              resolve(
+                expectedConfig !== null && quiet && pendingRequests === 0
+                  ? "quiet_missing_selection"
+                  : "timeout",
+              );
             }
           },
           Math.min(100, quietMs),
         );
       }),
-    { minimumWaitMs, quietMs, timeoutMs },
+    { expectedConfig, minimumWaitMs, pendingRequestBinding, quietMs, timeoutMs },
   );
 }
 
 async function materializeOpenShadowRoots(page: Page): Promise<void> {
   await page.evaluate(() => {
-    const materialize = (root: Document | ShadowRoot): void => {
+    const roots: Array<Document | ShadowRoot> = [document];
+    while (roots.length > 0) {
+      const root = roots.pop();
+      if (!root) continue;
       for (const element of root.querySelectorAll("*")) {
         if (!element.shadowRoot) continue;
-        materialize(element.shadowRoot);
+        roots.push(element.shadowRoot);
         const container = document.createElement("div");
         container.setAttribute("data-echovale-shadow-root", "");
         for (const child of element.shadowRoot.childNodes) container.append(child.cloneNode(true));
         element.append(container);
       }
-    };
-    materialize(document);
+    }
   });
 }
 
@@ -1080,13 +1175,15 @@ async function inlineComputedStyles(page: Page, byteLimit: number): Promise<void
       "z-index",
     ];
     const elements: Element[] = [];
-    const collect = (root: Document | ShadowRoot): void => {
+    const roots: Array<Document | ShadowRoot> = [document];
+    while (roots.length > 0) {
+      const root = roots.pop();
+      if (!root) continue;
       for (const element of root.querySelectorAll("*")) {
         elements.push(element);
-        if (element.shadowRoot) collect(element.shadowRoot);
+        if (element.shadowRoot) roots.push(element.shadowRoot);
       }
-    };
-    collect(document);
+    }
     const captured: Array<{ element: HTMLElement | SVGElement; cssText: string }> = [];
     let capturedBytes = 0;
     for (const element of elements) {
@@ -1114,21 +1211,27 @@ async function inlineComputedStyles(page: Page, byteLimit: number): Promise<void
 function browserFailure(error: unknown): WebFeedError {
   if (error instanceof WebFeedError) return error;
   if (error instanceof playwrightErrors.TimeoutError) {
-    return new WebFeedError("This webpage took too long to load.", "timeout");
+    return new WebFeedError("This webpage took too long to load.", "timeout", null, {
+      cause: error,
+    });
   }
   const message = error instanceof Error ? error.message : "Unknown browser error";
   if (/executable doesn't exist|browser.*not found|failed to launch/i.test(message)) {
     return new WebFeedError(
       "JavaScript webpage loading is not available on this Echovale installation.",
       "unsupported_content",
+      null,
+      { cause: error },
     );
   }
-  return new WebFeedError("Could not load this webpage.", "network");
+  return new WebFeedError("Could not load this webpage.", "network", null, { cause: error });
 }
 
 export class WebFeedService {
   readonly #allowPrivateNetworks: boolean;
+  readonly #addressResolver: (hostname: string) => Promise<PinnedAddress>;
   readonly #browserFactory: () => Promise<Browser>;
+  readonly #usesSharedPublicProxy: boolean;
   readonly #timeoutMs: number;
   readonly #settleQuietMs: number;
   readonly #settleTimeoutMs: number;
@@ -1140,13 +1243,21 @@ export class WebFeedService {
   readonly #now: () => number;
   readonly #snapshots = new Map<string, StoredSnapshot>();
   #browserPromise: Promise<Browser> | null = null;
+  #customPublicProxy: PinnedPublicProxy | null = null;
   #closed = false;
 
   constructor(options: WebFeedServiceOptions = {}) {
     this.#allowPrivateNetworks = options.allowPrivateNetworks ?? false;
+    this.#addressResolver = options.publicAddressResolver ?? resolvePublicAddress;
+    this.#usesSharedPublicProxy = options.publicAddressResolver === undefined;
     this.#browserFactory =
       options.browserFactory ??
-      (() => chromium.launch({ headless: true, chromiumSandbox: process.platform === "linux" }));
+      (() =>
+        chromium.launch({
+          args: ["--force-webrtc-ip-handling-policy=disable_non_proxied_udp"],
+          headless: true,
+          chromiumSandbox: process.platform === "linux",
+        }));
     this.#timeoutMs = finitePositive(options.timeoutMs, DEFAULT_TIMEOUT_MS);
     this.#settleQuietMs = finitePositive(options.settleQuietMs, DEFAULT_SETTLE_QUIET_MS);
     this.#settleTimeoutMs = finitePositive(options.settleTimeoutMs, DEFAULT_SETTLE_TIMEOUT_MS);
@@ -1163,26 +1274,51 @@ export class WebFeedService {
     inputUrl: string,
     savedConfig: WebFeedConfig | null = null,
   ): Promise<WebFeedAnalysis> {
-    const loaded = await this.#load(inputUrl);
+    const loaded = await this.#load(inputUrl, savedConfig);
     const dom = new JSDOM(loaded.html, { url: loaded.pageUrl });
     try {
       const { document } = dom.window;
       let candidates = detectCandidates(document, loaded.pageUrl);
-      let selectedCandidateId: string | null = null;
-      let savedSelectionMatched = false;
+      let savedCandidateId: string | null = null;
       if (savedConfig) {
         const saved = candidateFromConfig(document, loaded.pageUrl, savedConfig);
         if (saved) {
-          savedSelectionMatched = true;
-          selectedCandidateId = saved.candidate.id;
+          savedCandidateId = saved.candidate.id;
           candidates = [
             saved,
             ...candidates.filter((candidate) => candidate.linkKey !== saved.linkKey),
           ];
-          candidates = candidates.slice(0, MAX_CANDIDATES);
+          candidates = candidates.slice(0, MAX_SELECTABLE_CANDIDATES);
         }
       }
+      candidates = await publicCandidates(
+        candidates,
+        this.#allowPrivateNetworks,
+        new Map(),
+        this.#addressResolver,
+      );
+      const savedSelectionMatched =
+        savedCandidateId !== null &&
+        candidates.some(({ candidate }) => candidate.id === savedCandidateId);
+      const selectedCandidateId = savedSelectionMatched ? savedCandidateId : null;
+      if (savedConfig && !savedSelectionMatched) {
+        const loadingError = contentRequestError(loaded);
+        if (loadingError) throw loadingError;
+      }
+      const suggestedCandidateIds = candidates
+        .filter(({ score }) => score >= MIN_CANDIDATE_SCORE)
+        .slice(0, MAX_SUGGESTIONS)
+        .map(({ candidate }) => candidate.id);
       if (candidates.length === 0 && !savedConfig) {
+        const loadingError = contentRequestError(loaded);
+        if (loadingError) throw loadingError;
+        if (!loaded.domContentLoaded) {
+          throw new WebFeedError(
+            "This webpage did not finish loading before Echovale could find its items.",
+            "javascript_timeout",
+            loaded.httpStatus,
+          );
+        }
         throw new WebFeedError(
           "Echovale could not find a repeated group of linked items on this webpage.",
           "unsupported_content",
@@ -1209,6 +1345,7 @@ export class WebFeedService {
         snapshotId,
         messageToken,
         candidates: candidates.map(({ candidate }) => candidate),
+        suggestedCandidateIds,
         selectedCandidateId,
         savedSelectionMatched,
       };
@@ -1218,17 +1355,37 @@ export class WebFeedService {
   }
 
   async extract(config: WebFeedConfig): Promise<WebFeedExtraction> {
-    const loaded = await this.#load(config.pageUrl);
+    const loaded = await this.#load(config.pageUrl, config);
     const dom = new JSDOM(loaded.html, { url: loaded.pageUrl });
     try {
       const extracted = extractSelection(dom.window.document, loaded.pageUrl, config.selectors);
       const minimum = Math.max(1, Math.floor(config.minimumItemCount));
       if (!Number.isFinite(config.minimumItemCount) || extracted.articles.length < minimum) {
+        const loadingError = contentRequestError(loaded);
+        if (loadingError) throw loadingError;
+        if (!loaded.domContentLoaded) {
+          throw new WebFeedError(
+            "This webpage did not finish loading before Echovale could apply the saved selection.",
+            "javascript_timeout",
+            loaded.httpStatus,
+          );
+        }
         throw new WebFeedError(
           "The webpage structure or content has changed and the saved selection no longer finds enough items. Reload the page to repair it.",
           "selection_broken",
           loaded.httpStatus,
         );
+      }
+      const articleValidationCache: HostValidationCache = new Map();
+      for (const article of extracted.articles) {
+        if (article.url) {
+          await assertPublicPageUrl(
+            article.url,
+            this.#allowPrivateNetworks,
+            articleValidationCache,
+            this.#addressResolver,
+          );
+        }
       }
       return {
         parsed: {
@@ -1261,9 +1418,12 @@ export class WebFeedService {
     this.#snapshots.clear();
     const browserPromise = this.#browserPromise;
     this.#browserPromise = null;
-    if (!browserPromise) return;
-    const browser = await browserPromise.catch(() => null);
-    await browser?.close().catch(() => undefined);
+    if (browserPromise) {
+      const browser = await browserPromise.catch(() => null);
+      await browser?.close().catch(() => undefined);
+    }
+    await this.#customPublicProxy?.close();
+    this.#customPublicProxy = null;
   }
 
   #pruneSnapshots(): void {
@@ -1276,36 +1436,95 @@ export class WebFeedService {
   async #browser(): Promise<Browser> {
     if (this.#closed) throw new WebFeedError("Web feed loading has stopped.", "network");
     if (!this.#browserPromise) {
-      this.#browserPromise = this.#browserFactory().catch((error: unknown) => {
-        this.#browserPromise = null;
-        throw browserFailure(error);
-      });
+      const browserPromise = this.#browserFactory();
+      this.#browserPromise = browserPromise;
+      void browserPromise.then(
+        (browser) => {
+          browser.once("disconnected", () => {
+            if (this.#browserPromise === browserPromise) this.#browserPromise = null;
+          });
+        },
+        () => {
+          if (this.#browserPromise === browserPromise) this.#browserPromise = null;
+        },
+      );
     }
-    return this.#browserPromise;
+    try {
+      return await this.#browserPromise;
+    } catch (error) {
+      throw browserFailure(error);
+    }
   }
 
-  async #load(inputUrl: string): Promise<LoadedPage> {
+  async #proxyUrl(): Promise<string> {
+    if (this.#usesSharedPublicProxy) return publicProxyUrl();
+    this.#customPublicProxy ??= new PinnedPublicProxy(this.#timeoutMs, this.#addressResolver);
+    return this.#customPublicProxy.url();
+  }
+
+  async #load(inputUrl: string, expectedConfig: WebFeedConfig | null = null): Promise<LoadedPage> {
     const validationCache: HostValidationCache = new Map();
-    await assertPublicPageUrl(inputUrl, this.#allowPrivateNetworks, validationCache);
+    await assertPublicPageUrl(
+      inputUrl,
+      this.#allowPrivateNetworks,
+      validationCache,
+      this.#addressResolver,
+    );
     const browser = await this.#browser();
     let context: BrowserContext | null = null;
     let page: Page | null = null;
     let fatalError: WebFeedError | null = null;
     let requestCount = 0;
     let declaredResourceBytes = 0;
+    let transferredResourceBytes = 0;
+    let contentRequestFailure: ContentRequestFailure | null = null;
+    const pendingContentRequests = new Set<Request>();
+    const pendingRequestBinding = `__echovalePending${randomBytes(12).toString("hex")}`;
     try {
       context = await browser.newContext({
         acceptDownloads: false,
         javaScriptEnabled: true,
         permissions: [],
+        proxy: this.#allowPrivateNetworks ? undefined : { server: await this.#proxyUrl() },
         serviceWorkers: "block",
-        viewport: { width: 1440, height: 900 },
+        viewport: { width: 900, height: 900 },
       });
       page = await context.newPage();
+      await page.exposeFunction(pendingRequestBinding, () => pendingContentRequests.size);
+      page.on("request", (request) => {
+        if (CONTENT_REQUEST_TYPES.has(request.resourceType())) {
+          pendingContentRequests.add(request);
+        }
+      });
+      page.on("requestfinished", (request) => pendingContentRequests.delete(request));
+      page.on("requestfailed", (request) => {
+        if (CONTENT_REQUEST_TYPES.has(request.resourceType())) {
+          pendingContentRequests.delete(request);
+          contentRequestFailure ??= { kind: "network", httpStatus: null };
+        }
+      });
+      const devtools = await context.newCDPSession(page);
+      await devtools.send("Network.enable");
+      devtools.on("Network.dataReceived", (event) => {
+        transferredResourceBytes += event.dataLength;
+        if (transferredResourceBytes > this.#maxResourceBytes && !fatalError) {
+          fatalError = new WebFeedError(
+            "This webpage loads too much data to create a reliable web feed.",
+            "unsupported_content",
+          );
+          void page?.close();
+        }
+      });
       page.on("dialog", (dialog) => void dialog.dismiss());
       page.on("download", (download) => void download.cancel());
       page.on("popup", (popup) => void popup.close());
       page.on("response", (response) => {
+        if (
+          CONTENT_REQUEST_TYPES.has(response.request().resourceType()) &&
+          response.status() >= 400
+        ) {
+          contentRequestFailure ??= { kind: "http", httpStatus: response.status() };
+        }
         const length = Number(response.headers()["content-length"]);
         if (!Number.isFinite(length) || length <= 0) return;
         declaredResourceBytes += length;
@@ -1335,7 +1554,12 @@ export class WebFeedService {
         try {
           const requestUrl = request.url();
           if (!/^(?:about|blob|data):/i.test(requestUrl)) {
-            await assertPublicPageUrl(requestUrl, this.#allowPrivateNetworks, validationCache);
+            await assertPublicPageUrl(
+              requestUrl,
+              this.#allowPrivateNetworks,
+              validationCache,
+              this.#addressResolver,
+            );
           }
           await route.continue();
         } catch (error) {
@@ -1348,7 +1572,12 @@ export class WebFeedService {
       await context.routeWebSocket(/.*/, async (socket) => {
         try {
           const socketUrl = socket.url().replace(/^ws:/i, "http:").replace(/^wss:/i, "https:");
-          await assertPublicPageUrl(socketUrl, this.#allowPrivateNetworks, validationCache);
+          await assertPublicPageUrl(
+            socketUrl,
+            this.#allowPrivateNetworks,
+            validationCache,
+            this.#addressResolver,
+          );
           socket.connectToServer();
         } catch {
           await socket.close({ code: 1008, reason: "Private network connections are blocked" });
@@ -1359,7 +1588,7 @@ export class WebFeedService {
       try {
         response = await page.goto(pageUrl(inputUrl).toString(), {
           timeout: this.#timeoutMs,
-          waitUntil: "domcontentloaded",
+          waitUntil: "commit",
         });
       } catch (error) {
         if (fatalError) throw fatalError;
@@ -1408,6 +1637,14 @@ export class WebFeedService {
           status,
         );
       }
+      const domContentLoaded = await page
+        .waitForLoadState("domcontentloaded", {
+          timeout: Math.min(5_000, this.#timeoutMs),
+        })
+        .then(
+          () => true,
+          () => false,
+        );
       if (await detectedChallenge(page)) {
         throw new WebFeedError(
           "This webpage requires a CAPTCHA or bot-protection check that Echovale cannot bypass.",
@@ -1415,11 +1652,14 @@ export class WebFeedService {
           status,
         );
       }
-      await page
-        .waitForLoadState("load", { timeout: Math.min(3_000, this.#timeoutMs) })
-        .catch(() => {});
-      const settled = await settleDom(page, this.#settleQuietMs, this.#settleTimeoutMs);
-      if (!settled) {
+      const settled = await settleDom(
+        page,
+        this.#settleQuietMs,
+        this.#settleTimeoutMs,
+        expectedConfig,
+        pendingRequestBinding,
+      );
+      if (settled === "timeout") {
         throw new WebFeedError(
           "This webpage's JavaScript did not finish updating the page in time.",
           "javascript_timeout",
@@ -1429,14 +1669,19 @@ export class WebFeedService {
       if (fatalError) throw fatalError;
       const title =
         singleLine(await page.title()) || new URL(page.url()).hostname.replace(/^www\./, "");
-      const bodyText = await page
-        .locator("body")
-        .innerText()
-        .catch(() => "");
+      const bodyText = await page.evaluate(() => document.body?.innerText ?? "");
       if (challengeDetected(title, bodyText.slice(0, 50_000))) {
         throw new WebFeedError(
           "This webpage requires a CAPTCHA or bot-protection check that Echovale cannot bypass.",
           "access_blocked",
+          status,
+        );
+      }
+      const initialElementCount = await page.locator("*").count();
+      if (initialElementCount > this.#maxElements) {
+        throw new WebFeedError(
+          "This webpage has too many elements to create a reliable web feed.",
+          "unsupported_content",
           status,
         );
       }
@@ -1462,14 +1707,29 @@ export class WebFeedService {
         );
       }
       if (!singleLine(bodyText)) {
+        if (!domContentLoaded) {
+          throw new WebFeedError(
+            "This webpage did not finish loading before Echovale could read its content.",
+            "javascript_timeout",
+            status,
+          );
+        }
         throw new WebFeedError(
           "This webpage did not produce readable content after loading.",
           "unsupported_content",
           status,
         );
       }
-      return { html, pageUrl: page.url(), title, httpStatus: status };
+      return {
+        html,
+        pageUrl: page.url(),
+        title,
+        httpStatus: status,
+        domContentLoaded,
+        contentRequestFailure,
+      };
     } catch (error) {
+      if (fatalError) throw fatalError;
       throw browserFailure(error);
     } finally {
       await context?.close().catch(() => undefined);

@@ -7,7 +7,9 @@ import { createApp } from "./app.js";
 import { AuthService } from "./auth.js";
 import { AppDatabase } from "./db.js";
 import { ExtractionQueue } from "./extraction.js";
+import { closePublicNetwork } from "./public-network.js";
 import { FeedRefreshService } from "./refresh.js";
+import { WebFeedService } from "./web-feed.js";
 
 function positiveInteger(value: string | undefined, fallback: number, name: string): number {
   if (value === undefined) return fallback;
@@ -30,6 +32,11 @@ const feedFetchTimeoutMs = positiveInteger(
   15_000,
   "FEED_FETCH_TIMEOUT_MS",
 );
+const webFeedLoadTimeoutMs = positiveInteger(
+  process.env.WEB_FEED_LOAD_TIMEOUT_MS,
+  30_000,
+  "WEB_FEED_LOAD_TIMEOUT_MS",
+);
 const articleFetchTimeoutMs = positiveInteger(
   process.env.ARTICLE_FETCH_TIMEOUT_MS,
   20_000,
@@ -46,7 +53,8 @@ mkdirSync(dirname(databasePath), { recursive: true });
 const database = new AppDatabase(databasePath, pollIntervalMinutes);
 const authService = new AuthService(database, pollIntervalMinutes);
 const extractionQueue = new ExtractionQueue(database, 2, articleFetchTimeoutMs);
-const refreshService = new FeedRefreshService(database, 3, feedFetchTimeoutMs);
+const webFeedService = new WebFeedService({ timeoutMs: webFeedLoadTimeoutMs });
+const refreshService = new FeedRefreshService(database, 3, feedFetchTimeoutMs, webFeedService);
 const aiService = new AiService(database, {
   credentialCipher: CredentialCipher.fromHex(process.env.AI_CREDENTIALS_KEY),
   requestTimeoutMs: aiRequestTimeoutMs,
@@ -56,6 +64,7 @@ const app = await createApp({
   authService,
   extractionQueue,
   refreshService,
+  webFeedService,
   aiService,
   feedDiscoveryTimeoutMs: feedFetchTimeoutMs,
   staticDir,
@@ -70,6 +79,8 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   try {
     await app.close();
     await Promise.all([refreshService.stop(), extractionQueue.stop()]);
+    await webFeedService.close();
+    await closePublicNetwork();
     database.close();
   } catch (error) {
     app.log.error(error, "Shutdown failed");
@@ -87,6 +98,8 @@ try {
 } catch (error) {
   app.log.error(error);
   await Promise.all([refreshService.stop(), extractionQueue.stop()]);
+  await webFeedService.close();
+  await closePublicNetwork();
   database.close();
   process.exitCode = 1;
 }

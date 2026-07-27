@@ -114,6 +114,10 @@ describe("authenticated web-feed API", () => {
   it("creates, refreshes, diagnoses, and repairs a JavaScript-rendered web feed", async () => {
     let mode: FixtureMode = "initial";
     const fixtureServer = createServer((request, response) => {
+      if (mode === "changed" && request.url === "/") {
+        response.writeHead(302, { Location: "/changelog" }).end();
+        return;
+      }
       if (mode === "http_error") {
         response.writeHead(503, {
           "Content-Type": "text/html; charset=utf-8",
@@ -326,6 +330,7 @@ describe("authenticated web-feed API", () => {
       ({ label }) => label === "Replacement updates",
     );
     if (!replacement) throw new Error("Expected the replacement-layout suggestion");
+    expect(replacement.config.pageUrl).toBe(`${pageUrl}/changelog`);
 
     const repairResponse = await request(readerCookie, {
       method: "PATCH",
@@ -334,6 +339,7 @@ describe("authenticated web-feed API", () => {
     });
     expect(repairResponse.statusCode).toBe(200);
     expect(repairResponse.json<Feed>()).toMatchObject({
+      feedUrl: `${pageUrl}/changelog`,
       healthStatus: "healthy",
       lastErrorKind: null,
       lastError: null,

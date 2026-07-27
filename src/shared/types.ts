@@ -2,6 +2,18 @@ export type ArticleState = "all" | "unread" | "read" | "starred";
 export type FolderSortDirection = "newest" | "oldest";
 export type ReadingMode = "magazine" | "expanded";
 export type ExtractionStatus = "pending" | "processing" | "complete" | "failed" | "feed";
+export type FeedSourceKind = "published" | "web";
+export type FeedHealthStatus = "healthy" | "failing" | "needs_attention";
+export type FeedErrorKind =
+  | "network"
+  | "http"
+  | "timeout"
+  | "parse"
+  | "inaccessible"
+  | "access_blocked"
+  | "javascript_timeout"
+  | "unsupported_content"
+  | "selection_broken";
 export type RuleField = "title" | "author" | "summary" | "content" | "media" | "any";
 export type RuleAction = "hide" | "keep" | "mark_read";
 export type RuleConditionOperator = "and" | "or";
@@ -109,6 +121,10 @@ export interface Feed {
   title: string;
   feedUrl: string;
   siteUrl: string | null;
+  sourceKind: FeedSourceKind;
+  healthStatus: FeedHealthStatus;
+  lastErrorKind: FeedErrorKind | null;
+  lastMatchCount: number | null;
   createdAt: string;
   pollIntervalMinutes: number;
   unreadCount: number;
@@ -139,10 +155,62 @@ export interface FeedPreview {
   articles: FeedPreviewArticle[];
 }
 
+export interface PublishedFeedDiscovery {
+  kind: "published";
+  preview: FeedPreview;
+}
+
+export interface WebPageFeedDiscovery {
+  kind: "web_page";
+  pageUrl: string;
+  title: string;
+}
+
+export type FeedDiscoveryResult = PublishedFeedDiscovery | WebPageFeedDiscovery;
+
+export type WebFeedField = "title" | "link" | "date" | "author" | "summary" | "image";
+
+export interface WebFeedSelectors {
+  item: string;
+  title: string;
+  link: string;
+  date: string | null;
+  author: string | null;
+  summary: string | null;
+  image: string | null;
+}
+
+export interface WebFeedConfig {
+  pageUrl: string;
+  selectors: WebFeedSelectors;
+  minimumItemCount: number;
+}
+
+export interface WebFeedCandidate {
+  id: string;
+  label: string;
+  itemCount: number;
+  availableFields: WebFeedField[];
+  config: WebFeedConfig;
+  articles: FeedPreviewArticle[];
+}
+
+export interface WebFeedAnalysis {
+  pageUrl: string;
+  title: string;
+  snapshotId: string;
+  messageToken: string;
+  candidates: WebFeedCandidate[];
+  suggestedCandidateIds: string[];
+  selectedCandidateId: string | null;
+  savedSelectionMatched: boolean;
+}
+
 export interface Article {
   id: number;
   feedId: number;
   feedTitle: string;
+  feedSourceKind: FeedSourceKind;
   folderId: number | null;
   title: string;
   url: string | null;

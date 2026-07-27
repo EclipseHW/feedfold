@@ -58,6 +58,7 @@ const APP_BASE_PATH = import.meta.env.BASE_URL;
 
 function feedManagementRequest(feedId: number, action: FeedManagementAction): ManagementRequest {
   if (action === "settings") return { kind: "feed-settings", feedId };
+  if (action === "selection") return { kind: "web-feed-selection", feedId };
   if (action === "rename") return { kind: "rename-feed", feedId };
   if (action === "move") return { kind: "move-feed", feedId };
   if (action === "rule") return { kind: "create-feed-rule", feedId };
@@ -1930,6 +1931,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
             onMenu={() => setNavOpen(true)}
             onReload={loadBootstrap}
             onRefresh={(feedId) => void refresh(feedId)}
+            onEditWebFeed={(feed) => openFeedManagement(feed, "selection")}
             onCloseAddFeedRoute={() => navigateToRoute({ kind: "feeds" }, "replace")}
             showToast={showToast}
           />

@@ -8,6 +8,7 @@ import {
   FolderPlus,
   ListFilter,
   LoaderCircle,
+  MousePointer2,
   Pause,
   Play,
   RefreshCw,
@@ -25,16 +26,30 @@ import {
   useRef,
   useState,
 } from "react";
-import type { BootstrapData, Feed, Folder as FolderType } from "../shared/types";
+import type {
+  BootstrapData,
+  Feed,
+  FeedSourceKind,
+  Folder as FolderType,
+  WebFeedAnalysis,
+} from "../shared/types";
 import { api, errorMessage } from "./api";
 import { FolderForm, formatDate, RuleForm } from "./management";
+import { WebFeedSetup } from "./web-feed-setup";
 
-export type FeedManagementAction = "settings" | "rename" | "move" | "rule" | "unsubscribe";
+export type FeedManagementAction =
+  | "settings"
+  | "selection"
+  | "rename"
+  | "move"
+  | "rule"
+  | "unsubscribe";
 
 export type FolderManagementAction = "settings" | "add-feed" | "add-folder" | "rule";
 
 export type ManagementRequest =
   | { kind: "feed-settings"; feedId: number }
+  | { kind: "web-feed-selection"; feedId: number }
   | { kind: "rename-feed"; feedId: number }
   | { kind: "move-feed"; feedId: number }
   | { kind: "create-feed-rule"; feedId: number }
@@ -67,8 +82,12 @@ function firstFocusable(selectors: string[]): HTMLElement | null {
 }
 
 export function FeedActionMenuItems({
+  feed,
+  sourceKind,
   onAction,
 }: {
+  feed?: Feed;
+  sourceKind?: FeedSourceKind;
   onAction: (action: FeedManagementAction) => void;
 }) {
   return (
@@ -77,6 +96,12 @@ export function FeedActionMenuItems({
         <Settings aria-hidden="true" size={15} />
         Feed settings
       </button>
+      {(feed?.sourceKind ?? sourceKind) === "web" ? (
+        <button type="button" role="menuitem" onClick={() => onAction("selection")}>
+          <MousePointer2 aria-hidden="true" size={15} />
+          Edit page selection
+        </button>
+      ) : null}
       <button type="button" role="menuitem" onClick={() => onAction("rename")}>
         <Edit3 aria-hidden="true" size={15} />
         Rename feed
@@ -256,13 +281,16 @@ function FeedSettingsPanel({
     }
   };
 
-  const status = details.lastError
-    ? "Needs attention"
-    : details.paused
-      ? "Paused"
-      : details.refreshing
-        ? "Refreshing"
-        : "Healthy";
+  const status =
+    details.healthStatus === "needs_attention"
+      ? "Selection needs repair"
+      : details.healthStatus === "failing"
+        ? "Refresh failed"
+        : details.paused
+          ? "Paused"
+          : details.refreshing
+            ? "Refreshing"
+            : "Healthy";
 
   return (
     <>
@@ -276,8 +304,10 @@ function FeedSettingsPanel({
         ) : (
           <>
             <div className="feed-settings-summary">
-              <span className={`feed-settings-status${details.lastError ? " has-error" : ""}`}>
-                {details.lastError ? (
+              <span
+                className={`feed-settings-status${details.healthStatus !== "healthy" ? " has-error" : ""}`}
+              >
+                {details.healthStatus !== "healthy" ? (
                   <AlertTriangle aria-hidden="true" size={15} />
                 ) : (
                   <CheckCircle2 aria-hidden="true" size={15} />
@@ -294,7 +324,7 @@ function FeedSettingsPanel({
 
             <dl className="feed-settings-list">
               <div>
-                <dt>Website</dt>
+                <dt>{details.sourceKind === "web" ? "Webpage" : "Website"}</dt>
                 <dd>
                   {details.siteUrl ? (
                     <a href={details.siteUrl} target="_blank" rel="noreferrer">
@@ -307,7 +337,7 @@ function FeedSettingsPanel({
                 </dd>
               </div>
               <div>
-                <dt>Feed URL</dt>
+                <dt>{details.sourceKind === "web" ? "Page URL" : "Feed URL"}</dt>
                 <dd>
                   <a href={details.feedUrl} target="_blank" rel="noreferrer">
                     {details.feedUrl}
@@ -339,6 +369,12 @@ function FeedSettingsPanel({
                 <dt>Last HTTP response</dt>
                 <dd>{details.lastHttpStatus ?? "No response recorded"}</dd>
               </div>
+              {details.sourceKind === "web" ? (
+                <div>
+                  <dt>Items matched on last success</dt>
+                  <dd>{details.lastMatchCount ?? "No successful match yet"}</dd>
+                </div>
+              ) : null}
             </dl>
 
             {details.lastError ? <DialogError message={details.lastError} /> : null}
@@ -380,6 +416,125 @@ function FeedSettingsPanel({
         <button className="primary-button" type="button" onClick={onClose}>
           Close
         </button>
+      </footer>
+    </>
+  );
+}
+
+function WebFeedSelectionPanel({
+  feed,
+  onClose,
+  onReload,
+  showToast,
+}: {
+  feed: Feed;
+  onClose: () => void;
+  onReload: () => Promise<void>;
+  showToast: (message: string) => void;
+}) {
+  const [analysis, setAnalysis] = useState<WebFeedAnalysis | null>(null);
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadPage = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await api.analyzeWebFeed(feed.id);
+      setAnalysis(result);
+      setSelectedCandidateId(result.selectedCandidateId ?? result.suggestedCandidateIds[0] ?? null);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setLoading(false);
+    }
+  }, [feed.id]);
+
+  useEffect(() => {
+    void loadPage();
+  }, [loadPage]);
+
+  const saveSelection = async () => {
+    const candidate = analysis?.candidates.find((item) => item.id === selectedCandidateId);
+    if (!candidate) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const updated = await api.updateWebFeedSelection(feed.id, candidate.config);
+      await onReload();
+      showToast(`Updated page selection for ${updated.title}`);
+      onClose();
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div
+        className="management-dialog-body web-feed-selection-dialog"
+        aria-busy={loading || saving}
+      >
+        {loading ? (
+          <div className="feed-preview-loading" role="status">
+            <span>Reloading the webpage and finding repeated items…</span>
+            <div className="feed-preview-loading-lines" aria-hidden="true">
+              <div className="skeleton-line wide" />
+              <div className="skeleton-line" />
+              <div className="skeleton-line short" />
+            </div>
+          </div>
+        ) : analysis ? (
+          <>
+            {!analysis.savedSelectionMatched ? (
+              <p className="web-feed-repair-notice" role="status">
+                <AlertTriangle aria-hidden="true" size={16} />
+                The saved selection no longer finds a meaningful group. Choose a current group to
+                repair this feed; previously collected articles will stay in its history.
+              </p>
+            ) : null}
+            <WebFeedSetup
+              analysis={analysis}
+              selectedCandidateId={selectedCandidateId}
+              disabled={saving}
+              onSelect={setSelectedCandidateId}
+            />
+          </>
+        ) : null}
+        {error ? (
+          <>
+            <DialogError message={error} />
+            <button className="secondary-button" type="button" onClick={() => void loadPage()}>
+              <RefreshCw aria-hidden="true" size={15} />
+              Reload page
+            </button>
+          </>
+        ) : null}
+      </div>
+      <footer className="management-dialog-footer">
+        <span />
+        <div>
+          <button className="secondary-button" type="button" disabled={saving} onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            className="primary-button"
+            type="button"
+            disabled={loading || saving || !selectedCandidateId}
+            onClick={() => void saveSelection()}
+          >
+            {saving ? (
+              <LoaderCircle className="spin" aria-hidden="true" size={15} />
+            ) : (
+              <Check aria-hidden="true" size={15} />
+            )}
+            {saving ? "Saving selection" : "Save selection"}
+          </button>
+        </div>
       </footer>
     </>
   );
@@ -730,6 +885,7 @@ export function ContextManagementDialog({
     else finishClose();
   };
   const isRule = request.kind === "create-feed-rule" || request.kind === "create-folder-rule";
+  const isWide = isRule || request.kind === "web-feed-selection";
 
   if (
     ("feedId" in request && !feed) ||
@@ -741,23 +897,27 @@ export function ContextManagementDialog({
   const title =
     request.kind === "feed-settings"
       ? (feed?.title ?? "Feed settings")
-      : request.kind === "rename-feed"
-        ? "Rename feed"
-        : request.kind === "move-feed"
-          ? "Add to folder"
-          : request.kind === "unsubscribe-feed"
-            ? "Unsubscribe from feed?"
-            : request.kind === "folder-settings"
-              ? "Folder settings"
-              : request.kind === "add-feed-to-folder"
-                ? "Add feed to folder"
-                : request.kind === "add-folder"
-                  ? "Add new folder"
-                  : "Create rule";
+      : request.kind === "web-feed-selection"
+        ? "Edit page selection"
+        : request.kind === "rename-feed"
+          ? "Rename feed"
+          : request.kind === "move-feed"
+            ? "Add to folder"
+            : request.kind === "unsubscribe-feed"
+              ? "Unsubscribe from feed?"
+              : request.kind === "folder-settings"
+                ? "Folder settings"
+                : request.kind === "add-feed-to-folder"
+                  ? "Add feed to folder"
+                  : request.kind === "add-folder"
+                    ? "Add new folder"
+                    : "Create rule";
   const detail =
     request.kind === "feed-settings"
       ? "Feed settings and refresh status"
-      : (feed?.title ?? folder?.name ?? "Feed management");
+      : request.kind === "web-feed-selection"
+        ? (feed?.title ?? "Web feed")
+        : (feed?.title ?? folder?.name ?? "Feed management");
   const icon =
     request.kind === "folder-settings" ||
     request.kind === "add-feed-to-folder" ||
@@ -765,6 +925,8 @@ export function ContextManagementDialog({
       <Folder size={16} />
     ) : request.kind === "unsubscribe-feed" ? (
       <Trash2 size={16} />
+    ) : request.kind === "web-feed-selection" ? (
+      <MousePointer2 size={16} />
     ) : (
       <Rss size={16} />
     );
@@ -772,7 +934,7 @@ export function ContextManagementDialog({
   return (
     <dialog
       ref={dialogRef}
-      className={`management-dialog${isRule ? " is-wide" : ""}`}
+      className={`management-dialog${isWide ? " is-wide" : ""}`}
       aria-labelledby={isRule ? undefined : "management-dialog-title"}
       aria-label={isRule ? "Create rule" : undefined}
       onClose={finishClose}
@@ -803,6 +965,13 @@ export function ContextManagementDialog({
               onClose={close}
               onReload={onReload}
               onRefresh={onRefresh}
+              showToast={showToast}
+            />
+          ) : request.kind === "web-feed-selection" && feed ? (
+            <WebFeedSelectionPanel
+              feed={feed}
+              onClose={close}
+              onReload={onReload}
               showToast={showToast}
             />
           ) : request.kind === "rename-feed" && feed ? (

@@ -1,11 +1,12 @@
 import { JSDOM } from "jsdom";
-import type { FeedPreview } from "../shared/types.js";
+import type { FeedDiscoveryResult, FeedErrorKind, FeedPreview } from "../shared/types.js";
 import type { ParsedFeed } from "./db.js";
 import { fetchFeed, nitterFeedUrl } from "./feed-http.js";
 import { parseAndNormalizeFeed } from "./feed-parser.js";
+import { PublicNetworkError } from "./public-network.js";
 import { parseAndNormalizeTelegramFeed, telegramChannelUrls } from "./telegram-feed.js";
 
-const USER_AGENT = "Echovale/0.1 (+self-hosted RSS reader)";
+const USER_AGENT = "Echovale/0.1 (+self-hosted feed reader)";
 const FEED_ACCEPT =
   "application/atom+xml,application/rss+xml,application/feed+json,application/json;q=0.9,application/xml;q=0.8,text/xml;q=0.8,text/html;q=0.7,*/*;q=0.5";
 const FEED_MIME_TYPES = new Set([
@@ -20,7 +21,10 @@ const COMMON_FEED_PATHS = ["/feed", "/rss.xml", "/feed.xml", "/atom.xml", "/inde
 const PREVIEW_ARTICLE_LIMIT = 3;
 
 export class FeedDiscoveryError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly kind: FeedErrorKind,
+  ) {
     super(message);
     this.name = "FeedDiscoveryError";
   }
@@ -98,59 +102,119 @@ async function fetchSource(
   url: string,
   signal: AbortSignal,
   required: boolean,
-): Promise<{ source: string; url: string } | null> {
+  fetcher: typeof fetchFeed,
+): Promise<{ source: string; url: string; contentType: string | null } | null> {
   let response: Response;
   try {
-    response = await fetchFeed(url, {
+    response = await fetcher(url, {
       headers: { Accept: FEED_ACCEPT, "User-Agent": USER_AGENT },
       redirect: "follow",
       signal,
     });
-  } catch {
+  } catch (error) {
     if (signal.aborted) {
-      throw new FeedDiscoveryError("This URL took too long to respond. Try again in a moment.");
+      throw new FeedDiscoveryError(
+        "This URL took too long to respond. Try again in a moment.",
+        "timeout",
+      );
+    }
+    if (error instanceof PublicNetworkError) {
+      if (required) throw new FeedDiscoveryError(error.message, error.kind);
+      return null;
     }
     if (required) {
-      throw new FeedDiscoveryError("Could not reach this URL. Check the address and try again.");
+      throw new FeedDiscoveryError(
+        "Could not reach this URL. Check the address and try again.",
+        "network",
+      );
     }
     return null;
   }
   if (!response.ok) {
     await response.body?.cancel();
     if (required) {
-      throw new FeedDiscoveryError(`This URL returned HTTP ${response.status}.`);
+      const inaccessible = response.status === 401 || response.status === 403;
+      throw new FeedDiscoveryError(
+        inaccessible
+          ? "This page is not publicly accessible."
+          : `This URL returned HTTP ${response.status}.`,
+        inaccessible ? "inaccessible" : "http",
+      );
     }
     return null;
   }
-  return { source: await response.text(), url: response.url || url };
+  return {
+    source: await response.text(),
+    url: response.url || url,
+    contentType: response.headers.get("content-type"),
+  };
 }
 
-export async function discoverFeed(inputUrl: string, timeoutMs = 15_000): Promise<FeedPreview> {
+function pageTitle(source: string, pageUrl: string): string {
+  const dom = new JSDOM(source, { url: pageUrl });
+  try {
+    return (
+      dom.window.document.title.trim() || new URL(pageUrl).hostname.replace(/^www\./, "") || pageUrl
+    );
+  } finally {
+    dom.window.close();
+  }
+}
+
+function isHtmlPage(contentType: string | null, source: string): boolean {
+  const type = contentType?.split(";", 1)[0]?.trim().toLowerCase();
+  if (type === "text/html" || type === "application/xhtml+xml") return true;
+  if (type && type !== "text/plain" && type !== "application/octet-stream") return false;
+  return /<!doctype\s+html|<html[\s>]|<body[\s>]/i.test(source);
+}
+
+export async function discoverFeed(
+  inputUrl: string,
+  timeoutMs = 15_000,
+  fetcher: typeof fetchFeed = fetchFeed,
+): Promise<FeedDiscoveryResult> {
   const input = new URL(inputUrl).toString();
   const url = nitterFeedUrl(input) ?? input;
   const telegram = telegramChannelUrls(url);
   const signal = AbortSignal.timeout(timeoutMs);
-  const page = await fetchSource(telegram?.previewUrl ?? url, signal, true);
-  if (!page) throw new FeedDiscoveryError("Could not load this URL.");
+  const page = await fetchSource(telegram?.previewUrl ?? url, signal, true, fetcher);
+  if (!page) throw new FeedDiscoveryError("Could not load this URL.", "network");
   if (telegram) {
     try {
-      return preview(
-        parseAndNormalizeTelegramFeed(page.source, telegram.channelUrl),
-        telegram.channelUrl,
-      );
+      return {
+        kind: "published",
+        preview: preview(
+          parseAndNormalizeTelegramFeed(page.source, telegram.channelUrl),
+          telegram.channelUrl,
+        ),
+      };
     } catch {
-      throw new FeedDiscoveryError("Could not read a public Telegram channel at this URL.");
+      throw new FeedDiscoveryError(
+        "Could not read a public Telegram channel at this URL.",
+        "parse",
+      );
     }
   }
   const direct = parsePreview(page.source, page.url);
-  if (direct) return direct;
+  if (direct) return { kind: "published", preview: direct };
 
   for (const candidate of feedCandidates(page.source, page.url)) {
-    const result = await fetchSource(candidate, signal, false);
+    const result = await fetchSource(candidate, signal, false, fetcher);
     if (!result) continue;
     const found = parsePreview(result.source, result.url);
-    if (found) return found;
+    if (found) return { kind: "published", preview: found };
   }
 
-  throw new FeedDiscoveryError("No RSS, Atom, or JSON Feed was found at this URL.");
+  if (!isHtmlPage(page.contentType, page.source)) {
+    throw new FeedDiscoveryError(
+      "This URL is not a supported webpage, RSS, Atom, or JSON feed.",
+      "unsupported_content",
+    );
+  }
+
+  return {
+    kind: "web_page",
+    pageUrl: page.url,
+    title: pageTitle(page.source, page.url),
+  };
 }

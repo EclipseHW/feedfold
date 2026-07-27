@@ -137,13 +137,25 @@ describe("live API, OPML, and filtering rules", () => {
       method: "POST",
       url: "/api/feeds",
       headers: { cookie: readerCookie },
-      payload: { title: "Reader copy", feedUrl, folderId: folder.id, paused: true },
+      payload: {
+        sourceKind: "published",
+        title: "Reader copy",
+        feedUrl,
+        folderId: folder.id,
+        paused: true,
+      },
     });
     const partnerFeedResponse = await app.inject({
       method: "POST",
       url: "/api/feeds",
       headers: { cookie: partnerCookie },
-      payload: { title: "Partner copy", feedUrl, folderId: null, paused: true },
+      payload: {
+        sourceKind: "published",
+        title: "Partner copy",
+        feedUrl,
+        folderId: null,
+        paused: true,
+      },
     });
     expect(readerFeedResponse.statusCode).toBe(200);
     expect(partnerFeedResponse.statusCode).toBe(200);
@@ -550,8 +562,8 @@ describe("live API, OPML, and filtering rules", () => {
     expect(
       authService.register(TEST_ACCOUNTS[0].username, TEST_ACCOUNTS[0].password),
     ).not.toBeNull();
-    const extraction = new ExtractionQueue(database, 2, 2_000);
-    const refresh = new FeedRefreshService(database, 2, 2_000);
+    const extraction = new ExtractionQueue(database, 2, 2_000, fetch);
+    const refresh = new FeedRefreshService(database, 2, 2_000, undefined, fetch);
     const app = await createApp({
       database,
       authService,

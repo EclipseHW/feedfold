@@ -2062,6 +2062,7 @@ function ArticleSourceMenu({
         }}
       >
         <FeedActionMenuItems
+          sourceKind={article.feedSourceKind}
           onAction={(action) => {
             menuRef.current?.hidePopover();
             triggerRef.current?.focus();

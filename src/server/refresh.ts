@@ -1,15 +1,17 @@
-import type { RefreshResult } from "../shared/types.js";
+import type { FeedErrorKind, FeedHealthStatus, RefreshResult } from "../shared/types.js";
 import type { AppDatabase, FeedRecord, ParsedFeed } from "./db.js";
 import { fetchFeed, nitterFeedUrl } from "./feed-http.js";
 import { parseAndNormalizeFeed, parseAndNormalizeWordPressPosts } from "./feed-parser.js";
 import { parseAndNormalizeTelegramFeed, telegramChannelUrls } from "./telegram-feed.js";
+import { WebFeedError, type WebFeedService } from "./web-feed.js";
 
-const USER_AGENT = "Echovale/0.1 (+self-hosted RSS reader)";
+const USER_AGENT = "Echovale/0.1 (+self-hosted feed reader)";
 
 class FeedHttpError extends Error {
   constructor(
     readonly status: number,
     detail?: string,
+    readonly kind: FeedErrorKind = status === 401 || status === 403 ? "inaccessible" : "http",
   ) {
     super(detail ?? `Feed request returned HTTP ${status}`);
   }
@@ -46,6 +48,38 @@ function message(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, 500);
 }
 
+function failureDetails(
+  error: unknown,
+  sourceKind: FeedRecord["sourceKind"],
+  httpStatus: number | null,
+): {
+  httpStatus: number | null;
+  errorKind: FeedErrorKind;
+  healthStatus: FeedHealthStatus;
+} {
+  if (sourceKind === "web" && error instanceof WebFeedError) {
+    return {
+      httpStatus: error.httpStatus ?? httpStatus,
+      errorKind: error.kind,
+      healthStatus: error.kind === "selection_broken" ? "needs_attention" : "failing",
+    };
+  }
+  if (error instanceof FeedHttpError) {
+    return { httpStatus: error.status, errorKind: error.kind, healthStatus: "failing" };
+  }
+  if (
+    error instanceof DOMException &&
+    (error.name === "TimeoutError" || error.name === "AbortError")
+  ) {
+    return { httpStatus, errorKind: "timeout", healthStatus: "failing" };
+  }
+  return {
+    httpStatus,
+    errorKind: httpStatus === null ? "network" : "parse",
+    healthStatus: "failing",
+  };
+}
+
 export class FeedRefreshService {
   private readonly pending: FeedRecord[] = [];
   private readonly requestedIds = new Set<number>();
@@ -58,6 +92,8 @@ export class FeedRefreshService {
     private readonly database: AppDatabase,
     private readonly concurrency = 3,
     private readonly timeoutMs = 15_000,
+    private readonly webFeedService?: WebFeedService,
+    private readonly feedFetcher: typeof fetchFeed = fetchFeed,
   ) {}
 
   start(): void {
@@ -100,6 +136,32 @@ export class FeedRefreshService {
   private async refresh(feed: FeedRecord): Promise<void> {
     let httpStatus: number | null = null;
     try {
+      if (feed.sourceKind === "web") {
+        if (!this.webFeedService) {
+          this.database.markFeedFailure(feed.id, {
+            httpStatus: null,
+            error: "Web feed loading is unavailable on this server",
+            errorKind: "unsupported_content",
+            healthStatus: "failing",
+            retryMinutes: feed.pollIntervalMinutes,
+            expectedSelectionRevision: feed.selectionRevision,
+          });
+          return;
+        }
+        const result = await this.webFeedService.extract(feed.webConfig);
+        httpStatus = result.httpStatus;
+        this.database.markFeedSuccess(feed.id, {
+          httpStatus: result.httpStatus ?? 200,
+          etag: null,
+          lastModified: null,
+          pollIntervalMinutes: feed.pollIntervalMinutes,
+          parsed: result.parsed,
+          webMatchCount: result.matchCount,
+          expectedSelectionRevision: feed.selectionRevision,
+        });
+        return;
+      }
+
       const telegram = telegramChannelUrls(feed.feedUrl);
       const sourceUrl = telegram?.previewUrl ?? nitterFeedUrl(feed.feedUrl) ?? feed.feedUrl;
       const headers = new Headers({
@@ -109,7 +171,7 @@ export class FeedRefreshService {
       });
       if (feed.etag) headers.set("If-None-Match", feed.etag);
       if (feed.lastModified) headers.set("If-Modified-Since", feed.lastModified);
-      let response = await fetchFeed(sourceUrl, {
+      let response = await this.feedFetcher(sourceUrl, {
         headers,
         redirect: "follow",
         signal: AbortSignal.timeout(this.timeoutMs),
@@ -138,6 +200,7 @@ export class FeedRefreshService {
           throw new FeedHttpError(
             response.status,
             `Feed host requires browser verification (${verificationProvider}); automated refresh cannot access this URL`,
+            "access_blocked",
           );
         }
       }
@@ -156,10 +219,12 @@ export class FeedRefreshService {
         parsed,
       });
     } catch (error) {
+      const failure = failureDetails(error, feed.sourceKind, httpStatus);
       this.database.markFeedFailure(feed.id, {
-        httpStatus: error instanceof FeedHttpError ? error.status : httpStatus,
+        ...failure,
         error: message(error),
         retryMinutes: feed.pollIntervalMinutes,
+        expectedSelectionRevision: feed.sourceKind === "web" ? feed.selectionRevision : undefined,
       });
     }
   }
@@ -170,7 +235,7 @@ export class FeedRefreshService {
   ): Promise<{ response: Response; parsed: ParsedFeed } | null> {
     const url = wordpressPostsUrl(feedUrl);
     if (!url) return null;
-    const response = await fetch(url, {
+    const response = await this.feedFetcher(url, {
       headers: { Accept: "application/json", "User-Agent": USER_AGENT },
       redirect: "follow",
       signal: AbortSignal.timeout(this.timeoutMs),
@@ -196,6 +261,8 @@ export class FeedRefreshService {
       this.database.markFeedFailure(feed.id, {
         httpStatus: null,
         error: "Refresh stopped during server shutdown",
+        errorKind: "network",
+        healthStatus: "failing",
         retryMinutes: feed.pollIntervalMinutes,
       });
     }

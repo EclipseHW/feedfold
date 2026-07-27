@@ -466,7 +466,10 @@ function SidebarContextMenu({
       }}
     >
       {state.kind === "feed" ? (
-        <FeedActionMenuItems onAction={(action) => onFeedAction(state.feed, action)} />
+        <FeedActionMenuItems
+          feed={state.feed}
+          onAction={(action) => onFeedAction(state.feed, action)}
+        />
       ) : (
         <FolderActionMenuItems onAction={(action) => onFolderAction(state.folder, action)} />
       )}
