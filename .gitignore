@@ -9,6 +9,6 @@ backups/
 .DS_Store
 .env
 .agents/
-.codex/
+!.codex/
 .impeccable/
 AGENTS*.md
