@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Folder as FolderIcon,
   FolderPlus,
   Globe2,
   Keyboard,
@@ -28,7 +29,15 @@ import {
   Upload,
   X,
 } from "lucide-react";
-import { type ChangeEvent, type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   AI_PROMPT_MAX_LENGTH,
   DEFAULT_ARTICLE_SUMMARY_PROMPT,
@@ -56,6 +65,12 @@ import type {
 } from "../shared/types";
 import { DUPLICATE_ARTICLE_WINDOW_DAYS } from "../shared/types";
 import { api, appUrl, errorMessage, type RuleInput } from "./api";
+import {
+  type FeedStatusFilter,
+  type FeedTypeFilter,
+  filterFeeds,
+  visibleFeedStatus,
+} from "./feed-filters";
 import { type MotionState, useMotionPresence } from "./motion";
 import { WebFeedSetup } from "./web-feed-setup";
 
@@ -138,6 +153,27 @@ function feedHost(value: string): string {
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return <kbd>{children}</kbd>;
+}
+
+type FeedsPageTab = "subscriptions" | "folders";
+
+function handleFeedsTabKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+  if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+
+  const tabs = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
+  const currentIndex = tabs.indexOf(document.activeElement as HTMLButtonElement);
+  const nextIndex =
+    event.key === "Home"
+      ? 0
+      : event.key === "End"
+        ? tabs.length - 1
+        : event.key === "ArrowRight"
+          ? (Math.max(currentIndex, 0) + 1) % tabs.length
+          : (currentIndex <= 0 ? tabs.length : currentIndex) - 1;
+
+  event.preventDefault();
+  tabs[nextIndex]?.focus();
+  tabs[nextIndex]?.click();
 }
 
 function PageHeader({
@@ -248,14 +284,31 @@ export function FeedsPage({
   );
   const [addFeedSession, setAddFeedSession] = useState(0);
   const [addFolderOpen, setAddFolderOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<FeedsPageTab>("subscriptions");
+  const [feedTypeFilter, setFeedTypeFilter] = useState<FeedTypeFilter>("all");
+  const [feedStatusFilter, setFeedStatusFilter] = useState<FeedStatusFilter>("all");
   const addFeedPresence = useMotionPresence(addFeedOpen);
   const addFeedTriggerRef = useRef<HTMLButtonElement>(null);
   const previousAddFeedSourceUrl = useRef(addFeedSourceUrl);
+  const filteredFeeds = filterFeeds(bootstrap.feeds, feedTypeFilter, feedStatusFilter);
+  const filtersActive = feedTypeFilter !== "all" || feedStatusFilter !== "all";
+  const publishedFeedCount = bootstrap.feeds.filter(
+    (feed) => feed.sourceKind === "published",
+  ).length;
+  const webFeedCount = bootstrap.feeds.length - publishedFeedCount;
+  const statusCounts: Record<Exclude<FeedStatusFilter, "all">, number> = {
+    healthy: 0,
+    needs_attention: 0,
+    paused: 0,
+    refreshing: 0,
+  };
+  for (const feed of bootstrap.feeds) statusCounts[visibleFeedStatus(feed)] += 1;
 
   useEffect(() => {
     const previousSourceUrl = previousAddFeedSourceUrl.current;
     previousAddFeedSourceUrl.current = addFeedSourceUrl;
     if (addFeedSourceUrl !== null) {
+      setActiveTab("subscriptions");
       setAddFeedOpen(true);
     } else if (previousSourceUrl !== null) {
       setAddFeedOpen(false);
@@ -268,169 +321,303 @@ export function FeedsPage({
     if (addFeedSourceUrl !== null) onCloseAddFeedRoute();
   };
 
+  const selectTab = (tab: FeedsPageTab) => {
+    if (tab === activeTab) return;
+    if (tab === "folders" && addFeedOpen) {
+      setAddFeedOpen(false);
+      if (addFeedSourceUrl !== null) onCloseAddFeedRoute();
+    }
+    if (tab === "subscriptions" && addFolderOpen) setAddFolderOpen(false);
+    setActiveTab(tab);
+  };
+
+  const clearFeedFilters = () => {
+    setFeedTypeFilter("all");
+    setFeedStatusFilter("all");
+  };
+
   return (
     <div className="management-page">
       <PageHeader
         title="Feeds & status"
-        description="Subscriptions, folders, and the last result from every source."
+        description="Review subscription health and organize sources."
         onMenu={onMenu}
         actions={
-          <>
-            <ImportOpmlButton onImported={onReload} showToast={showToast} />
-            <a
-              className="secondary-button"
-              href={appUrl("/api/opml/export")}
-              download="echovale-subscriptions.opml"
-            >
-              <Download aria-hidden="true" size={16} />
-              Export OPML
-            </a>
+          activeTab === "subscriptions" ? (
+            <>
+              <ImportOpmlButton onImported={onReload} showToast={showToast} />
+              <a
+                className="secondary-button"
+                href={appUrl("/api/opml/export")}
+                download="echovale-subscriptions.opml"
+              >
+                <Download aria-hidden="true" size={16} />
+                Export OPML
+              </a>
+              <button
+                ref={addFeedTriggerRef}
+                className="primary-button"
+                type="button"
+                onClick={() => {
+                  if (addFeedOpen) {
+                    closeAddFeed();
+                    return;
+                  }
+                  setAddFeedSession((current) => current + 1);
+                  setAddFeedOpen(true);
+                }}
+              >
+                <Plus aria-hidden="true" size={16} />
+                Add feed
+              </button>
+            </>
+          ) : (
             <button
-              ref={addFeedTriggerRef}
               className="primary-button"
               type="button"
-              onClick={() => {
-                if (addFeedOpen) {
-                  closeAddFeed();
-                  return;
-                }
-                setAddFeedSession((current) => current + 1);
-                setAddFeedOpen(true);
-              }}
+              onClick={() => setAddFolderOpen((current) => !current)}
             >
-              <Plus aria-hidden="true" size={16} />
-              Add feed
+              <FolderPlus aria-hidden="true" size={16} />
+              Add folder
             </button>
-          </>
+          )
         }
       />
 
-      {addFeedPresence.present ? (
-        <AddFeedForm
-          key={`${addFeedSession}:${addFeedSourceUrl ?? ""}`}
-          feeds={bootstrap.feeds}
-          folders={bootstrap.folders}
-          initialSourceUrl={addFeedSourceUrl ?? ""}
-          motionState={addFeedPresence.state}
-          onCancel={closeAddFeed}
-          onSaved={async (feed) => {
-            showToast(`Added ${feed.title}`);
-            closeAddFeed();
-            await onReload();
-          }}
-        />
-      ) : null}
-
-      <section className="management-section" aria-labelledby="subscriptions-heading">
-        <div className="section-title-row">
-          <div>
-            <h2 id="subscriptions-heading">Subscriptions</h2>
-            <p>
-              {bootstrap.feeds.length} {bootstrap.feeds.length === 1 ? "feed" : "feeds"}
-            </p>
-          </div>
-          <ul
-            className="status-legend"
-            aria-label="Feed status legend"
-            style={{ margin: 0, padding: 0, listStyle: "none" }}
-          >
-            <li>
-              <span className="status-dot healthy" /> Healthy
-            </li>
-            <li>
-              <span className="status-dot failed" /> Needs attention
-            </li>
-            <li>
-              <Pause aria-hidden="true" size={13} /> Paused
-            </li>
-          </ul>
-        </div>
-
-        {bootstrap.feeds.length === 0 ? (
-          <div className="section-empty">
-            <Rss aria-hidden="true" size={22} />
-            <h3>No subscriptions yet</h3>
-            <p>Add a feed URL above or import OPML from another reader.</p>
-          </div>
-        ) : (
-          <div className="table-scroll">
-            <table className="data-table feed-table">
-              <thead>
-                <tr>
-                  <th scope="col">Feed</th>
-                  <th scope="col">Folder</th>
-                  <th scope="col">Status</th>
-                  <th scope="col">Last success</th>
-                  <th scope="col">Unread</th>
-                  <th scope="col">
-                    <span className="sr-only">Actions</span>
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {bootstrap.feeds.map((feed) => (
-                  <FeedRow
-                    key={feed.id}
-                    feed={feed}
-                    folders={bootstrap.folders}
-                    onReload={onReload}
-                    onRefresh={() => onRefresh(feed.id)}
-                    onEditSelection={() => onEditWebFeed(feed)}
-                    showToast={showToast}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
-      <section className="management-section" aria-labelledby="folders-heading">
-        <div className="section-title-row">
-          <div>
-            <h2 id="folders-heading">Folders</h2>
-            <p>Group feeds for focused reading, refresh, and article order.</p>
-          </div>
+      <div className="management-tabs-shell">
+        <div
+          className="management-tabs"
+          role="tablist"
+          aria-label="Feeds and status"
+          onKeyDown={handleFeedsTabKeyDown}
+        >
           <button
-            className="secondary-button"
+            id="subscriptions-tab"
             type="button"
-            onClick={() => setAddFolderOpen((current) => !current)}
+            role="tab"
+            aria-controls="subscriptions-panel"
+            aria-selected={activeTab === "subscriptions"}
+            tabIndex={activeTab === "subscriptions" ? 0 : -1}
+            onClick={() => selectTab("subscriptions")}
           >
-            <FolderPlus aria-hidden="true" size={16} />
-            Add folder
+            <Rss aria-hidden="true" size={15} />
+            Subscriptions
+            <span className="management-tab-count">{bootstrap.feeds.length}</span>
+          </button>
+          <button
+            id="folders-tab"
+            type="button"
+            role="tab"
+            aria-controls="folders-panel"
+            aria-selected={activeTab === "folders"}
+            tabIndex={activeTab === "folders" ? 0 : -1}
+            onClick={() => selectTab("folders")}
+          >
+            <FolderIcon aria-hidden="true" size={15} />
+            Folders
+            <span className="management-tab-count">{bootstrap.folders.length}</span>
           </button>
         </div>
-        {addFolderOpen ? (
-          <FolderForm
-            folders={bootstrap.folders}
-            onCancel={() => setAddFolderOpen(false)}
-            onSaved={async (folder) => {
-              showToast(`Created ${folder.name}`);
-              setAddFolderOpen(false);
-              await onReload();
-            }}
-            showToast={showToast}
-          />
-        ) : null}
-        {bootstrap.folders.length === 0 ? (
-          <div className="section-empty compact-empty">
-            <p>No folders. Feeds remain in the top level until you organize them.</p>
+      </div>
+
+      {activeTab === "subscriptions" ? (
+        <div
+          id="subscriptions-panel"
+          role="tabpanel"
+          aria-labelledby="subscriptions-tab"
+          className="management-tab-panel"
+        >
+          {addFeedPresence.present ? (
+            <AddFeedForm
+              key={`${addFeedSession}:${addFeedSourceUrl ?? ""}`}
+              feeds={bootstrap.feeds}
+              folders={bootstrap.folders}
+              initialSourceUrl={addFeedSourceUrl ?? ""}
+              motionState={addFeedPresence.state}
+              onCancel={closeAddFeed}
+              onSaved={async (feed) => {
+                showToast(`Added ${feed.title}`);
+                closeAddFeed();
+                await onReload();
+              }}
+            />
+          ) : null}
+
+          <section className="management-section" aria-labelledby="subscriptions-heading">
+            <div className="section-title-row">
+              <div>
+                <h2 id="subscriptions-heading">Subscriptions</h2>
+                <p>Monitor sources and act on feeds that need attention.</p>
+              </div>
+              <p className="feed-result-count" aria-live="polite">
+                {filtersActive ? (
+                  <>
+                    Showing <strong>{filteredFeeds.length}</strong> of {bootstrap.feeds.length}
+                  </>
+                ) : (
+                  <>
+                    <strong>{bootstrap.feeds.length}</strong>{" "}
+                    {bootstrap.feeds.length === 1 ? "feed" : "feeds"}
+                  </>
+                )}
+              </p>
+            </div>
+
+            {bootstrap.feeds.length > 0 ? (
+              <fieldset className="feed-filter-bar">
+                <legend className="sr-only">Filter subscriptions</legend>
+                <div className="feed-filter-controls">
+                  <label className="feed-filter-field">
+                    <span>Type</span>
+                    <select
+                      value={feedTypeFilter}
+                      onChange={(event) => setFeedTypeFilter(event.target.value as FeedTypeFilter)}
+                    >
+                      <option value="all">All types ({bootstrap.feeds.length})</option>
+                      <option value="published">Published feeds ({publishedFeedCount})</option>
+                      <option value="web">Web feeds ({webFeedCount})</option>
+                    </select>
+                  </label>
+                  <label className="feed-filter-field">
+                    <span>Status</span>
+                    <select
+                      value={feedStatusFilter}
+                      onChange={(event) =>
+                        setFeedStatusFilter(event.target.value as FeedStatusFilter)
+                      }
+                    >
+                      <option value="all">All statuses ({bootstrap.feeds.length})</option>
+                      <option value="healthy">Healthy ({statusCounts.healthy})</option>
+                      <option value="needs_attention">
+                        Needs attention ({statusCounts.needs_attention})
+                      </option>
+                      <option value="paused">Paused ({statusCounts.paused})</option>
+                      <option value="refreshing">Refreshing ({statusCounts.refreshing})</option>
+                    </select>
+                  </label>
+                </div>
+                {filtersActive ? (
+                  <button
+                    className="quiet-button feed-filter-clear"
+                    type="button"
+                    onClick={clearFeedFilters}
+                  >
+                    <X aria-hidden="true" size={14} />
+                    Clear filters
+                  </button>
+                ) : (
+                  <span className="feed-filter-hint">Combine filters to narrow the list.</span>
+                )}
+              </fieldset>
+            ) : null}
+
+            {bootstrap.feeds.length === 0 ? (
+              <div className="section-empty">
+                <Rss aria-hidden="true" size={22} />
+                <h3>No subscriptions yet</h3>
+                <p>Add a feed URL or import OPML from another reader.</p>
+              </div>
+            ) : filteredFeeds.length === 0 ? (
+              <div className="section-empty filtered-empty">
+                <ListFilter aria-hidden="true" size={22} />
+                <h3>No feeds match these filters</h3>
+                <p>Choose a different type or status to see more subscriptions.</p>
+                <button className="secondary-button" type="button" onClick={clearFeedFilters}>
+                  Clear filters
+                </button>
+              </div>
+            ) : (
+              <div className="table-scroll">
+                <table className="data-table feed-table">
+                  <thead>
+                    <tr>
+                      <th scope="col">Feed</th>
+                      <th scope="col">Folder</th>
+                      <th scope="col">Status</th>
+                      <th scope="col">Last success</th>
+                      <th scope="col">Unread</th>
+                      <th scope="col">
+                        <span className="sr-only">Actions</span>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredFeeds.map((feed) => (
+                      <FeedRow
+                        key={feed.id}
+                        feed={feed}
+                        folders={bootstrap.folders}
+                        onReload={onReload}
+                        onRefresh={() => onRefresh(feed.id)}
+                        onEditSelection={() => onEditWebFeed(feed)}
+                        showToast={showToast}
+                      />
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </div>
+      ) : (
+        <section
+          id="folders-panel"
+          role="tabpanel"
+          aria-labelledby="folders-tab"
+          className="management-section management-tab-panel"
+        >
+          <div className="section-title-row">
+            <div>
+              <h2 id="folders-heading">Folder configuration</h2>
+              <p>Organize reading groups, nesting, and article order.</p>
+            </div>
+            <p className="feed-result-count">
+              <strong>{bootstrap.folders.length}</strong>{" "}
+              {bootstrap.folders.length === 1 ? "folder" : "folders"}
+            </p>
           </div>
-        ) : (
-          <ul className="folder-management-list">
-            {bootstrap.folders.map((folder) => (
-              <FolderRow
-                key={folder.id}
-                folder={folder}
-                folders={bootstrap.folders}
-                feedCount={bootstrap.feeds.filter((feed) => feed.folderId === folder.id).length}
-                onReload={onReload}
-                showToast={showToast}
-              />
-            ))}
-          </ul>
-        )}
-      </section>
+          {addFolderOpen ? (
+            <FolderForm
+              folders={bootstrap.folders}
+              onCancel={() => setAddFolderOpen(false)}
+              onSaved={async (folder) => {
+                showToast(`Created ${folder.name}`);
+                setAddFolderOpen(false);
+                await onReload();
+              }}
+              showToast={showToast}
+            />
+          ) : null}
+          {bootstrap.folders.length === 0 ? (
+            <div className="section-empty">
+              <FolderIcon aria-hidden="true" size={22} />
+              <h3>No folders yet</h3>
+              <p>Feeds stay at the top level until you create a reading group.</p>
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => setAddFolderOpen(true)}
+              >
+                <FolderPlus aria-hidden="true" size={16} />
+                Add folder
+              </button>
+            </div>
+          ) : (
+            <ul className="folder-management-list">
+              {bootstrap.folders.map((folder) => (
+                <FolderRow
+                  key={folder.id}
+                  folder={folder}
+                  folders={bootstrap.folders}
+                  feedCount={bootstrap.feeds.filter((feed) => feed.folderId === folder.id).length}
+                  onReload={onReload}
+                  showToast={showToast}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
     </div>
   );
 }
@@ -1114,7 +1301,12 @@ function FeedRow({
             }`}
           />
           <div>
-            <strong>{feed.title}</strong>
+            <div className="feed-title-row">
+              <strong>{feed.title}</strong>
+              <span className="feed-type-badge">
+                {feed.sourceKind === "web" ? "Web" : "Published"}
+              </span>
+            </div>
             <a href={feed.siteUrl ?? feed.feedUrl} target="_blank" rel="noreferrer">
               {feed.feedUrl}
             </a>
