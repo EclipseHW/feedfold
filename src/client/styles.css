@@ -2781,10 +2781,92 @@ kbd {
   margin-left: auto;
 }
 
+.management-tabs-shell {
+  max-width: 1180px;
+  margin: 18px auto 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.management-tabs {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  overflow-x: auto;
+}
+
+.management-tabs button {
+  position: relative;
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  padding: 7px 1px 9px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 650;
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.management-tabs button::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: transparent;
+  content: "";
+}
+
+.management-tabs button[aria-selected="true"] {
+  color: var(--text);
+}
+
+.management-tabs button[aria-selected="true"]::after {
+  background: var(--accent);
+}
+
+.management-tab-count {
+  display: inline-flex;
+  min-width: 20px;
+  height: 19px;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 6px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.management-tabs button[aria-selected="true"] .management-tab-count {
+  background: var(--accent-surface);
+  color: var(--accent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .management-tabs button:hover {
+    color: var(--text);
+  }
+}
+
+.management-tabs button:active:not(:focus-visible) {
+  transform: scale(0.97);
+}
+
 .management-section,
 .settings-section {
   max-width: 1180px;
   margin: 28px auto 0;
+}
+
+.management-section.management-tab-panel,
+.management-tab-panel > .management-section {
+  margin-top: 22px;
 }
 
 .section-title-row,
@@ -2822,6 +2904,70 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+}
+
+.feed-result-count {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.feed-result-count strong {
+  color: var(--text-secondary);
+  font-weight: 650;
+}
+
+.feed-filter-bar {
+  display: flex;
+  min-width: 0;
+  min-height: 54px;
+  align-items: center;
+  gap: 12px;
+  margin: 0 0 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.feed-filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.feed-filter-field {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.feed-filter-field select {
+  width: auto;
+  min-width: 174px;
+  height: 34px;
+  padding: 5px 28px 5px 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.feed-filter-hint {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.feed-filter-clear {
+  min-height: 32px;
+  margin-left: auto;
+  padding-block: 5px;
+  font-size: 11px;
 }
 
 .table-scroll {
@@ -2873,6 +3019,27 @@ kbd {
   color: var(--text);
   font-size: 13px;
 }
+
+.feed-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+}
+
+.feed-type-badge {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: var(--surface-active);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
 .feed-cell a {
   display: block;
   max-width: 320px;
@@ -3001,6 +3168,10 @@ kbd {
 }
 .compact-empty p {
   margin: 0;
+}
+
+.filtered-empty {
+  min-height: 160px;
 }
 
 .inline-editor {
@@ -5198,12 +5369,44 @@ kbd {
   .page-header-actions .primary-button {
     flex: 1;
   }
+  .management-tabs-shell {
+    margin-top: 14px;
+  }
+  .management-tabs {
+    gap: 18px;
+  }
   .section-title-row {
     align-items: flex-start;
     flex-direction: column;
   }
   .status-legend {
     display: none;
+  }
+  .feed-filter-bar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 9px;
+  }
+  .feed-filter-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .feed-filter-field {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .feed-filter-field select {
+    width: 100%;
+    min-width: 0;
+  }
+  .feed-filter-hint,
+  .feed-filter-clear {
+    margin-left: 0;
+  }
+  .feed-filter-clear {
+    align-self: flex-start;
   }
   .form-grid,
   .form-grid.three-columns,
@@ -5533,6 +5736,9 @@ kbd {
 @media (max-width: 360px) {
   .segmented-control button {
     padding-inline: 6px;
+  }
+  .feed-filter-controls {
+    grid-template-columns: 1fr;
   }
   .view-switcher button kbd {
     display: none;
