@@ -34,7 +34,7 @@ import type {
   WebFeedAnalysis,
 } from "../shared/types";
 import { api, errorMessage } from "./api";
-import { FolderForm, formatDate, RuleForm } from "./management";
+import { FolderForm, formatDate, formatRefreshInterval, RuleForm } from "./management";
 import { WebFeedSetup } from "./web-feed-setup";
 
 export type FeedManagementAction =
@@ -350,8 +350,8 @@ function FeedSettingsPanel({
                 <dd>{formatDate(details.createdAt)}</dd>
               </div>
               <div>
-                <dt>Account refresh interval</dt>
-                <dd>Every {details.pollIntervalMinutes} minutes</dd>
+                <dt>Refresh interval</dt>
+                <dd>Every {formatRefreshInterval(details.pollIntervalMinutes)}</dd>
               </div>
               <div>
                 <dt>Last refresh attempt</dt>

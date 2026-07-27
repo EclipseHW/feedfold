@@ -76,6 +76,7 @@ describe("web feed persistence", () => {
         title: "Tracked releases",
         folderId: folder.id,
         sourceKind: "web",
+        pollIntervalMinutes: 180,
         healthStatus: "healthy",
         lastErrorKind: null,
         lastMatchCount: 3,
@@ -84,6 +85,7 @@ describe("web feed persistence", () => {
       const record = database.getFeedRecord(feed.id);
       expect(record).toMatchObject({
         sourceKind: "web",
+        pollIntervalMinutes: 180,
         webConfig: config(pageUrl),
         selectionRevision: 1,
         lastMatchCount: 3,
@@ -253,6 +255,52 @@ describe("web feed persistence", () => {
       ).toBeUndefined();
     } finally {
       database.close();
+    }
+  });
+
+  it("keeps web feeds on a three-hour schedule independently of published feeds", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "echovale-web-feed-schedule-test-"));
+    directories.push(directory);
+    const path = join(directory, "echovale.db");
+    const pageUrl = "https://example.test/publications";
+    const database = new AppDatabase(path);
+    const webFeed = database.createWebFeed(TEST_USER_ID, {
+      title: "Publications",
+      pageUrl,
+      folderId: null,
+      config: config(pageUrl),
+      parsed: {
+        title: "Publications",
+        siteUrl: pageUrl,
+        articles: [article("web:first", "First paper", `${pageUrl}/first`)],
+      },
+    });
+    const publishedFeed = database.createFeed(TEST_USER_ID, {
+      title: "Published feed",
+      feedUrl: "https://example.test/feed.xml",
+    });
+
+    expect(webFeed.pollIntervalMinutes).toBe(180);
+    expect(publishedFeed.pollIntervalMinutes).toBe(20);
+
+    database.updateSettings(TEST_USER_ID, { pollIntervalMinutes: 60 });
+    expect(database.getFeed(TEST_USER_ID, webFeed.id)?.pollIntervalMinutes).toBe(180);
+    expect(database.getFeed(TEST_USER_ID, publishedFeed.id)?.pollIntervalMinutes).toBe(60);
+
+    database.sqlite
+      .prepare("UPDATE feeds SET last_attempt_at = ?, next_poll_at = ? WHERE id = ?")
+      .run("2026-07-27T12:00:00.000Z", "2026-07-27T12:20:00.000Z", webFeed.id);
+    database.sqlite.prepare("DELETE FROM migrations WHERE version = 20").run();
+    database.close();
+
+    const migrated = new AppDatabase(path);
+    try {
+      expect(migrated.getFeed(TEST_USER_ID, webFeed.id)).toMatchObject({
+        pollIntervalMinutes: 180,
+        nextPollAt: "2026-07-27T15:00:00.000Z",
+      });
+    } finally {
+      migrated.close();
     }
   });
 
