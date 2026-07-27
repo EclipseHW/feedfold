@@ -19,6 +19,9 @@ import type {
   ArticleQuery,
   BootstrapData,
   Feed,
+  FeedErrorKind,
+  FeedHealthStatus,
+  FeedSourceKind,
   Folder,
   FolderSortDirection,
   MarkReadRequest,
@@ -27,12 +30,13 @@ import type {
   RuleCondition,
   RuleConditionOperator,
   RuleField,
+  WebFeedConfig,
 } from "../shared/types.js";
 import { cleanArticleHtml, removeStoredSrcsetsWithFallback } from "./article-html.js";
 import { firstSafeImageUrl } from "./article-image.js";
 import { articleMediaRuleText, youtubeMediaFromUrl } from "./article-media.js";
 
-export interface FeedRecord {
+interface FeedRecordBase {
   id: number;
   folderId: number | null;
   title: string;
@@ -43,6 +47,20 @@ export interface FeedRecord {
   lastModified: string | null;
   pollIntervalMinutes: number;
 }
+
+export type FeedRecord =
+  | (FeedRecordBase & {
+      sourceKind: "published";
+      webConfig: null;
+      selectionRevision: null;
+      lastMatchCount: null;
+    })
+  | (FeedRecordBase & {
+      sourceKind: "web";
+      webConfig: WebFeedConfig;
+      selectionRevision: number;
+      lastMatchCount: number;
+    });
 
 export interface ParsedArticle {
   externalId: string;
@@ -742,6 +760,33 @@ const migrations: Migration[] = [
       ALTER TABLE article_ai_summaries ADD COLUMN prompt_id TEXT;
     `,
   },
+  {
+    sql: `
+      ALTER TABLE feeds ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'published'
+        CHECK(source_kind IN ('published', 'web'));
+      ALTER TABLE feeds ADD COLUMN health_status TEXT NOT NULL DEFAULT 'healthy'
+        CHECK(health_status IN ('healthy', 'failing', 'needs_attention'));
+      ALTER TABLE feeds ADD COLUMN last_error_kind TEXT
+        CHECK(last_error_kind IS NULL OR last_error_kind IN (
+          'network', 'http', 'timeout', 'parse', 'inaccessible', 'access_blocked',
+          'javascript_timeout', 'unsupported_content', 'selection_broken'
+        ));
+
+      UPDATE feeds
+      SET health_status = 'failing',
+          last_error_kind = CASE WHEN last_http_status IS NULL THEN 'network' ELSE 'http' END
+      WHERE last_error IS NOT NULL;
+
+      CREATE TABLE web_feed_configs (
+        feed_id INTEGER PRIMARY KEY REFERENCES feeds(id) ON DELETE CASCADE,
+        config_json TEXT NOT NULL CHECK(json_valid(config_json)),
+        selection_revision INTEGER NOT NULL DEFAULT 1 CHECK(selection_revision > 0),
+        last_match_count INTEGER NOT NULL CHECK(last_match_count >= 0),
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `,
+  },
 ];
 
 function now(): string {
@@ -826,6 +871,10 @@ function mapFeed(row: Row): Feed {
     title: String(row.title),
     feedUrl: String(row.feedUrl),
     siteUrl: row.siteUrl === null ? null : String(row.siteUrl),
+    sourceKind: row.sourceKind as FeedSourceKind,
+    healthStatus: row.healthStatus as FeedHealthStatus,
+    lastErrorKind: row.lastErrorKind === null ? null : (row.lastErrorKind as FeedErrorKind),
+    lastMatchCount: row.lastMatchCount === null ? null : Number(row.lastMatchCount),
     createdAt: String(row.createdAt),
     pollIntervalMinutes: Number(row.pollIntervalMinutes),
     unreadCount: Number(row.unreadCount),
@@ -841,7 +890,7 @@ function mapFeed(row: Row): Feed {
 }
 
 function mapFeedRecord(row: Row): FeedRecord {
-  return {
+  const base: FeedRecordBase = {
     id: Number(row.id),
     folderId: row.folderId === null ? null : Number(row.folderId),
     title: String(row.title),
@@ -852,7 +901,38 @@ function mapFeedRecord(row: Row): FeedRecord {
     lastModified: row.lastModified === null ? null : String(row.lastModified),
     pollIntervalMinutes: Number(row.pollIntervalMinutes),
   };
+  const sourceKind = row.sourceKind as FeedSourceKind;
+  if (sourceKind === "published") {
+    if (row.webConfigJson !== null) {
+      throw new Error(`Published feed ${base.id} unexpectedly has a web feed configuration`);
+    }
+    return {
+      ...base,
+      sourceKind,
+      webConfig: null,
+      selectionRevision: null,
+      lastMatchCount: null,
+    };
+  }
+  if (sourceKind !== "web" || row.webConfigJson === null) {
+    throw new Error(`Web feed ${base.id} is missing its page selection`);
+  }
+  return {
+    ...base,
+    sourceKind,
+    webConfig: JSON.parse(String(row.webConfigJson)) as WebFeedConfig,
+    selectionRevision: Number(row.selectionRevision),
+    lastMatchCount: Number(row.lastMatchCount),
+  };
 }
+
+const feedRecordColumns = `feeds.id, feeds.folder_id AS folderId, feeds.title,
+  feeds.feed_url AS feedUrl, feeds.site_url AS siteUrl, feeds.source_kind AS sourceKind,
+  feeds.paused, feeds.etag, feeds.last_modified AS lastModified,
+  settings.poll_interval_minutes AS pollIntervalMinutes,
+  web_feed_configs.config_json AS webConfigJson,
+  web_feed_configs.selection_revision AS selectionRevision,
+  web_feed_configs.last_match_count AS lastMatchCount`;
 
 function mapArticle(row: Row): Article {
   return {
@@ -1371,6 +1451,10 @@ export class AppDatabase {
                 feeds.title,
                 feeds.feed_url AS feedUrl,
                 feeds.site_url AS siteUrl,
+                feeds.source_kind AS sourceKind,
+                feeds.health_status AS healthStatus,
+                feeds.last_error_kind AS lastErrorKind,
+                web_feed_configs.last_match_count AS lastMatchCount,
                 feeds.created_at AS createdAt,
                 settings.poll_interval_minutes AS pollIntervalMinutes,
                 feeds.paused,
@@ -1384,6 +1468,7 @@ export class AppDatabase {
                 SUM(CASE WHEN articles.id IS NOT NULL AND ${visibleClause} THEN 1 ELSE 0 END) AS totalCount
          FROM feeds
          JOIN settings ON settings.user_id = feeds.user_id
+         LEFT JOIN web_feed_configs ON web_feed_configs.feed_id = feeds.id
          LEFT JOIN articles ON articles.feed_id = feeds.id
          WHERE feeds.user_id = ?
          GROUP BY feeds.id
@@ -1432,6 +1517,113 @@ export class AppDatabase {
     return this.getFeed(userId, Number(result.lastInsertRowid)) as Feed;
   }
 
+  createWebFeed(
+    userId: number,
+    input: {
+      title: string;
+      pageUrl: string;
+      folderId: number | null;
+      config: WebFeedConfig;
+      parsed: ParsedFeed;
+    },
+  ): Feed {
+    if (input.folderId && !this.getFolder(userId, input.folderId)) {
+      throw new Error("The selected folder or feed does not exist");
+    }
+    if (input.parsed.articles.length === 0) {
+      throw new Error("The web feed selection did not match any items");
+    }
+    const pageUrl = new URL(input.pageUrl).toString();
+    const config = { ...input.config, pageUrl: new URL(input.config.pageUrl).toString() };
+    if (config.pageUrl !== pageUrl) {
+      throw new Error("The web feed selection belongs to a different page");
+    }
+    const pollIntervalMinutes = this.getSettings(userId).pollIntervalMinutes;
+    let feedId = 0;
+    const create = this.sqlite.transaction(() => {
+      const timestamp = now();
+      const result = this.sqlite
+        .prepare(
+          `INSERT INTO feeds (
+             user_id, folder_id, title, feed_url, site_url, source_kind, paused, refreshing,
+             last_attempt_at, next_poll_at, created_at, updated_at
+           ) VALUES (?, ?, ?, ?, ?, 'web', 0, 1, ?, ?, ?, ?)`,
+        )
+        .run(
+          userId,
+          input.folderId,
+          input.title.trim() || input.parsed.title.trim() || pageUrl,
+          pageUrl,
+          input.parsed.siteUrl ?? pageUrl,
+          timestamp,
+          timestamp,
+          timestamp,
+          timestamp,
+        );
+      feedId = Number(result.lastInsertRowid);
+      this.sqlite
+        .prepare(
+          `INSERT INTO web_feed_configs (
+             feed_id, config_json, selection_revision, last_match_count, created_at, updated_at
+           ) VALUES (?, ?, 1, ?, ?, ?)`,
+        )
+        .run(feedId, JSON.stringify(config), input.parsed.articles.length, timestamp, timestamp);
+      this.markFeedSuccess(feedId, {
+        httpStatus: 200,
+        etag: null,
+        lastModified: null,
+        pollIntervalMinutes,
+        parsed: input.parsed,
+        webMatchCount: input.parsed.articles.length,
+      });
+    });
+    create();
+    return this.getFeed(userId, feedId) as Feed;
+  }
+
+  updateWebFeedSelection(
+    userId: number,
+    id: number,
+    configInput: WebFeedConfig,
+    parsed: ParsedFeed,
+  ): Feed | null {
+    const existing = this.getFeed(userId, id);
+    if (!existing) return null;
+    if (existing.sourceKind !== "web") throw new Error("Only web feeds have page selections");
+    if (parsed.articles.length === 0) {
+      throw new Error("The web feed selection did not match any items");
+    }
+    const config = { ...configInput, pageUrl: new URL(configInput.pageUrl).toString() };
+    if (config.pageUrl !== existing.feedUrl) {
+      throw new Error("The web feed selection belongs to a different page");
+    }
+    const update = this.sqlite.transaction(() => {
+      const timestamp = now();
+      const changed = this.sqlite
+        .prepare(
+          `UPDATE web_feed_configs
+           SET config_json = ?, selection_revision = selection_revision + 1,
+               last_match_count = ?, updated_at = ?
+           WHERE feed_id = ?`,
+        )
+        .run(JSON.stringify(config), parsed.articles.length, timestamp, id).changes;
+      if (changed === 0) throw new Error(`Web feed ${id} is missing its page selection`);
+      this.sqlite
+        .prepare("UPDATE feeds SET refreshing = 1, last_attempt_at = ? WHERE id = ?")
+        .run(timestamp, id);
+      this.markFeedSuccess(id, {
+        httpStatus: 200,
+        etag: null,
+        lastModified: null,
+        pollIntervalMinutes: existing.pollIntervalMinutes,
+        parsed,
+        webMatchCount: parsed.articles.length,
+      });
+    });
+    update();
+    return this.getFeed(userId, id);
+  }
+
   updateFeed(
     userId: number,
     id: number,
@@ -1449,6 +1641,9 @@ export class AppDatabase {
       throw new Error("The selected folder or feed does not exist");
     }
     const feedUrl = input.feedUrl ? new URL(input.feedUrl).toString() : existing.feedUrl;
+    if (existing.sourceKind === "web" && feedUrl !== existing.feedUrl) {
+      throw new Error("Web feed URLs can only be changed by repairing the page selection");
+    }
     const title = input.title ?? (existing.title === existing.feedUrl ? feedUrl : existing.title);
     this.sqlite
       .prepare(
@@ -1493,16 +1688,26 @@ export class AppDatabase {
   getFeedRecord(id: number): FeedRecord | null {
     const row = this.sqlite
       .prepare(
-        `SELECT feeds.id, feeds.folder_id AS folderId, feeds.title,
-                feeds.feed_url AS feedUrl, feeds.site_url AS siteUrl, feeds.paused,
-                feeds.etag, feeds.last_modified AS lastModified,
-                settings.poll_interval_minutes AS pollIntervalMinutes
+        `SELECT ${feedRecordColumns}
          FROM feeds
          JOIN settings ON settings.user_id = feeds.user_id
+         LEFT JOIN web_feed_configs ON web_feed_configs.feed_id = feeds.id
          WHERE feeds.id = ?`,
       )
       .get(id) as Row | undefined;
     return row ? mapFeedRecord(row) : null;
+  }
+
+  getWebFeedConfig(userId: number, id: number): WebFeedConfig | null {
+    const row = this.sqlite
+      .prepare(
+        `SELECT web_feed_configs.config_json AS configJson
+         FROM web_feed_configs
+         JOIN feeds ON feeds.id = web_feed_configs.feed_id
+         WHERE web_feed_configs.feed_id = ? AND feeds.user_id = ? AND feeds.source_kind = 'web'`,
+      )
+      .get(id, userId) as { configJson: string } | undefined;
+    return row ? (JSON.parse(row.configJson) as WebFeedConfig) : null;
   }
 
   getRefreshCandidates(ids?: number[]): FeedRecord[] {
@@ -1512,24 +1717,20 @@ export class AppDatabase {
       const placeholders = ids.map(() => "?").join(", ");
       rows = this.sqlite
         .prepare(
-          `SELECT feeds.id, feeds.folder_id AS folderId, feeds.title,
-                  feeds.feed_url AS feedUrl, feeds.site_url AS siteUrl, feeds.paused,
-                  feeds.etag, feeds.last_modified AS lastModified,
-                  settings.poll_interval_minutes AS pollIntervalMinutes
+          `SELECT ${feedRecordColumns}
            FROM feeds
            JOIN settings ON settings.user_id = feeds.user_id
+           LEFT JOIN web_feed_configs ON web_feed_configs.feed_id = feeds.id
            WHERE feeds.id IN (${placeholders})`,
         )
         .all(...ids) as Row[];
     } else {
       rows = this.sqlite
         .prepare(
-          `SELECT feeds.id, feeds.folder_id AS folderId, feeds.title,
-                  feeds.feed_url AS feedUrl, feeds.site_url AS siteUrl, feeds.paused,
-                  feeds.etag, feeds.last_modified AS lastModified,
-                  settings.poll_interval_minutes AS pollIntervalMinutes
+          `SELECT ${feedRecordColumns}
            FROM feeds
            JOIN settings ON settings.user_id = feeds.user_id
+           LEFT JOIN web_feed_configs ON web_feed_configs.feed_id = feeds.id
            WHERE feeds.paused = 0`,
         )
         .all() as Row[];
@@ -1566,9 +1767,7 @@ export class AppDatabase {
 
   markFeedRefreshing(id: number): void {
     this.sqlite
-      .prepare(
-        "UPDATE feeds SET refreshing = 1, last_attempt_at = ?, last_error = NULL WHERE id = ?",
-      )
+      .prepare("UPDATE feeds SET refreshing = 1, last_attempt_at = ? WHERE id = ?")
       .run(now(), id);
   }
 
@@ -1580,6 +1779,7 @@ export class AppDatabase {
       lastModified: string | null;
       pollIntervalMinutes: number;
       parsed?: ParsedFeed;
+      webMatchCount?: number;
     },
   ): void {
     const parsed = input.parsed
@@ -1622,23 +1822,33 @@ export class AppDatabase {
         const duplicateSettings = this.sqlite
           .prepare(
             `SELECT feeds.user_id AS userId,
+                    feeds.source_kind AS sourceKind,
                     settings.duplicate_article_window_days AS windowDays
              FROM feeds
              JOIN settings ON settings.user_id = feeds.user_id
              WHERE feeds.id = ?`,
           )
-          .get(id) as { userId: number; windowDays: number };
+          .get(id) as { userId: number; sourceKind: FeedSourceKind; windowDays: number };
         const duplicateCutoff = new Date(
           Date.now() - duplicateSettings.windowDays * 24 * 60 * 60 * 1_000,
         ).toISOString();
         const findDuplicate = this.sqlite.prepare(
-          `SELECT 1
-           FROM articles
-           JOIN feeds ON feeds.id = articles.feed_id
-           WHERE feeds.user_id = ?
-             AND articles.discovered_at >= ?
-             AND ((? IS NOT NULL AND articles.url = ?) OR (? <> '' AND articles.title = ?))
-           LIMIT 1`,
+          duplicateSettings.sourceKind === "web"
+            ? `SELECT 1
+               FROM articles
+               JOIN feeds ON feeds.id = articles.feed_id
+               WHERE feeds.user_id = ?
+                 AND articles.discovered_at >= ?
+                 AND ? IS NOT NULL
+                 AND articles.url = ?
+               LIMIT 1`
+            : `SELECT 1
+               FROM articles
+               JOIN feeds ON feeds.id = articles.feed_id
+               WHERE feeds.user_id = ?
+                 AND articles.discovered_at >= ?
+                 AND ((? IS NOT NULL AND articles.url = ?) OR (? <> '' AND articles.title = ?))
+               LIMIT 1`,
         );
         const update = this.sqlite.prepare(
           `UPDATE articles
@@ -1659,6 +1869,10 @@ export class AppDatabase {
           const extractionStatus = "feed";
           const existing = findExisting.get(id, article.externalId) as Row | undefined;
           if (existing) {
+            const publishedAt =
+              duplicateSettings.sourceKind === "web" && article.publishedAt === null
+                ? existing.publishedAt
+                : article.publishedAt;
             const sourceChanged =
               existing.url !== article.url || existing.feedContentHtml !== article.feedContentHtml;
             const statusChanged = media !== null && existing.extractionStatus !== "feed";
@@ -1676,7 +1890,7 @@ export class AppDatabase {
               statusChanged ||
               existing.title !== article.title ||
               existing.author !== article.author ||
-              existing.publishedAt !== article.publishedAt ||
+              existing.publishedAt !== publishedAt ||
               existing.summary !== article.summary ||
               existing.mediaJson !== mediaJson ||
               (media !== null && existing.imageUrl !== article.imageUrl);
@@ -1686,7 +1900,7 @@ export class AppDatabase {
               article.title,
               article.url,
               article.author,
-              article.publishedAt,
+              publishedAt,
               article.summary,
               replaceImage ? 1 : 0,
               article.imageUrl,
@@ -1703,26 +1917,36 @@ export class AppDatabase {
             ruleArticleIds.add(articleId);
             continue;
           }
-          if (
-            findDuplicate.get(
-              duplicateSettings.userId,
-              duplicateCutoff,
-              article.url,
-              article.url,
-              article.title,
-              article.title,
-            )
-          ) {
+          const duplicate =
+            duplicateSettings.sourceKind === "web"
+              ? findDuplicate.get(
+                  duplicateSettings.userId,
+                  duplicateCutoff,
+                  article.url,
+                  article.url,
+                )
+              : findDuplicate.get(
+                  duplicateSettings.userId,
+                  duplicateCutoff,
+                  article.url,
+                  article.url,
+                  article.title,
+                  article.title,
+                );
+          if (duplicate) {
             continue;
           }
+          const discoveredAt = now();
           const result = insert.run(
             id,
             article.externalId,
             article.title,
             article.url,
             article.author,
-            article.publishedAt,
-            now(),
+            duplicateSettings.sourceKind === "web"
+              ? (article.publishedAt ?? discoveredAt)
+              : article.publishedAt,
+            discoveredAt,
             article.summary,
             article.imageUrl,
             mediaJson,
@@ -1740,12 +1964,22 @@ export class AppDatabase {
       this.sqlite
         .prepare(
           `UPDATE feeds
-           SET refreshing = 0, last_success_at = ?, last_http_status = ?, last_error = NULL,
+           SET refreshing = 0, health_status = 'healthy', last_success_at = ?,
+               last_http_status = ?, last_error_kind = NULL, last_error = NULL,
                etag = COALESCE(?, etag), last_modified = COALESCE(?, last_modified),
                next_poll_at = ?
            WHERE id = ?`,
         )
         .run(completedAt, input.httpStatus, input.etag, input.lastModified, nextPollAt, id);
+      if (input.webMatchCount !== undefined) {
+        this.sqlite
+          .prepare(
+            `UPDATE web_feed_configs
+             SET last_match_count = ?, updated_at = ?
+             WHERE feed_id = ?`,
+          )
+          .run(input.webMatchCount, completedAt, id);
+      }
       for (const articleId of ruleArticleIds) this.recomputeRulesForArticle(articleId);
     });
     complete();
@@ -1753,16 +1987,33 @@ export class AppDatabase {
 
   markFeedFailure(
     id: number,
-    input: { httpStatus: number | null; error: string; retryMinutes: number },
+    input: {
+      httpStatus: number | null;
+      error: string;
+      errorKind: FeedErrorKind;
+      healthStatus: FeedHealthStatus;
+      retryMinutes: number;
+    },
   ): void {
     const nextPollAt = new Date(Date.now() + input.retryMinutes * 60_000).toISOString();
-    this.sqlite
-      .prepare(
-        `UPDATE feeds
-         SET refreshing = 0, last_http_status = ?, last_error = ?, next_poll_at = ?
-         WHERE id = ?`,
-      )
-      .run(input.httpStatus, input.error, nextPollAt, id);
+    const fail = this.sqlite.transaction(() => {
+      this.sqlite
+        .prepare(
+          `UPDATE feeds
+           SET refreshing = 0, health_status = ?, last_http_status = ?, last_error_kind = ?,
+               last_error = ?, next_poll_at = ?
+           WHERE id = ?`,
+        )
+        .run(input.healthStatus, input.httpStatus, input.errorKind, input.error, nextPollAt, id);
+      if (input.errorKind === "selection_broken") {
+        this.sqlite
+          .prepare(
+            "UPDATE web_feed_configs SET last_match_count = 0, updated_at = ? WHERE feed_id = ?",
+          )
+          .run(now(), id);
+      }
+    });
+    fail();
   }
 
   getBootstrap(userId: number): Omit<BootstrapData, "aiSettings"> {
@@ -2720,7 +2971,9 @@ export class AppDatabase {
     return this.sqlite
       .prepare(
         `SELECT title, feed_url AS feedUrl, site_url AS siteUrl, folder_id AS folderId
-         FROM feeds WHERE user_id = ? ORDER BY title COLLATE NOCASE`,
+         FROM feeds
+         WHERE user_id = ? AND source_kind = 'published'
+         ORDER BY title COLLATE NOCASE`,
       )
       .all(userId) as Array<{
       title: string;

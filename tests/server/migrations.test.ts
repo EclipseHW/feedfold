@@ -64,12 +64,14 @@ describe("database migrations", () => {
         updated_at TEXT NOT NULL
       );
       INSERT INTO feeds (
-        id, title, feed_url, refreshing, etag, last_modified, created_at, updated_at
+        id, title, feed_url, refreshing, etag, last_modified, last_http_status, last_error,
+        created_at, updated_at
       ) VALUES
-        (1, 'Migration feed', 'https://example.test/feed', 1, NULL, NULL,
+        (1, 'Migration feed', 'https://example.test/feed', 1, NULL, NULL, 503,
+         'Feed request returned HTTP 503',
          '2026-07-13T00:00:00.000Z', '2026-07-13T00:00:00.000Z'),
         (2, 'person / @person', 'https://nitter.net/person/rss', 0, 'old-etag',
-         'Mon, 20 Jul 2026 12:00:00 GMT', '2026-07-13T00:00:00.000Z',
+         'Mon, 20 Jul 2026 12:00:00 GMT', NULL, NULL, '2026-07-13T00:00:00.000Z',
          '2026-07-13T00:00:00.000Z');
 
       CREATE TABLE articles (
@@ -161,8 +163,20 @@ describe("database migrations", () => {
         username: "reader",
       });
       expect(database.listFeeds(1)).toMatchObject([
-        { title: "Migration feed" },
-        { title: "person / @person" },
+        {
+          title: "Migration feed",
+          sourceKind: "published",
+          healthStatus: "failing",
+          lastErrorKind: "http",
+          lastMatchCount: null,
+        },
+        {
+          title: "person / @person",
+          sourceKind: "published",
+          healthStatus: "healthy",
+          lastErrorKind: null,
+          lastMatchCount: null,
+        },
       ]);
       expect(database.listRules(1)).toMatchObject([
         {
@@ -290,7 +304,25 @@ describe("database migrations", () => {
         name: "Default order",
         sortDirection: "newest",
       });
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(18);
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(19);
+      expect(
+        database.sqlite
+          .prepare(
+            `SELECT name FROM pragma_table_info('feeds')
+             WHERE name IN ('source_kind', 'health_status', 'last_error_kind')
+             ORDER BY name`,
+          )
+          .pluck()
+          .all(),
+      ).toEqual(["health_status", "last_error_kind", "source_kind"]);
+      expect(
+        database.sqlite
+          .prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'web_feed_configs'",
+          )
+          .pluck()
+          .get(),
+      ).toBe("web_feed_configs");
       expect(
         database.sqlite
           .prepare(
@@ -310,7 +342,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(18);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(19);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");
