@@ -1086,6 +1086,7 @@ function AddFeedForm({
             analysis={webAnalysis}
             selectedCandidateId={selectedCandidateId}
             disabled={saving}
+            busyLabel="Adding web feed…"
             onSelect={setSelectedCandidateId}
             onBack={() => {
               setWebAnalysis(null);
