@@ -101,7 +101,7 @@ Compose accepts these values from a project-level `.env` file or the shell:
 | --- | --- | --- |
 | `ECHOVALE_BIND_ADDRESS` | `127.0.0.1` | Host address that publishes the container port. Keep loopback when using a local reverse proxy. |
 | `ECHOVALE_PORT` | `3000` | Host port forwarded to Echovale. |
-| `POLL_INTERVAL_MINUTES` | `20` | Initial background polling interval for a new database. |
+| `POLL_INTERVAL_MINUTES` | `20` | Initial published-feed polling interval for a new database. |
 | `FEED_FETCH_TIMEOUT_MS` | `15000` | Feed request timeout in milliseconds. |
 | `WEB_FEED_LOAD_TIMEOUT_MS` | `30000` | Maximum normal page-load time for JavaScript-rendered web feeds, in milliseconds. |
 | `ARTICLE_FETCH_TIMEOUT_MS` | `20000` | Full-text article request timeout in milliseconds. |
@@ -116,7 +116,7 @@ After changing container configuration, recreate the service:
 docker compose up -d
 ```
 
-Background polling runs in the server and continues when no browser is open. The initial interval comes from `POLL_INTERVAL_MINUTES`; later changes made in **Settings** are stored in SQLite and survive restarts. Manual refresh remains available from the interface. Feed health shows the last attempt separately from the last successful update, so a stale or failing source is distinguishable from a healthy feed with no new articles.
+Background polling runs in the server and continues when no browser is open. Published feeds use the initial interval from `POLL_INTERVAL_MINUTES`; later changes made in **Settings** are stored in SQLite and survive restarts. Web feeds refresh every three hours. Manual refresh remains available from the interface. Feed health shows the last attempt separately from the last successful update, so a stale or failing source is distinguishable from a healthy feed with no new articles.
 
 ## Web feeds
 

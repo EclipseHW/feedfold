@@ -122,6 +122,12 @@ export function formatDate(value: string | null): string {
   }).format(new Date(value));
 }
 
+export function formatRefreshInterval(minutes: number): string {
+  if (minutes < 60) return `${minutes} minutes`;
+  const hours = minutes / 60;
+  return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+}
+
 function formatPreviewDate(value: string): string {
   return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
 }
@@ -2974,8 +2980,10 @@ export function SettingsPage({
         </div>
         <div className="setting-row">
           <label htmlFor="poll-interval">
-            <strong>Polling interval</strong>
-            <p>How often Echovale asks feeds for new articles.</p>
+            <strong>Published feed interval</strong>
+            <p>
+              How often Echovale checks RSS, Atom, and JSON feeds. Web feeds refresh every 3 hours.
+            </p>
           </label>
           <select
             id="poll-interval"
@@ -2987,9 +2995,7 @@ export function SettingsPage({
           >
             {[5, 10, 15, 30, 60, 120].map((minutes) => (
               <option key={minutes} value={minutes}>
-                {minutes < 60
-                  ? `${minutes} minutes`
-                  : `${minutes / 60} ${minutes === 60 ? "hour" : "hours"}`}
+                {formatRefreshInterval(minutes)}
               </option>
             ))}
           </select>

@@ -109,6 +109,12 @@ export interface StoredArticleAiTranslation extends ArticleAiTranslation {
 
 type Row = Record<string, unknown>;
 
+const WEB_FEED_POLL_INTERVAL_MINUTES = 180;
+const feedPollIntervalSql = `CASE
+  WHEN feeds.source_kind = 'web' THEN ${WEB_FEED_POLL_INTERVAL_MINUTES}
+  ELSE settings.poll_interval_minutes
+END`;
+
 interface Migration {
   sql: string;
   after?: (database: Sqlite.Database) => void;
@@ -787,6 +793,17 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    sql: `
+      UPDATE feeds
+      SET next_poll_at = strftime(
+        '%Y-%m-%dT%H:%M:%fZ',
+        COALESCE(last_attempt_at, created_at),
+        '+${WEB_FEED_POLL_INTERVAL_MINUTES} minutes'
+      )
+      WHERE source_kind = 'web';
+    `,
+  },
 ];
 
 function now(): string {
@@ -929,7 +946,7 @@ function mapFeedRecord(row: Row): FeedRecord {
 const feedRecordColumns = `feeds.id, feeds.folder_id AS folderId, feeds.title,
   feeds.feed_url AS feedUrl, feeds.site_url AS siteUrl, feeds.source_kind AS sourceKind,
   feeds.paused, feeds.etag, feeds.last_modified AS lastModified,
-  settings.poll_interval_minutes AS pollIntervalMinutes,
+  ${feedPollIntervalSql} AS pollIntervalMinutes,
   web_feed_configs.config_json AS webConfigJson,
   web_feed_configs.selection_revision AS selectionRevision,
   web_feed_configs.last_match_count AS lastMatchCount`;
@@ -1457,7 +1474,7 @@ export class AppDatabase {
                 feeds.last_error_kind AS lastErrorKind,
                 web_feed_configs.last_match_count AS lastMatchCount,
                 feeds.created_at AS createdAt,
-                settings.poll_interval_minutes AS pollIntervalMinutes,
+                ${feedPollIntervalSql} AS pollIntervalMinutes,
                 feeds.paused,
                 feeds.refreshing,
                 feeds.last_attempt_at AS lastAttemptAt,
@@ -1539,7 +1556,6 @@ export class AppDatabase {
     if (config.pageUrl !== pageUrl) {
       throw new Error("The web feed selection belongs to a different page");
     }
-    const pollIntervalMinutes = this.getSettings(userId).pollIntervalMinutes;
     let feedId = 0;
     const create = this.sqlite.transaction(() => {
       const timestamp = now();
@@ -1573,7 +1589,7 @@ export class AppDatabase {
         httpStatus: 200,
         etag: null,
         lastModified: null,
-        pollIntervalMinutes,
+        pollIntervalMinutes: WEB_FEED_POLL_INTERVAL_MINUTES,
         parsed: input.parsed,
         webMatchCount: input.parsed.articles.length,
       });

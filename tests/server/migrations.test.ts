@@ -304,7 +304,7 @@ describe("database migrations", () => {
         name: "Default order",
         sortDirection: "newest",
       });
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(19);
+      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(20);
       expect(
         database.sqlite
           .prepare(
@@ -342,7 +342,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(19);
+      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(20);
       expect(
         reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");
