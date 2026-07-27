@@ -39,6 +39,7 @@ export interface AppServices {
 }
 
 const idParams = z.object({ id: z.coerce.number().int().positive() });
+const appBasePath = "/echovale";
 const aiFeatureParams = z.object({ feature: z.literal("article_summary") });
 const aiProviderParams = z.object({ provider: z.enum(["gemini", "openai", "anthropic"]) });
 const nullableId = z.number().int().positive().nullable();
@@ -115,6 +116,11 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     logger: services.logger ?? false,
     bodyLimit: 10 * 1024 * 1024,
     trustProxy: true,
+    rewriteUrl(request) {
+      const url = request.url ?? "/";
+      if (url === appBasePath) return "/";
+      return url.startsWith(`${appBasePath}/`) ? url.slice(appBasePath.length) : url;
+    },
   });
   const aiService =
     services.aiService ??
