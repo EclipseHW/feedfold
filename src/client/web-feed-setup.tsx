@@ -1,9 +1,8 @@
 import {
   ArrowLeft,
   Check,
-  CheckCircle2,
-  Circle,
   ExternalLink,
+  LoaderCircle,
   LockKeyhole,
   MousePointer2,
 } from "lucide-react";
@@ -32,6 +31,7 @@ export interface WebFeedSetupProps {
   analysis: WebFeedAnalysis;
   selectedCandidateId: string | null;
   disabled?: boolean;
+  busyLabel?: string;
   onSelect: (candidateId: string | null) => void;
   onBack?: () => void;
 }
@@ -63,11 +63,9 @@ function CandidateSuggestion({
       disabled={disabled}
       onClick={onSelect}
     >
-      {selected ? (
-        <CheckCircle2 className="web-feed-suggestion-state" aria-hidden="true" size={17} />
-      ) : (
-        <Circle className="web-feed-suggestion-state" aria-hidden="true" size={17} />
-      )}
+      <span className="web-feed-suggestion-state" aria-hidden="true">
+        <Check size={11} strokeWidth={2.5} />
+      </span>
       <span className="web-feed-suggestion-copy">
         <strong>{candidate.label}</strong>
         <small>
@@ -138,6 +136,7 @@ export function WebFeedSetup({
   analysis,
   selectedCandidateId,
   disabled = false,
+  busyLabel = "Saving selection…",
   onSelect,
   onBack,
 }: WebFeedSetupProps) {
@@ -245,7 +244,8 @@ export function WebFeedSetup({
             />
             {disabled ? (
               <div className="web-feed-frame-busy" role="status">
-                Updating selection…
+                <LoaderCircle className="spin" aria-hidden="true" size={16} />
+                <span>{busyLabel}</span>
               </div>
             ) : null}
           </div>

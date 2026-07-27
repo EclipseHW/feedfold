@@ -5905,10 +5905,23 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 7px;
   background: oklch(0 0 0 / 0.62);
   color: white;
   font-size: 12px;
   font-weight: 650;
+  opacity: 1;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.web-feed-frame-busy .spin {
+  animation-duration: 720ms;
+}
+
+@starting-style {
+  .web-feed-frame-busy {
+    opacity: 0;
+  }
 }
 
 .web-feed-suggestions {
@@ -5947,6 +5960,7 @@ kbd {
   color: var(--text-secondary);
   text-align: left;
   transition:
+    transform var(--duration-fast) var(--ease-out),
     background-color var(--duration-fast) ease,
     color var(--duration-fast) ease;
 }
@@ -5957,11 +5971,40 @@ kbd {
 }
 
 .web-feed-suggestion-state {
-  color: var(--muted);
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: transparent;
+  transform: scale(0.94);
+  transition:
+    transform var(--duration-fast) var(--ease-out),
+    background-color var(--duration-fast) ease,
+    border-color var(--duration-fast) ease,
+    color var(--duration-fast) ease;
+}
+
+.web-feed-suggestion-state svg {
+  opacity: 0;
+  transform: scale(0.8);
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
 }
 
 .web-feed-suggestion.is-selected .web-feed-suggestion-state {
-  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  transform: scale(1);
+}
+
+.web-feed-suggestion.is-selected .web-feed-suggestion-state svg {
+  opacity: 1;
+  transform: scale(1);
 }
 
 .web-feed-suggestion-copy {
@@ -6030,12 +6073,20 @@ kbd {
   color: var(--muted);
   font-size: 10px;
   white-space: nowrap;
+  transition:
+    background-color var(--duration-fast) ease,
+    border-color var(--duration-fast) ease,
+    color var(--duration-fast) ease;
 }
 
 .web-feed-field.is-available {
   border-color: color-mix(in oklch, var(--accent) 44%, var(--border));
   background: var(--accent-surface);
   color: var(--accent);
+}
+
+.web-feed-suggestion:active:not(:disabled, :focus-visible) {
+  transform: scale(0.985);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -6132,7 +6183,30 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   .web-feed-suggestion {
-    transition: none;
+    transition:
+      background-color var(--duration-reduced) ease,
+      color var(--duration-reduced) ease;
+  }
+
+  .web-feed-suggestion:active:not(:disabled, :focus-visible),
+  .web-feed-suggestion-state,
+  .web-feed-suggestion.is-selected .web-feed-suggestion-state,
+  .web-feed-suggestion-state svg,
+  .web-feed-suggestion.is-selected .web-feed-suggestion-state svg {
+    transform: none;
+  }
+
+  .web-feed-suggestion-state,
+  .web-feed-suggestion-state svg {
+    transition:
+      opacity var(--duration-reduced) ease,
+      background-color var(--duration-reduced) ease,
+      border-color var(--duration-reduced) ease,
+      color var(--duration-reduced) ease;
+  }
+
+  .web-feed-frame-busy {
+    transition: opacity var(--duration-reduced) ease;
   }
 }
 
@@ -6156,6 +6230,12 @@ kbd {
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px solid var(--border);
+  opacity: 1;
+  transform: translateY(0);
+  transform-origin: top center;
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    transform var(--duration-surface) var(--ease-out);
 }
 
 .web-feed-offer-mark {
@@ -6200,6 +6280,12 @@ kbd {
   margin-top: 18px;
   padding-top: 18px;
   border-top: 1px solid var(--border);
+  opacity: 1;
+  transform: translateY(0);
+  transform-origin: top center;
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    transform var(--duration-surface) var(--ease-out);
 }
 
 .web-feed-confirmation-form .web-feed-setup {
@@ -6240,6 +6326,24 @@ kbd {
   border: 0;
 }
 
+.web-feed-selection-dialog > .web-feed-setup {
+  opacity: 1;
+  transform: translateY(0);
+  transform-origin: top center;
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    transform var(--duration-surface) var(--ease-out);
+}
+
+@starting-style {
+  .web-feed-offer,
+  .web-feed-confirmation-form,
+  .web-feed-selection-dialog > .web-feed-setup {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
 .feed-status-actions {
   display: grid;
   justify-items: start;
@@ -6277,5 +6381,14 @@ kbd {
 @media (max-width: 620px) {
   .feed-repair-button {
     min-height: 40px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .web-feed-offer,
+  .web-feed-confirmation-form,
+  .web-feed-selection-dialog > .web-feed-setup {
+    transform: none;
+    transition: opacity var(--duration-reduced) ease;
   }
 }
