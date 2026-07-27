@@ -1,7 +1,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
-import { discoverFeed, FeedDiscoveryError } from "../../src/server/feed-discovery.js";
+import { discoverFeed } from "../../src/server/feed-discovery.js";
 import { nitterFeedUrl } from "../../src/server/feed-http.js";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -67,7 +67,10 @@ describe("feed discovery", () => {
     });
     baseUrl = await listen(server);
 
-    const linked = await discoverFeed(`${baseUrl}/posts`, 2_000);
+    const linkedResult = await discoverFeed(`${baseUrl}/posts`, 2_000, fetch);
+    expect(linkedResult.kind).toBe("published");
+    if (linkedResult.kind !== "published") throw new Error("Expected a published feed");
+    const linked = linkedResult.preview;
     expect(linked).toMatchObject({
       feedUrl: `${baseUrl}/rss.xml`,
       title: "The Example Pond",
@@ -84,23 +87,43 @@ describe("feed discovery", () => {
     expect(linked.articles).toHaveLength(3);
     expect(requestedPaths).not.toContain("/output-feedback");
 
-    const fromRoot = await discoverFeed(baseUrl, 2_000);
-    expect(fromRoot.feedUrl).toBe(`${baseUrl}/rss.xml`);
+    const fromRoot = await discoverFeed(baseUrl, 2_000, fetch);
+    expect(fromRoot.kind === "published" ? fromRoot.preview.feedUrl : null).toBe(
+      `${baseUrl}/rss.xml`,
+    );
     expect(requestedPaths).toContain("/feed");
 
-    const direct = await discoverFeed(`${baseUrl}/direct.xml`, 2_000);
-    expect(direct).toMatchObject({ feedUrl: `${baseUrl}/direct.xml`, title: "The Example Pond" });
+    const direct = await discoverFeed(`${baseUrl}/direct.xml`, 2_000, fetch);
+    expect(direct).toMatchObject({
+      kind: "published",
+      preview: { feedUrl: `${baseUrl}/direct.xml`, title: "The Example Pond" },
+    });
   });
 
-  it("reports when a reachable site has no published feed", async () => {
+  it("offers a web feed when a reachable HTML page has no published feed", async () => {
     const server = createServer((_request, response) => {
       response.writeHead(200, { "Content-Type": "text/html" });
       response.end("<!doctype html><title>No feed here</title><p>Regular page content.</p>");
     });
     const baseUrl = await listen(server);
 
-    await expect(discoverFeed(baseUrl, 2_000)).rejects.toEqual(
-      new FeedDiscoveryError("No RSS, Atom, or JSON Feed was found at this URL."),
-    );
+    await expect(discoverFeed(baseUrl, 2_000, fetch)).resolves.toEqual({
+      kind: "web_page",
+      pageUrl: `${baseUrl}/`,
+      title: "No feed here",
+    });
+  });
+
+  it("rejects private discovery targets before sending a request", async () => {
+    let hits = 0;
+    const server = createServer((_request, response) => {
+      hits += 1;
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<!doctype html><title>Private page</title>");
+    });
+    const baseUrl = await listen(server);
+
+    await expect(discoverFeed(baseUrl, 2_000)).rejects.toMatchObject({ kind: "inaccessible" });
+    expect(hits).toBe(0);
   });
 });

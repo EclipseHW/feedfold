@@ -111,8 +111,8 @@ describe("feed refresh and full-text extraction", () => {
     baseUrl = await listen(server);
 
     const database = await temporaryDatabase();
-    const extraction = new ExtractionQueue(database, 2, 2_000);
-    const refresh = new FeedRefreshService(database, 2, 2_000);
+    const extraction = new ExtractionQueue(database, 2, 2_000, fetch);
+    const refresh = new FeedRefreshService(database, 2, 2_000, undefined, fetch);
     const authService = new AuthService(database);
     expect(authService.register(TEST_ACCOUNT.username, TEST_ACCOUNT.password)).not.toBeNull();
     const app = await createApp({
@@ -134,19 +134,27 @@ describe("feed refresh and full-text extraction", () => {
     const setCookie = login.headers["set-cookie"];
     const cookie = (Array.isArray(setCookie) ? setCookie[0] : setCookie)?.split(";", 1)[0];
 
-    const media = await extractArticle({
-      id: 100,
-      url: `${baseUrl}/video`,
-    });
+    const media = await extractArticle(
+      {
+        id: 100,
+        url: `${baseUrl}/video`,
+      },
+      20_000,
+      fetch,
+    );
     expect(media).toMatchObject({
       status: "failed",
       contentSource: null,
       error: "Article response is not HTML (video/mp4)",
     });
-    const oversized = await extractArticle({
-      id: 101,
-      url: `${baseUrl}/oversized`,
-    });
+    const oversized = await extractArticle(
+      {
+        id: 101,
+        url: `${baseUrl}/oversized`,
+      },
+      20_000,
+      fetch,
+    );
     expect(oversized).toMatchObject({
       status: "failed",
       contentSource: null,
@@ -317,8 +325,8 @@ describe("feed refresh and full-text extraction", () => {
     });
     const baseUrl = await listen(server);
     const database = await temporaryDatabase();
-    const extraction = new ExtractionQueue(database, 1, 2_000);
-    const refresh = new FeedRefreshService(database, 1, 2_000);
+    const extraction = new ExtractionQueue(database, 1, 2_000, fetch);
+    const refresh = new FeedRefreshService(database, 1, 2_000, undefined, fetch);
     cleanups.push(async () => {
       await Promise.all([refresh.stop(), extraction.stop()]);
       database.close();
@@ -371,8 +379,8 @@ describe("feed refresh and full-text extraction", () => {
     });
     const baseUrl = await listen(server);
     const database = await temporaryDatabase();
-    const extraction = new ExtractionQueue(database, 1, 2_000);
-    const refresh = new FeedRefreshService(database, 3, 2_000);
+    const extraction = new ExtractionQueue(database, 1, 2_000, fetch);
+    const refresh = new FeedRefreshService(database, 3, 2_000, undefined, fetch);
     cleanups.push(async () => {
       await Promise.all([refresh.stop(), extraction.stop()]);
       database.close();
@@ -801,8 +809,8 @@ describe("feed refresh and full-text extraction", () => {
     });
     const baseUrl = await listen(server);
     const database = await temporaryDatabase();
-    const extraction = new ExtractionQueue(database, 1, 2_000);
-    const refresh = new FeedRefreshService(database, 1, 2_000);
+    const extraction = new ExtractionQueue(database, 1, 2_000, fetch);
+    const refresh = new FeedRefreshService(database, 1, 2_000, undefined, fetch);
     const authService = new AuthService(database);
     expect(authService.register(TEST_ACCOUNT.username, TEST_ACCOUNT.password)).not.toBeNull();
     const app = await createApp({
@@ -876,5 +884,23 @@ describe("feed refresh and full-text extraction", () => {
     await extraction.waitForIdle();
 
     expect(requestOrder).toEqual(["/first", "/opened", "/second"]);
+  });
+
+  it("rejects private full-article targets before sending a request", async () => {
+    let hits = 0;
+    const server = createServer((_request, response) => {
+      hits += 1;
+      response.writeHead(200, { "Content-Type": "text/html" });
+      response.end("<!doctype html><article><h1>Private article</h1></article>");
+    });
+    const baseUrl = await listen(server);
+
+    const outcome = await extractArticle({ id: 1, url: baseUrl });
+
+    expect(outcome).toMatchObject({
+      status: "failed",
+      error: "This address is not a publicly accessible webpage.",
+    });
+    expect(hits).toBe(0);
   });
 });

@@ -85,6 +85,7 @@ describe("folder article sorting", () => {
         method: "POST",
         url: "/api/feeds",
         payload: {
+          sourceKind: "published",
           title,
           feedUrl: `https://example.test/${title.toLowerCase()}`,
           folderId,

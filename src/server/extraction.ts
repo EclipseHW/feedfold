@@ -4,6 +4,7 @@ import sanitizeHtml from "sanitize-html";
 import { cleanArticleHtml } from "./article-html.js";
 import { firstSafeImageUrl } from "./article-image.js";
 import type { AppDatabase, ExtractionRecord } from "./db.js";
+import { fetchPublic } from "./public-network.js";
 
 const MAX_ARTICLE_BYTES = 5 * 1024 * 1024;
 const articleVirtualConsole = new VirtualConsole().forwardTo(console, {
@@ -39,7 +40,21 @@ async function readHtmlResponse(response: Response): Promise<string> {
     await cancelBody(response);
     throw new Error("Article response exceeds the 5 MiB extraction limit");
   }
-  return response.text();
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    totalBytes += value.byteLength;
+    if (totalBytes > MAX_ARTICLE_BYTES) {
+      await reader.cancel();
+      throw new Error("Article response exceeds the 5 MiB extraction limit");
+    }
+    chunks.push(value);
+  }
+  return Buffer.concat(chunks, totalBytes).toString("utf8");
 }
 
 export type ExtractionOutcome = {
@@ -53,13 +68,14 @@ export type ExtractionOutcome = {
 export async function extractArticle(
   record: ExtractionRecord,
   timeoutMs = 20_000,
+  fetcher: typeof fetchPublic = fetchPublic,
 ): Promise<ExtractionOutcome> {
   if (record.url) {
     try {
-      const response = await fetch(record.url, {
+      const response = await fetcher(record.url, {
         headers: {
           Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
-          "User-Agent": "Echovale/0.1 (+self-hosted RSS reader)",
+          "User-Agent": "Echovale/0.1 (+self-hosted feed reader)",
         },
         signal: AbortSignal.timeout(timeoutMs),
       });
@@ -115,6 +131,7 @@ export class ExtractionQueue {
     private readonly database: AppDatabase,
     private readonly concurrency = 2,
     private readonly timeoutMs = 20_000,
+    private readonly fetcher: typeof fetchPublic = fetchPublic,
   ) {}
 
   start(): void {
@@ -164,7 +181,7 @@ export class ExtractionQueue {
   private async process(articleId: number): Promise<void> {
     const record = this.database.getExtractionRecord(articleId);
     if (!record || !this.database.markExtractionProcessing(articleId)) return;
-    const outcome = await extractArticle(record, this.timeoutMs);
+    const outcome = await extractArticle(record, this.timeoutMs, this.fetcher);
     this.database.completeExtraction(articleId, outcome);
   }
 

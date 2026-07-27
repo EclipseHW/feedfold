@@ -11,7 +11,8 @@ import type {
   ArticleQuery,
   BootstrapData,
   Feed,
-  FeedPreview,
+  FeedDiscoveryResult,
+  FeedSourceKind,
   Folder,
   FolderSortDirection,
   ImportResult,
@@ -22,6 +23,8 @@ import type {
   RuleCondition,
   RuleConditionOperator,
   SessionUser,
+  WebFeedAnalysis,
+  WebFeedConfig,
 } from "../shared/types";
 
 export const AUTH_REQUIRED_EVENT = "echovale:auth-required";
@@ -91,6 +94,8 @@ export interface FeedInput {
   feedUrl: string;
   siteUrl?: string | null;
   folderId: number | null;
+  sourceKind: FeedSourceKind;
+  webConfig?: WebFeedConfig;
 }
 
 export interface FolderInput {
@@ -173,7 +178,13 @@ export const api = {
     }),
 
   discoverFeed: (url: string) =>
-    request<FeedPreview>("/api/feeds/discover", {
+    request<FeedDiscoveryResult>("/api/feeds/discover", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
+
+  analyzeWebPage: (url: string) =>
+    request<WebFeedAnalysis>("/api/web-feeds/analyze", {
       method: "POST",
       body: JSON.stringify({ url }),
     }),
@@ -183,13 +194,24 @@ export const api = {
 
   feed: (id: number) => request<Feed>(`/api/feeds/${id}`),
 
-  updateFeed: (id: number, input: Partial<FeedInput> & { paused?: boolean }) =>
-    request<Feed>(`/api/feeds/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  updateFeed: (
+    id: number,
+    input: Partial<Omit<FeedInput, "sourceKind" | "webConfig">> & { paused?: boolean },
+  ) => request<Feed>(`/api/feeds/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
 
   deleteFeed: (id: number) => request<void>(`/api/feeds/${id}`, { method: "DELETE" }),
 
   refreshFeed: (id: number) =>
     request<RefreshResult>(`/api/feeds/${id}/refresh`, { method: "POST" }),
+
+  analyzeWebFeed: (id: number) =>
+    request<WebFeedAnalysis>(`/api/feeds/${id}/web-feed/analyze`, { method: "POST" }),
+
+  updateWebFeedSelection: (id: number, config: WebFeedConfig) =>
+    request<Feed>(`/api/feeds/${id}/web-feed`, {
+      method: "PATCH",
+      body: JSON.stringify({ config }),
+    }),
 
   createFolder: (input: FolderInput) =>
     request<Folder>("/api/folders", { method: "POST", body: JSON.stringify(input) }),

@@ -7,6 +7,7 @@ function article(id: number, contentHtml: string | null = null): Article {
     id,
     feedId: 1,
     feedTitle: "Example feed",
+    feedSourceKind: "published",
     folderId: null,
     title: `Article ${id}`,
     url: null,

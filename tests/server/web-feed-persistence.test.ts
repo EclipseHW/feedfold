@@ -154,6 +154,39 @@ describe("web feed persistence", () => {
         "https://example.test/releases/two",
       ]);
 
+      database.markFeedFailure(feed.id, {
+        httpStatus: 200,
+        error: "Stale selection failed",
+        errorKind: "selection_broken",
+        healthStatus: "needs_attention",
+        retryMinutes: 20,
+        expectedSelectionRevision: 1,
+      });
+      database.markFeedSuccess(feed.id, {
+        httpStatus: 200,
+        etag: null,
+        lastModified: null,
+        pollIntervalMinutes: 20,
+        parsed: {
+          title: "Stale result",
+          siteUrl: pageUrl,
+          articles: [article("web:stale", "Stale article", "https://example.test/releases/stale")],
+        },
+        webMatchCount: 1,
+        expectedSelectionRevision: 1,
+      });
+      expect(database.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
+        healthStatus: "healthy",
+        lastErrorKind: null,
+        lastMatchCount: 2,
+        totalCount: 3,
+      });
+      expect(
+        database
+          .listArticles(TEST_USER_ID, { state: "all" })
+          .some(({ url }) => url === "https://example.test/releases/stale"),
+      ).toBe(false);
+
       database.markFeedRefreshing(feed.id);
       database.markFeedFailure(feed.id, {
         httpStatus: null,

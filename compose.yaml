@@ -8,8 +8,11 @@ services:
     read_only: true
     cap_drop:
       - ALL
+    cap_add:
+      - SYS_CHROOT
     security_opt:
       - no-new-privileges:true
+      - seccomp=./.docker/playwright-seccomp.json
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
@@ -17,6 +20,7 @@ services:
       DATABASE_PATH: /data/echovale.db
       POLL_INTERVAL_MINUTES: "${POLL_INTERVAL_MINUTES:-20}"
       FEED_FETCH_TIMEOUT_MS: "${FEED_FETCH_TIMEOUT_MS:-15000}"
+      WEB_FEED_LOAD_TIMEOUT_MS: "${WEB_FEED_LOAD_TIMEOUT_MS:-30000}"
       ARTICLE_FETCH_TIMEOUT_MS: "${ARTICLE_FETCH_TIMEOUT_MS:-20000}"
       AI_REQUEST_TIMEOUT_MS: "${AI_REQUEST_TIMEOUT_MS:-60000}"
       AI_CREDENTIALS_KEY: "${AI_CREDENTIALS_KEY:-}"
@@ -25,7 +29,8 @@ services:
     volumes:
       - echovale-data:/data
     tmpfs:
-      - /tmp:rw,noexec,nosuid,size=64m
+      - /tmp:rw,noexec,nosuid,size=256m
+    shm_size: 256mb
     healthcheck:
       test:
         - CMD

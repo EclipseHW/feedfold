@@ -8,6 +8,7 @@ import {
   Eye,
   EyeOff,
   FolderPlus,
+  Globe2,
   Keyboard,
   ListFilter,
   LoaderCircle,
@@ -15,6 +16,7 @@ import {
   MessageSquareText,
   Minus,
   Moon,
+  MousePointer2,
   Pause,
   Play,
   Plus,
@@ -49,10 +51,13 @@ import type {
   RuleCondition,
   RuleConditionOperator,
   RuleField,
+  WebFeedAnalysis,
+  WebPageFeedDiscovery,
 } from "../shared/types";
 import { DUPLICATE_ARTICLE_WINDOW_DAYS } from "../shared/types";
 import { api, appUrl, errorMessage, type RuleInput } from "./api";
 import { type MotionState, useMotionPresence } from "./motion";
+import { WebFeedSetup } from "./web-feed-setup";
 
 type Theme = "dark" | "light";
 
@@ -219,6 +224,7 @@ export function FeedsPage({
   onMenu,
   onReload,
   onRefresh,
+  onEditWebFeed,
   onCloseAddFeedRoute,
   showToast,
 }: {
@@ -227,6 +233,7 @@ export function FeedsPage({
   onMenu: () => void;
   onReload: () => Promise<void> | void;
   onRefresh: (feedId: number) => void;
+  onEditWebFeed: (feed: Feed) => void;
   onCloseAddFeedRoute: () => void;
   showToast: (message: string) => void;
 }) {
@@ -362,6 +369,7 @@ export function FeedsPage({
                     folders={bootstrap.folders}
                     onReload={onReload}
                     onRefresh={() => onRefresh(feed.id)}
+                    onEditSelection={() => onEditWebFeed(feed)}
                     showToast={showToast}
                   />
                 ))}
@@ -421,6 +429,53 @@ export function FeedsPage({
   );
 }
 
+function FeedConfirmationSettings({
+  title,
+  folderId,
+  folders,
+  disabled,
+  onTitleChange,
+  onFolderChange,
+}: {
+  title: string;
+  folderId: number | null;
+  folders: Folder[];
+  disabled: boolean;
+  onTitleChange: (title: string) => void;
+  onFolderChange: (folderId: number | null) => void;
+}) {
+  return (
+    <div className="feed-confirmation-settings">
+      <label className="field">
+        <span>Name</span>
+        <input
+          value={title}
+          disabled={disabled}
+          onChange={(event) => onTitleChange(event.target.value)}
+        />
+        <small>Keep the detected title or choose your own.</small>
+      </label>
+      <label className="field">
+        <span>Folder</span>
+        <select
+          value={folderId ?? ""}
+          disabled={disabled}
+          onChange={(event) =>
+            onFolderChange(event.target.value ? Number(event.target.value) : null)
+          }
+        >
+          <option value="">No folder</option>
+          {folders.map((folder) => (
+            <option key={folder.id} value={folder.id}>
+              {folder.name}
+            </option>
+          ))}
+        </select>
+      </label>
+    </div>
+  );
+}
+
 function AddFeedForm({
   feeds,
   folders,
@@ -438,16 +493,20 @@ function AddFeedForm({
 }) {
   const [sourceUrl, setSourceUrl] = useState(initialSourceUrl);
   const [preview, setPreview] = useState<FeedPreview | null>(null);
+  const [webPage, setWebPage] = useState<WebPageFeedDiscovery | null>(null);
+  const [webAnalysis, setWebAnalysis] = useState<WebFeedAnalysis | null>(null);
+  const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
   const [title, setTitle] = useState("");
   const [folderId, setFolderId] = useState<number | null>(null);
   const [discovering, setDiscovering] = useState(false);
+  const [analyzingWebPage, setAnalyzingWebPage] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const previewHeadingRef = useRef<HTMLHeadingElement>(null);
   const previewFocusFrame = useRef<number | null>(null);
   const autoDiscoveryStarted = useRef(false);
   const motionStateRef = useRef(motionState);
-  const loadingPresence = useMotionPresence(discovering);
+  const loadingPresence = useMotionPresence(discovering || analyzingWebPage);
   const previewPresence = useMotionPresence(preview !== null);
   const retainedPreview = useRef<FeedPreview | null>(preview);
   motionStateRef.current = motionState;
@@ -455,8 +514,11 @@ function AddFeedForm({
   const displayedPreview = preview ?? retainedPreview.current;
   const showLoadingSurface = loadingPresence.present && error === null;
   const showPreviewSurface = previewPresence.present && displayedPreview !== null && error === null;
-  const existingFeed = displayedPreview
-    ? feeds.find((feed) => feed.feedUrl === displayedPreview.feedUrl)
+  const selectedCandidate =
+    webAnalysis?.candidates.find((candidate) => candidate.id === selectedCandidateId) ?? null;
+  const currentSourceUrl = preview?.feedUrl ?? webAnalysis?.pageUrl ?? webPage?.pageUrl;
+  const existingFeed = currentSourceUrl
+    ? feeds.find((feed) => feed.feedUrl === currentSourceUrl)
     : undefined;
 
   useEffect(
@@ -476,10 +538,18 @@ function AddFeedForm({
     setDiscovering(true);
     setError(null);
     setPreview(null);
+    setWebPage(null);
+    setWebAnalysis(null);
+    setSelectedCandidateId(null);
     try {
       const result = await api.discoverFeed(url);
-      setPreview(result);
-      setTitle(result.title);
+      if (result.kind === "published") {
+        setPreview(result.preview);
+        setTitle(result.preview.title);
+      } else {
+        setWebPage(result);
+        setTitle(result.title);
+      }
       previewFocusFrame.current = window.requestAnimationFrame(() => {
         previewFocusFrame.current = null;
         if (motionStateRef.current === "open") previewHeadingRef.current?.focus();
@@ -497,18 +567,47 @@ function AddFeedForm({
     void discover(initialSourceUrl.trim());
   }, [discover, initialSourceUrl]);
 
+  const analyzeWebPage = async () => {
+    if (!webPage) return;
+    setAnalyzingWebPage(true);
+    setError(null);
+    try {
+      const result = await api.analyzeWebPage(webPage.pageUrl);
+      setWebAnalysis(result);
+      setSelectedCandidateId(result.selectedCandidateId ?? result.suggestedCandidateIds[0] ?? null);
+      setTitle(result.title);
+    } catch (caught) {
+      setError(errorMessage(caught));
+    } finally {
+      setAnalyzingWebPage(false);
+    }
+  };
+
   const save = async (event: FormEvent) => {
     event.preventDefault();
-    if (!preview || existingFeed) return;
+    if ((!preview && !selectedCandidate) || existingFeed) return;
     setSaving(true);
     setError(null);
     try {
-      const feed = await api.createFeed({
-        title: title.trim() || preview.title,
-        feedUrl: preview.feedUrl,
-        siteUrl: preview.siteUrl,
-        folderId,
-      });
+      const feed = preview
+        ? await api.createFeed({
+            title: title.trim() || preview.title,
+            feedUrl: preview.feedUrl,
+            siteUrl: preview.siteUrl,
+            folderId,
+            sourceKind: "published",
+          })
+        : selectedCandidate
+          ? await api.createFeed({
+              title: title.trim() || webAnalysis?.title,
+              feedUrl: selectedCandidate.config.pageUrl,
+              siteUrl: selectedCandidate.config.pageUrl,
+              folderId,
+              sourceKind: "web",
+              webConfig: selectedCandidate.config,
+            })
+          : null;
+      if (!feed) return;
       await onSaved(feed);
     } catch (error) {
       setError(`Could not add feed: ${errorMessage(error)}`);
@@ -521,7 +620,7 @@ function AddFeedForm({
     <div
       className="inline-editor add-feed-panel"
       data-motion-state={motionState}
-      aria-busy={discovering || saving}
+      aria-busy={discovering || analyzingWebPage || saving}
       inert={motionState === "closed"}
     >
       <div className="inline-editor-heading">
@@ -554,11 +653,14 @@ function AddFeedForm({
             required
             value={sourceUrl}
             placeholder="https://example.com/articles"
-            disabled={discovering || saving}
+            disabled={discovering || analyzingWebPage || saving}
             aria-describedby="feed-url-help"
             onChange={(event) => {
               setSourceUrl(event.target.value);
               setPreview(null);
+              setWebPage(null);
+              setWebAnalysis(null);
+              setSelectedCandidateId(null);
               setTitle("");
               setError(null);
             }}
@@ -568,16 +670,16 @@ function AddFeedForm({
           </small>
         </label>
         <button
-          className={preview ? "secondary-button" : "primary-button"}
+          className={preview || webPage ? "secondary-button" : "primary-button"}
           type="submit"
-          disabled={discovering || saving || !sourceUrl.trim()}
+          disabled={discovering || analyzingWebPage || saving || !sourceUrl.trim()}
         >
           {discovering ? (
             <LoaderCircle className="spin" aria-hidden="true" size={16} />
           ) : (
             <Search aria-hidden="true" size={16} />
           )}
-          {discovering ? "Finding feed" : preview ? "Refresh preview" : "Find feed"}
+          {discovering ? "Finding feed" : preview || webPage ? "Check again" : "Find feed"}
         </button>
       </form>
 
@@ -586,6 +688,36 @@ function AddFeedForm({
           <AlertTriangle aria-hidden="true" size={17} />
           <span>{error}</span>
         </div>
+      ) : null}
+
+      {webPage && !webAnalysis && !analyzingWebPage ? (
+        <section className="web-feed-offer" aria-labelledby="web-feed-offer-heading">
+          <div className="web-feed-offer-mark" aria-hidden="true">
+            <Globe2 size={20} />
+          </div>
+          <div>
+            <h3 id="web-feed-offer-heading" ref={previewHeadingRef} tabIndex={-1}>
+              No published feed found
+            </h3>
+            <p>
+              Echovale can look for repeated articles, releases, jobs, products, or announcements on
+              this public page and turn them into a normal feed.
+            </p>
+            <small>
+              The page will load with JavaScript. Sign-ins, paywalls, CAPTCHAs, pagination, and
+              change tracking are not supported.
+            </small>
+          </div>
+          <button
+            className="primary-button"
+            type="button"
+            disabled={saving}
+            onClick={() => void analyzeWebPage()}
+          >
+            <Globe2 aria-hidden="true" size={16} />
+            Create web feed
+          </button>
+        </section>
       ) : null}
 
       {showLoadingSurface || showPreviewSurface ? (
@@ -597,7 +729,11 @@ function AddFeedForm({
               role="status"
               inert={loadingPresence.state === "closed"}
             >
-              <span>Looking for a published feed and loading recent entries…</span>
+              <span>
+                {analyzingWebPage
+                  ? "Loading the webpage with JavaScript and finding repeated items…"
+                  : "Looking for a published feed and loading recent entries…"}
+              </span>
               <div className="feed-preview-loading-lines" aria-hidden="true">
                 <div className="skeleton-line wide" />
                 <div className="skeleton-line" />
@@ -706,34 +842,14 @@ function AddFeedForm({
                 )}
               </section>
 
-              <div className="feed-confirmation-settings">
-                <label className="field">
-                  <span>Name</span>
-                  <input
-                    value={title}
-                    disabled={saving}
-                    onChange={(event) => setTitle(event.target.value)}
-                  />
-                  <small>Keep the published title or choose your own.</small>
-                </label>
-                <label className="field">
-                  <span>Folder</span>
-                  <select
-                    value={folderId ?? ""}
-                    disabled={saving}
-                    onChange={(event) =>
-                      setFolderId(event.target.value ? Number(event.target.value) : null)
-                    }
-                  >
-                    <option value="">No folder</option>
-                    {folders.map((folder) => (
-                      <option key={folder.id} value={folder.id}>
-                        {folder.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
+              <FeedConfirmationSettings
+                title={title}
+                folderId={folderId}
+                folders={folders}
+                disabled={saving}
+                onTitleChange={setTitle}
+                onFolderChange={setFolderId}
+              />
 
               {existingFeed ? (
                 <p className="feed-existing-notice" role="status">
@@ -771,7 +887,65 @@ function AddFeedForm({
         </div>
       ) : null}
 
-      {!previewPresence.present ? (
+      {webAnalysis ? (
+        <form className="web-feed-confirmation-form" onSubmit={(event) => void save(event)}>
+          <WebFeedSetup
+            analysis={webAnalysis}
+            selectedCandidateId={selectedCandidateId}
+            disabled={saving}
+            onSelect={setSelectedCandidateId}
+            onBack={() => {
+              setWebAnalysis(null);
+              setSelectedCandidateId(null);
+            }}
+          />
+
+          {selectedCandidate && !selectedCandidate.availableFields.includes("date") ? (
+            <p className="web-feed-date-fallback">
+              No publication date was found. New entries will use the time Echovale first discovers
+              them.
+            </p>
+          ) : null}
+
+          <FeedConfirmationSettings
+            title={title}
+            folderId={folderId}
+            folders={folders}
+            disabled={saving}
+            onTitleChange={setTitle}
+            onFolderChange={setFolderId}
+          />
+
+          {existingFeed ? (
+            <p className="feed-existing-notice" role="status">
+              <CheckCircle2 aria-hidden="true" size={16} />
+              Already subscribed as <strong>{existingFeed.title}</strong>.
+            </p>
+          ) : null}
+
+          <div className="form-actions">
+            <button className="secondary-button" type="button" onClick={onCancel} disabled={saving}>
+              Cancel
+            </button>
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={saving || !selectedCandidate || !!existingFeed}
+            >
+              {saving ? (
+                <LoaderCircle className="spin" aria-hidden="true" size={16} />
+              ) : existingFeed ? (
+                <Check aria-hidden="true" size={16} />
+              ) : (
+                <Plus aria-hidden="true" size={16} />
+              )}
+              {saving ? "Adding web feed" : existingFeed ? "Already added" : "Add web feed"}
+            </button>
+          </div>
+        </form>
+      ) : null}
+
+      {!previewPresence.present && !webAnalysis ? (
         <div className="form-actions add-feed-initial-actions">
           <button className="secondary-button" type="button" onClick={onCancel}>
             Cancel
@@ -782,17 +956,30 @@ function AddFeedForm({
   );
 }
 
+function feedFailureLabel(feed: Feed): string {
+  if (feed.lastErrorKind === "selection_broken") return "Page changed";
+  if (feed.lastErrorKind === "javascript_timeout") return "JavaScript timed out";
+  if (feed.lastErrorKind === "inaccessible") return "Page inaccessible";
+  if (feed.lastErrorKind === "access_blocked") return "Access blocked";
+  if (feed.lastErrorKind === "unsupported_content") return "Unsupported page";
+  if (feed.lastErrorKind === "timeout") return "Loading timed out";
+  if (feed.lastHttpStatus) return `HTTP ${feed.lastHttpStatus}`;
+  return "Refresh failed";
+}
+
 function FeedRow({
   feed,
   folders,
   onReload,
   onRefresh,
+  onEditSelection,
   showToast,
 }: {
   feed: Feed;
   folders: Folder[];
   onReload: () => Promise<void> | void;
   onRefresh: () => void;
+  onEditSelection: () => void;
   showToast: (message: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -805,7 +992,12 @@ function FeedRow({
   const save = async () => {
     setBusy(true);
     try {
-      await api.updateFeed(feed.id, { title: title.trim(), feedUrl: feedUrl.trim(), folderId });
+      await api.updateFeed(
+        feed.id,
+        feed.sourceKind === "web"
+          ? { title: title.trim(), folderId }
+          : { title: title.trim(), feedUrl: feedUrl.trim(), folderId },
+      );
       showToast(`Saved ${title.trim()}`);
       setEditing(false);
       await onReload();
@@ -853,12 +1045,18 @@ function FeedRow({
               <input value={title} onChange={(event) => setTitle(event.target.value)} />
             </label>
             <label className="field wide-field">
-              <span>Feed URL</span>
+              <span>{feed.sourceKind === "web" ? "Page URL" : "Feed URL"}</span>
               <input
                 type="url"
                 value={feedUrl}
+                readOnly={feed.sourceKind === "web"}
                 onChange={(event) => setFeedUrl(event.target.value)}
               />
+              {feed.sourceKind === "web" ? (
+                <small>
+                  Change the page through Edit page selection so its saved match stays valid.
+                </small>
+              ) : null}
             </label>
             <label className="field">
               <span>Folder</span>
@@ -905,7 +1103,9 @@ function FeedRow({
       <td data-label="Feed">
         <div className="feed-cell">
           <span
-            className={`status-dot ${feed.lastError ? "failed" : feed.paused ? "paused" : "healthy"}`}
+            className={`status-dot ${
+              feed.healthStatus !== "healthy" ? "failed" : feed.paused ? "paused" : "healthy"
+            }`}
           />
           <div>
             <strong>{feed.title}</strong>
@@ -917,12 +1117,19 @@ function FeedRow({
       </td>
       <td data-label="Folder">{folder?.name ?? <span className="muted">Top level</span>}</td>
       <td data-label="Status">
-        {feed.lastError ? (
-          <span className="feed-status failed-status" title={feed.lastError}>
-            <AlertTriangle aria-hidden="true" size={14} />
-            {feed.lastHttpStatus ? `HTTP ${feed.lastHttpStatus}` : "Failed"}
-            <small>{feed.lastError}</small>
-          </span>
+        {feed.healthStatus !== "healthy" ? (
+          <div className="feed-status-actions">
+            <span className="feed-status failed-status" title={feed.lastError ?? undefined}>
+              <AlertTriangle aria-hidden="true" size={14} />
+              {feedFailureLabel(feed)}
+              {feed.lastError ? <small>{feed.lastError}</small> : null}
+            </span>
+            {feed.lastErrorKind === "selection_broken" ? (
+              <button className="feed-repair-button" type="button" onClick={onEditSelection}>
+                Repair selection
+              </button>
+            ) : null}
+          </div>
         ) : feed.paused ? (
           <span className="feed-status">
             <Pause aria-hidden="true" size={14} />
@@ -968,6 +1175,17 @@ function FeedRow({
         >
           <Edit3 aria-hidden="true" size={15} />
         </button>
+        {feed.sourceKind === "web" ? (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={onEditSelection}
+            aria-label={`Edit page selection for ${feed.title}`}
+            title="Edit page selection"
+          >
+            <MousePointer2 aria-hidden="true" size={15} />
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={busy}

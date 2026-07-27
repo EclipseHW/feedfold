@@ -73,6 +73,7 @@ describe("feed and folder management", () => {
       method: "POST",
       url: "/api/feeds",
       payload: {
+        sourceKind: "published",
         title: "Original name",
         feedUrl: "https://example.test/feed.xml",
         siteUrl: "https://example.test/",

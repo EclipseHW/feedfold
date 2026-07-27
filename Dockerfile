@@ -13,7 +13,8 @@ FROM node:24.18.0-bookworm-slim AS runtime
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000 \
-    DATABASE_PATH=/data/echovale.db
+    DATABASE_PATH=/data/echovale.db \
+    PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app
 
@@ -21,7 +22,9 @@ COPY --from=build --chown=node:node /app/package.json /app/package-lock.json ./
 COPY --from=build --chown=node:node /app/node_modules ./node_modules
 COPY --from=build --chown=node:node /app/dist ./dist
 
-RUN mkdir -p /data && chown node:node /data
+RUN npx playwright install --with-deps --only-shell chromium \
+    && mkdir -p /data \
+    && chown -R node:node /data /ms-playwright
 
 USER node
 

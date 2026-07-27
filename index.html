@@ -8,11 +8,18 @@
     <link rel="apple-touch-icon" href="/echovale/icons/apple-touch-icon.png" />
     <meta
       name="description"
-      content="Echovale, a quiet, keyboard-first, self-hosted RSS reader."
+      content="Echovale, a quiet, keyboard-first, self-hosted feed reader."
     />
     <title>Echovale</title>
   </head>
   <body>
+    <!--
+      THESIS: Web-feed setup extends Add feed as one continuous source workflow; it refuses a separate crawler dashboard.
+      OWN-WORLD: Echovale's charcoal or paper surfaces, green accent, compact controls, restrained borders, and information-dense lists remain unchanged.
+      STORY: Discovery checks for a published feed, explains the fallback, lets the user select repeated page items safely, previews normal articles, then saves through the existing name and folder step.
+      FIRST VIEWPORT: The URL and discovery state lead; during selection, a dominant rendered-page viewport sits beside a narrow suggestion rail with the active match count and fields.
+      FORM: Operate-mode split workspace, shaped directly as an extension of the established Feeds & status surface; no concept seed applies to this local addition.
+    -->
     <div id="root"></div>
     <script type="module" src="/src/client/main.tsx"></script>
   </body>
