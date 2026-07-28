@@ -562,7 +562,7 @@ export function ArticleList({
       <div className="article-list-summary">
         <span>{articles.filter((article) => !article.isRead).length} unread loaded</span>
         <span>
-          Use <Kbd>J</Kbd> <Kbd>K</Kbd> to move
+          Use <Kbd>J</Kbd>/<Kbd>→</Kbd> and <Kbd>K</Kbd>/<Kbd>←</Kbd> to move
         </span>
       </div>
       <ol>
