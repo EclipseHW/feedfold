@@ -1,0 +1,128 @@
+.shortcut-reference {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+}
+
+.shortcut-reference dl {
+  margin: 0;
+}
+.shortcut-reference dt,
+.shortcut-reference dd {
+  margin: 0;
+}
+.shortcut-reference dd {
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+.shortcut-groups h3 {
+  margin: 0 0 7px;
+  font-size: 13px;
+}
+.shortcut-reference.is-compact {
+  margin: 0 16px 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+
+.shortcut-dialog {
+  width: min(680px, calc(100vw - 28px));
+  max-height: min(720px, calc(100vh - 28px));
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 8px 8px oklch(0 0 0 / 0.34);
+  opacity: 0;
+  transform: scale(0.98);
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    transform var(--duration-surface) var(--ease-out),
+    display var(--duration-surface) allow-discrete,
+    overlay var(--duration-surface) allow-discrete;
+}
+
+.shortcut-dialog[open] {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.shortcut-dialog::backdrop {
+  background: oklch(0 0 0 / 0.7);
+  opacity: 0;
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    display var(--duration-surface) allow-discrete,
+    overlay var(--duration-surface) allow-discrete;
+}
+
+.shortcut-dialog[open]::backdrop {
+  opacity: 1;
+}
+
+@starting-style {
+  .shortcut-dialog[open] {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  .shortcut-dialog[open]::backdrop {
+    opacity: 0;
+  }
+}
+.dialog-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 17px;
+  border-bottom: 1px solid var(--border);
+}
+.dialog-heading > div {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.shortcut-reference dl > div {
+  display: grid;
+  min-height: 34px;
+  grid-template-columns: 74px 1fr;
+  align-items: center;
+  gap: 10px;
+}
+.dialog-heading h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.shortcut-dialog > .shortcut-reference {
+  padding: 18px;
+}
+.shortcuts-disabled {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 16px 18px 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--warning-surface);
+  color: var(--warning);
+  font-size: 12px;
+}
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 17px;
+  border-top: 1px solid var(--border);
+}
+.dialog-footer p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+}

@@ -1,0 +1,119 @@
+import { Download, LoaderCircle, Menu, Upload } from "lucide-react";
+import { type ChangeEvent, type ReactNode, useRef, useState } from "react";
+import { appUrl, errorMessage } from "../api";
+import type { ReaderDataMutations } from "../data-resource";
+import "./common.css";
+
+export function formatDate(value: string | null): string {
+  if (!value) return "Never";
+  return new Intl.DateTimeFormat(undefined, {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+export function formatRefreshInterval(minutes: number): string {
+  if (minutes < 60) return `${minutes} minutes`;
+  const hours = minutes / 60;
+  return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+}
+
+export function Kbd({ children }: { children: ReactNode }) {
+  return <kbd>{children}</kbd>;
+}
+
+export function PageHeader({
+  title,
+  description,
+  onMenu,
+  actions,
+}: {
+  title: string;
+  description: string;
+  onMenu: () => void;
+  actions?: ReactNode;
+}) {
+  return (
+    <header className="page-header">
+      <button
+        className="icon-button menu-button"
+        type="button"
+        onClick={onMenu}
+        aria-label="Open navigation"
+      >
+        <Menu aria-hidden="true" size={19} />
+      </button>
+      <div>
+        <h1>{title}</h1>
+        <p>{description}</p>
+      </div>
+      {actions ? <div className="page-header-actions">{actions}</div> : null}
+    </header>
+  );
+}
+
+export function ImportOpmlButton({
+  mutations,
+  showToast,
+}: {
+  mutations: ReaderDataMutations;
+  showToast: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const importFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try {
+      const result = await mutations.importOpml(file);
+      const notes = [`${result.imported} imported`, `${result.duplicates} duplicates`];
+      if (result.failed.length > 0) notes.push(`${result.failed.length} failed`);
+      showToast(`OPML import complete: ${notes.join(", ")}`);
+    } catch (error) {
+      showToast(`OPML import failed: ${errorMessage(error)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        className="visually-hidden-input"
+        type="file"
+        accept=".opml,.xml,text/xml,application/xml"
+        onChange={(event) => void importFile(event)}
+      />
+      <button
+        className="secondary-button"
+        type="button"
+        disabled={busy}
+        onClick={() => inputRef.current?.click()}
+      >
+        {busy ? (
+          <LoaderCircle className="spin" aria-hidden="true" size={16} />
+        ) : (
+          <Upload aria-hidden="true" size={16} />
+        )}
+        {busy ? "Importing" : "Import OPML"}
+      </button>
+    </>
+  );
+}
+
+export function ExportOpmlLink() {
+  return (
+    <a
+      className="secondary-button"
+      href={appUrl("/api/opml/export")}
+      download="echovale-subscriptions.opml"
+    >
+      <Download aria-hidden="true" size={16} />
+      Export OPML
+    </a>
+  );
+}

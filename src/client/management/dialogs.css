@@ -1,0 +1,303 @@
+.management-dialog {
+  width: min(680px, calc(100vw - 28px));
+  max-height: min(820px, calc(100dvh - 28px));
+  padding: 0;
+  overflow: auto;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-raised);
+  color: var(--text);
+  box-shadow: 0 8px 8px oklch(0 0 0 / 0.34);
+  opacity: 0;
+  transform: scale(0.98);
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    transform var(--duration-surface) var(--ease-out),
+    display var(--duration-surface) allow-discrete,
+    overlay var(--duration-surface) allow-discrete;
+}
+
+.management-dialog.is-wide {
+  width: min(980px, calc(100vw - 28px));
+}
+
+.management-dialog[open] {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.management-dialog::backdrop {
+  background: oklch(0 0 0 / 0.7);
+  opacity: 0;
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    display var(--duration-surface) allow-discrete,
+    overlay var(--duration-surface) allow-discrete;
+}
+
+.management-dialog[open]::backdrop {
+  opacity: 1;
+}
+
+@starting-style {
+  .management-dialog[open] {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+
+  .management-dialog[open]::backdrop {
+    opacity: 0;
+  }
+}
+
+.management-dialog-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 15px 17px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.management-dialog-heading h2 {
+  margin: 0;
+  overflow: hidden;
+  font-size: 17px;
+  letter-spacing: -0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.management-dialog-heading p {
+  margin: 1px 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.management-dialog-body {
+  padding: 18px;
+}
+
+.management-dialog-body > .compact-form {
+  grid-template-columns: 1fr;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.management-dialog-body > .compact-form .form-actions {
+  margin-top: 6px;
+}
+
+.management-dialog-footer {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 17px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.management-dialog-footer > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+}
+
+.management-dialog-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 14px 0 0;
+  padding: 10px;
+  border: 1px solid color-mix(in oklch, var(--danger) 38%, var(--border));
+  border-radius: var(--radius-sm);
+  background: var(--danger-surface);
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.management-dialog-error svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.ai-prompt-dialog-body > .management-dialog-error {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
+
+.management-dialog-empty {
+  display: flex;
+  min-height: 100px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  color: var(--text-secondary);
+}
+
+.management-dialog-empty svg {
+  color: var(--accent);
+}
+
+.management-dialog-empty p,
+.unsubscribe-copy p {
+  margin: 0;
+}
+
+.feed-settings-body {
+  padding-top: 14px;
+}
+
+.feed-settings-loading {
+  display: grid;
+  gap: 12px;
+  padding-block: 6px;
+}
+
+.feed-settings-loading .skeleton-line:nth-child(2) {
+  width: 82%;
+}
+
+.feed-settings-loading .skeleton-line:nth-child(3) {
+  width: 66%;
+}
+
+.feed-settings-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+  margin-bottom: 14px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.feed-settings-summary strong {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.feed-settings-status {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--accent-surface);
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.feed-settings-status.has-error {
+  background: var(--warning-surface);
+  color: var(--warning);
+}
+
+.feed-settings-list {
+  margin: 0;
+  border-top: 1px solid var(--border);
+}
+
+.feed-settings-list > div {
+  display: grid;
+  min-height: 58px;
+  grid-template-columns: minmax(150px, 0.7fr) minmax(0, 1.5fr);
+  align-items: center;
+  gap: 16px;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.feed-settings-list dt {
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.feed-settings-list dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.feed-settings-list a {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+
+.feed-settings-list a svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .feed-settings-list a:hover {
+    color: var(--accent);
+  }
+}
+
+.management-dialog > .rule-form {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  transform: none;
+}
+
+.management-dialog > .rule-form > .inline-editor-heading {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 15px 17px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.management-dialog > .rule-form > .rule-form-sections {
+  padding: 18px;
+}
+
+.management-dialog > .rule-form > .form-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  margin: 0;
+  padding: 13px 17px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-raised);
+}
+
+.dialog-icon {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-sm);
+  background: var(--accent-surface);
+  color: var(--accent);
+}

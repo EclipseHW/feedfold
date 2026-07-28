@@ -1,5 +1,5 @@
 import { Check } from "lucide-react";
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import type {
   Article,
   BootstrapData,
@@ -14,13 +14,12 @@ import { useArticleActions } from "./article-actions";
 import { useArticleQueue } from "./article-queue";
 import { LoginPage, SessionLoading } from "./auth";
 import { type ReaderDataBinding, ReaderDataResource } from "./data-resource";
-import {
-  ContextManagementDialog,
-  type FeedManagementAction,
-  type FolderManagementAction,
-  type ManagementRequest,
+import type {
+  FeedManagementAction,
+  FolderManagementAction,
+  ManagementRequest,
 } from "./feed-management";
-import { FeedsPage, type RuleFormDraft, RulesPage, SettingsPage, ShortcutHelp } from "./management";
+import type { RuleFormDraft } from "./management/rules";
 import { motionExitDuration } from "./motion";
 import { type AppView, ReaderToolbar, Sidebar } from "./navigation";
 import {
@@ -45,6 +44,11 @@ import {
 import { appRoutePath, DEFAULT_READER_ROUTE, type ReaderRoute } from "./routes";
 
 const APP_BASE_PATH = import.meta.env.BASE_URL;
+const FeedsPage = lazy(() => import("./management/feeds"));
+const RulesPage = lazy(() => import("./management/rules"));
+const SettingsPage = lazy(() => import("./management/settings"));
+const ShortcutHelp = lazy(() => import("./management/shortcut-help"));
+const ContextManagementDialog = lazy(() => import("./management/context-dialog"));
 
 function feedManagementRequest(feedId: number, action: FeedManagementAction): ManagementRequest {
   if (action === "settings") return { kind: "feed-settings", feedId };
@@ -71,6 +75,16 @@ function usesSpaceForActivation(target: EventTarget | null): boolean {
     target.closest(
       'button, a[href], summary, [role="button"], [role="checkbox"], [role="menuitem"], [role="option"], [role="radio"], [role="switch"], [role="tab"]',
     ) !== null
+  );
+}
+
+function ManagementRouteFallback() {
+  return (
+    <div className="management-route-loading" role="status" aria-label="Loading page">
+      <span className="skeleton-line wide" />
+      <span className="skeleton-line" />
+      <span className="skeleton-line short" />
+    </div>
   );
 }
 
@@ -801,69 +815,81 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
             </div>
           </>
         ) : route.view === "feeds" ? (
-          <FeedsPage
-            bootstrap={bootstrap}
-            addFeedSourceUrl={route.addFeedSourceUrl}
-            mutations={dataResource}
-            onMenu={() => setNavOpen(true)}
-            onRefresh={(feedId) => void refresh(feedId)}
-            onEditWebFeed={(feed) => openFeedManagement(feed, "selection")}
-            onCloseAddFeedRoute={() => route.navigate({ kind: "feeds" }, "replace")}
-            showToast={showToast}
-          />
+          <Suspense fallback={<ManagementRouteFallback />}>
+            <FeedsPage
+              bootstrap={bootstrap}
+              addFeedSourceUrl={route.addFeedSourceUrl}
+              mutations={dataResource}
+              onMenu={() => setNavOpen(true)}
+              onRefresh={(feedId) => void refresh(feedId)}
+              onEditWebFeed={(feed) => openFeedManagement(feed, "selection")}
+              onCloseAddFeedRoute={() => route.navigate({ kind: "feeds" }, "replace")}
+              showToast={showToast}
+            />
+          </Suspense>
         ) : route.view === "rules" ? (
-          <RulesPage
-            bootstrap={bootstrap}
-            rules={rules}
-            loading={rulesLoading}
-            error={rulesError}
-            draft={ruleDraft}
-            mutations={dataResource}
-            onMenu={() => setNavOpen(true)}
-            onClearDraft={() => setRuleDraft(null)}
-            onReturnToArticle={returnToContextArticle}
-            onRetry={() => dataResource.reload({ articles: true, rules: true })}
-            showToast={showToast}
-          />
+          <Suspense fallback={<ManagementRouteFallback />}>
+            <RulesPage
+              bootstrap={bootstrap}
+              rules={rules}
+              loading={rulesLoading}
+              error={rulesError}
+              draft={ruleDraft}
+              mutations={dataResource}
+              onMenu={() => setNavOpen(true)}
+              onClearDraft={() => setRuleDraft(null)}
+              onReturnToArticle={returnToContextArticle}
+              onRetry={() => dataResource.reload({ articles: true, rules: true })}
+              showToast={showToast}
+            />
+          </Suspense>
         ) : (
-          <SettingsPage
-            settings={bootstrap.settings}
-            aiSettings={bootstrap.aiSettings}
-            theme={preferences.theme}
-            fontSize={preferences.articleFontSize}
-            mutations={dataResource}
-            onMenu={() => setNavOpen(true)}
-            onTheme={preferences.setTheme}
-            onFontSize={preferences.setArticleFontSize}
-            onSettings={articleActions.applySettings}
-            onAiSettings={articleActions.applyAiSettings}
-            showToast={showToast}
-          />
+          <Suspense fallback={<ManagementRouteFallback />}>
+            <SettingsPage
+              settings={bootstrap.settings}
+              aiSettings={bootstrap.aiSettings}
+              theme={preferences.theme}
+              fontSize={preferences.articleFontSize}
+              mutations={dataResource}
+              onMenu={() => setNavOpen(true)}
+              onTheme={preferences.setTheme}
+              onFontSize={preferences.setArticleFontSize}
+              onSettings={articleActions.applySettings}
+              onAiSettings={articleActions.applyAiSettings}
+              showToast={showToast}
+            />
+          </Suspense>
         )}
       </main>
 
-      <ShortcutHelp
-        open={shortcutHelpOpen}
-        enabled={bootstrap.settings.singleKeyShortcuts}
-        onClose={() => setShortcutHelpOpen(false)}
-      />
+      {shortcutHelpOpen ? (
+        <Suspense fallback={null}>
+          <ShortcutHelp
+            open
+            enabled={bootstrap.settings.singleKeyShortcuts}
+            onClose={() => setShortcutHelpOpen(false)}
+          />
+        </Suspense>
+      ) : null}
       {managementRequest ? (
-        <ContextManagementDialog
-          key={
-            "feedId" in managementRequest
-              ? `${managementRequest.kind}:${managementRequest.feedId}`
-              : "folderId" in managementRequest
-                ? `${managementRequest.kind}:${managementRequest.folderId}`
-                : `${managementRequest.kind}:${managementRequest.parentId}`
-          }
-          request={managementRequest}
-          bootstrap={bootstrap}
-          mutations={dataResource}
-          onClose={() => setManagementRequest(null)}
-          onRefresh={(feedId) => refresh(feedId)}
-          onUnsubscribe={unsubscribeFromFeed}
-          showToast={showToast}
-        />
+        <Suspense fallback={null}>
+          <ContextManagementDialog
+            key={
+              "feedId" in managementRequest
+                ? `${managementRequest.kind}:${managementRequest.feedId}`
+                : "folderId" in managementRequest
+                  ? `${managementRequest.kind}:${managementRequest.folderId}`
+                  : `${managementRequest.kind}:${managementRequest.parentId}`
+            }
+            request={managementRequest}
+            bootstrap={bootstrap}
+            mutations={dataResource}
+            onClose={() => setManagementRequest(null)}
+            onRefresh={(feedId) => refresh(feedId)}
+            onUnsubscribe={unsubscribeFromFeed}
+            showToast={showToast}
+          />
+        </Suspense>
       ) : null}
       <button
         className={`nav-scrim${navOpen ? " is-open" : ""}`}
