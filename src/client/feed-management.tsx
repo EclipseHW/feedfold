@@ -34,6 +34,7 @@ import type {
   WebFeedAnalysis,
 } from "../shared/types";
 import { api, errorMessage } from "./api";
+import type { ReaderDataMutations } from "./data-resource";
 import { FolderForm, formatDate, formatRefreshInterval, RuleForm } from "./management";
 import { WebFeedSetup } from "./web-feed-setup";
 
@@ -221,14 +222,14 @@ function DialogError({ message }: { message: string }) {
 
 function FeedSettingsPanel({
   feed,
+  mutations,
   onClose,
-  onReload,
   onRefresh,
   showToast,
 }: {
   feed: Feed;
+  mutations: ReaderDataMutations;
   onClose: () => void;
-  onReload: () => Promise<void>;
   onRefresh: (feedId: number) => Promise<void>;
   showToast: (message: string) => void;
 }) {
@@ -257,10 +258,9 @@ function FeedSettingsPanel({
     setBusy("pause");
     setError(null);
     try {
-      const updated = await api.updateFeed(details.id, { paused: !details.paused });
+      const updated = await mutations.updateFeed(details.id, { paused: !details.paused });
       setDetails(updated);
       showToast(updated.paused ? `Paused ${updated.title}` : `Resumed ${updated.title}`);
-      await onReload();
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -423,13 +423,13 @@ function FeedSettingsPanel({
 
 function WebFeedSelectionPanel({
   feed,
+  mutations,
   onClose,
-  onReload,
   showToast,
 }: {
   feed: Feed;
+  mutations: ReaderDataMutations;
   onClose: () => void;
-  onReload: () => Promise<void>;
   showToast: (message: string) => void;
 }) {
   const [analysis, setAnalysis] = useState<WebFeedAnalysis | null>(null);
@@ -462,8 +462,7 @@ function WebFeedSelectionPanel({
     setSaving(true);
     setError(null);
     try {
-      const updated = await api.updateWebFeedSelection(feed.id, candidate.config);
-      await onReload();
+      const updated = await mutations.updateWebFeedSelection(feed.id, candidate.config);
       showToast(`Updated page selection for ${updated.title}`);
       onClose();
     } catch (caught) {
@@ -542,13 +541,13 @@ function WebFeedSelectionPanel({
 
 function RenameFeedForm({
   feed,
+  mutations,
   onClose,
-  onReload,
   showToast,
 }: {
   feed: Feed;
+  mutations: ReaderDataMutations;
   onClose: () => void;
-  onReload: () => Promise<void>;
   showToast: (message: string) => void;
 }) {
   const [title, setTitle] = useState(feed.title);
@@ -560,8 +559,7 @@ function RenameFeedForm({
     setSaving(true);
     setError(null);
     try {
-      const updated = await api.updateFeed(feed.id, { title: title.trim() });
-      await onReload();
+      const updated = await mutations.updateFeed(feed.id, { title: title.trim() });
       showToast(`Renamed feed to ${updated.title}`);
       onClose();
     } catch (caught) {
@@ -609,14 +607,14 @@ function RenameFeedForm({
 function MoveFeedForm({
   feed,
   folders,
+  mutations,
   onClose,
-  onReload,
   showToast,
 }: {
   feed: Feed;
   folders: FolderType[];
+  mutations: ReaderDataMutations;
   onClose: () => void;
-  onReload: () => Promise<void>;
   showToast: (message: string) => void;
 }) {
   const [folderId, setFolderId] = useState<number | null>(feed.folderId);
@@ -628,8 +626,7 @@ function MoveFeedForm({
     setSaving(true);
     setError(null);
     try {
-      await api.updateFeed(feed.id, { folderId });
-      await onReload();
+      await mutations.updateFeed(feed.id, { folderId });
       const folderName = folders.find((folder) => folder.id === folderId)?.name ?? "Top level";
       showToast(`Moved ${feed.title} to ${folderName}`);
       onClose();
@@ -686,14 +683,14 @@ function MoveFeedForm({
 function AddFeedToFolderForm({
   folder,
   feeds,
+  mutations,
   onClose,
-  onReload,
   showToast,
 }: {
   folder: FolderType;
   feeds: Feed[];
+  mutations: ReaderDataMutations;
   onClose: () => void;
-  onReload: () => Promise<void>;
   showToast: (message: string) => void;
 }) {
   const availableFeeds = feeds.filter((feed) => feed.folderId !== folder.id);
@@ -708,8 +705,7 @@ function AddFeedToFolderForm({
     setError(null);
     try {
       const feed = feeds.find((candidate) => candidate.id === feedId);
-      await api.updateFeed(feedId, { folderId: folder.id });
-      await onReload();
+      await mutations.updateFeed(feedId, { folderId: folder.id });
       showToast(`Moved ${feed?.title ?? "feed"} to ${folder.name}`);
       onClose();
     } catch (caught) {
@@ -818,16 +814,16 @@ function UnsubscribeForm({
 export function ContextManagementDialog({
   request,
   bootstrap,
+  mutations,
   onClose,
-  onReload,
   onRefresh,
   onUnsubscribe,
   showToast,
 }: {
   request: ManagementRequest;
   bootstrap: BootstrapData;
+  mutations: ReaderDataMutations;
   onClose: () => void;
-  onReload: () => Promise<void>;
   onRefresh: (feedId: number) => Promise<void>;
   onUnsubscribe: (feed: Feed) => Promise<boolean>;
   showToast: (message: string) => void;
@@ -948,10 +944,10 @@ export function ContextManagementDialog({
               : { folderId: request.folderId }
           }
           motionState="open"
+          mutations={mutations}
           onCancel={close}
-          onSaved={async (rule) => {
+          onSaved={(rule) => {
             showToast(`Added ${rule.name}`);
-            await onReload();
             close();
           }}
           showToast={showToast}
@@ -962,26 +958,31 @@ export function ContextManagementDialog({
           {request.kind === "feed-settings" && feed ? (
             <FeedSettingsPanel
               feed={feed}
+              mutations={mutations}
               onClose={close}
-              onReload={onReload}
               onRefresh={onRefresh}
               showToast={showToast}
             />
           ) : request.kind === "web-feed-selection" && feed ? (
             <WebFeedSelectionPanel
               feed={feed}
+              mutations={mutations}
               onClose={close}
-              onReload={onReload}
               showToast={showToast}
             />
           ) : request.kind === "rename-feed" && feed ? (
-            <RenameFeedForm feed={feed} onClose={close} onReload={onReload} showToast={showToast} />
+            <RenameFeedForm
+              feed={feed}
+              mutations={mutations}
+              onClose={close}
+              showToast={showToast}
+            />
           ) : request.kind === "move-feed" && feed ? (
             <MoveFeedForm
               feed={feed}
               folders={bootstrap.folders}
+              mutations={mutations}
               onClose={close}
-              onReload={onReload}
               showToast={showToast}
             />
           ) : request.kind === "unsubscribe-feed" && feed ? (
@@ -991,10 +992,10 @@ export function ContextManagementDialog({
               <FolderForm
                 folders={bootstrap.folders}
                 initial={folder}
+                mutations={mutations}
                 onCancel={close}
-                onSaved={async (savedFolder) => {
+                onSaved={(savedFolder) => {
                   showToast(`Saved ${savedFolder.name}`);
-                  await onReload();
                   close();
                 }}
                 showToast={showToast}
@@ -1004,8 +1005,8 @@ export function ContextManagementDialog({
             <AddFeedToFolderForm
               folder={folder}
               feeds={bootstrap.feeds}
+              mutations={mutations}
               onClose={close}
-              onReload={onReload}
               showToast={showToast}
             />
           ) : request.kind === "add-folder" && folder ? (
@@ -1013,10 +1014,10 @@ export function ContextManagementDialog({
               <FolderForm
                 folders={bootstrap.folders}
                 defaultParentId={folder.id}
+                mutations={mutations}
                 onCancel={close}
-                onSaved={async (savedFolder) => {
+                onSaved={(savedFolder) => {
                   showToast(`Created ${savedFolder.name}`);
-                  await onReload();
                   close();
                 }}
                 showToast={showToast}
