@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import fastifyStatic from "@fastify/static";
+import { SqliteError } from "better-sqlite3";
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { ZodError, z } from "zod";
 import { AI_PROMPT_MAX_LENGTH } from "../shared/ai-prompts.js";
@@ -20,6 +21,7 @@ import { AiError } from "./ai/errors.js";
 import { AiService } from "./ai/service.js";
 import { type AuthService, type LoginSession, sessionToken } from "./auth.js";
 import type { AppDatabase } from "./db.js";
+import { InvalidRequestError } from "./errors.js";
 import type { ExtractionQueue } from "./extraction.js";
 import { discoverFeed, FeedDiscoveryError } from "./feed-discovery.js";
 import { exportOpml, importOpml } from "./opml.js";
@@ -147,26 +149,22 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
       reply.code(400).send({ error: error.issues[0]?.message ?? "Invalid request" });
       return;
     }
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    if (errorMessage.includes("UNIQUE constraint failed")) {
-      reply.code(409).send({ error: "That item already exists" });
+    if (error instanceof InvalidRequestError) {
+      reply.code(400).send({ error: error.message });
       return;
     }
-    if (errorMessage.includes("FOREIGN KEY constraint failed")) {
-      reply.code(400).send({ error: "The selected folder or feed does not exist" });
-      return;
-    }
-    if (errorMessage.includes("cannot be moved inside itself")) {
-      reply.code(400).send({ error: errorMessage });
-      return;
-    }
-    if (errorMessage === "The selected folder or feed does not exist") {
-      reply.code(400).send({ error: errorMessage });
-      return;
-    }
-    if (errorMessage === "Invalid article cursor") {
-      reply.code(400).send({ error: errorMessage });
-      return;
+    if (error instanceof SqliteError) {
+      if (
+        error.code === "SQLITE_CONSTRAINT_UNIQUE" ||
+        error.code === "SQLITE_CONSTRAINT_PRIMARYKEY"
+      ) {
+        reply.code(409).send({ error: "That item already exists" });
+        return;
+      }
+      if (error.code === "SQLITE_CONSTRAINT_FOREIGNKEY") {
+        reply.code(400).send({ error: "The selected folder or feed does not exist" });
+        return;
+      }
     }
     app.log.error(error);
     reply.code(500).send({ error: "Internal server error" });

@@ -194,6 +194,12 @@ describe("folder article sorting", () => {
     const firstPage = firstPageResponse.json<ArticlePage>();
     expect(firstPage.articles.map(({ title }) => title)).toEqual(["News newer", "Social older"]);
     expect(firstPage.nextCursor).not.toBeNull();
+    const invalidCursor = await request({
+      method: "GET",
+      url: "/api/articles?state=unread&cursor=not-a-cursor",
+    });
+    expect(invalidCursor.statusCode).toBe(400);
+    expect(invalidCursor.json()).toEqual({ error: "Invalid article cursor" });
     expect(
       (
         await request({

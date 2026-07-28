@@ -69,6 +69,31 @@ describe("feed and folder management", () => {
       })
     ).json<Folder>();
 
+    const missingParent = await request({
+      method: "POST",
+      url: "/api/folders",
+      payload: { name: "Orphan", parentId: 999_999 },
+    });
+    expect(missingParent.statusCode).toBe(400);
+    expect(missingParent.json()).toEqual({
+      error: "The selected folder or feed does not exist",
+    });
+
+    const nestedFolder = (
+      await request({
+        method: "POST",
+        url: "/api/folders",
+        payload: { name: "Nested", parentId: inbox.id },
+      })
+    ).json<Folder>();
+    const cyclicFolder = await request({
+      method: "PATCH",
+      url: `/api/folders/${inbox.id}`,
+      payload: { parentId: nestedFolder.id },
+    });
+    expect(cyclicFolder.statusCode).toBe(400);
+    expect(cyclicFolder.json()).toEqual({ error: "A folder cannot be moved inside itself" });
+
     const createResponse = await request({
       method: "POST",
       url: "/api/feeds",
@@ -94,6 +119,36 @@ describe("feed and folder management", () => {
       pollIntervalMinutes: storedPollInterval,
     });
     expect(new Date(createdFeed.createdAt).toISOString()).toBe(createdFeed.createdAt);
+
+    const duplicateFeed = await request({
+      method: "POST",
+      url: "/api/feeds",
+      payload: {
+        sourceKind: "published",
+        feedUrl: createdFeed.feedUrl,
+        folderId: null,
+      },
+    });
+    expect(duplicateFeed.statusCode).toBe(409);
+    expect(duplicateFeed.json()).toEqual({ error: "That item already exists" });
+
+    const missingRuleScope = await request({
+      method: "POST",
+      url: "/api/rules",
+      payload: {
+        name: "Missing feed",
+        feedId: 999_999,
+        folderId: null,
+        conditions: [{ field: "title", pattern: "example" }],
+        conditionOperator: "and",
+        action: "hide",
+        enabled: true,
+      },
+    });
+    expect(missingRuleScope.statusCode).toBe(400);
+    expect(missingRuleScope.json()).toEqual({
+      error: "The selected folder or feed does not exist",
+    });
 
     const getResponse = await request({
       method: "GET",

@@ -2,7 +2,6 @@ import { Check } from "lucide-react";
 import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   Article,
-  ArticleQuery,
   ArticleState,
   BootstrapData,
   Feed,
@@ -40,6 +39,16 @@ import {
   StartupError,
 } from "./reader";
 import {
+  articleQueryForReaderRoute,
+  articleSettingsInvalidation,
+  filterRuleName,
+  invalidateArticleSummaries,
+  readerRouteForSelection,
+  readerScopeLabel,
+  refreshFeedIds,
+  updateBootstrapCounts,
+} from "./reader-state";
+import {
   type AppRoute,
   appRoutePath,
   appRouteUrl,
@@ -53,7 +62,6 @@ type Theme = "dark" | "light";
 const ARTICLE_FONT_MIN = 15;
 const ARTICLE_FONT_MAX = 23;
 const ARTICLE_FONT_DEFAULT = 18;
-const FILTER_RULE_NAME_TEXT_LIMIT = 72;
 const APP_BASE_PATH = import.meta.env.BASE_URL;
 
 function feedManagementRequest(feedId: number, action: FeedManagementAction): ManagementRequest {
@@ -72,53 +80,12 @@ interface AppHistoryState {
   articleIndex?: number;
 }
 
-function selectedReaderRoute(
-  state: ArticleState,
-  feedId: number | null,
-  folderId: number | null,
-  search: string,
-): ReaderRoute {
-  if (feedId !== null) {
-    return { kind: "reader", scope: "feed", scopeId: feedId, state, search };
-  }
-  if (folderId !== null) {
-    return { kind: "reader", scope: "folder", scopeId: folderId, state, search };
-  }
-  return { kind: "reader", scope: "all", scopeId: null, state, search };
-}
-
 function readerRouteFromReturnPath(path: string | undefined): ReaderRoute | null {
   if (!path) return null;
   const base = APP_BASE_PATH.replace(/\/$/, "");
   const url = new URL(`${base}${path}`, window.location.origin);
   const route = parseAppRoute(url.pathname, url.search, APP_BASE_PATH);
   return route.kind === "reader" ? route : null;
-}
-
-function articleQueryForReaderRoute(
-  route: ReaderRoute,
-  options: {
-    limit: number;
-    includeContent: boolean;
-    cursor?: string;
-    anchorId?: number;
-  },
-): ArticleQuery {
-  return {
-    state: route.state,
-    ...(route.scope === "feed" && route.scopeId !== null ? { feedId: route.scopeId } : {}),
-    ...(route.scope === "folder" && route.scopeId !== null ? { folderId: route.scopeId } : {}),
-    ...(route.search ? { search: route.search } : {}),
-    ...options,
-  };
-}
-
-function filterRuleName(text: string): string {
-  const label =
-    text.length > FILTER_RULE_NAME_TEXT_LIMIT
-      ? `${text.slice(0, FILTER_RULE_NAME_TEXT_LIMIT - 1).trimEnd()}…`
-      : text;
-  return `Filter: ${label}`;
 }
 
 function storedValue<T extends string>(key: string, fallback: T): T {
@@ -154,58 +121,6 @@ function usesSpaceForActivation(target: EventTarget | null): boolean {
       'button, a[href], summary, [role="button"], [role="checkbox"], [role="menuitem"], [role="option"], [role="radio"], [role="switch"], [role="tab"]',
     ) !== null
   );
-}
-
-function sourceLabel(
-  bootstrap: BootstrapData,
-  feedId: number | null,
-  folderId: number | null,
-): string {
-  if (feedId !== null) return bootstrap.feeds.find((feed) => feed.id === feedId)?.title ?? "Feed";
-  if (folderId !== null)
-    return bootstrap.folders.find((folder) => folder.id === folderId)?.name ?? "Folder";
-  return "All articles";
-}
-
-function folderTreeIds(folders: FolderType[], rootId: number): Set<number> {
-  const ids = new Set([rootId]);
-  let foundChild = true;
-  while (foundChild) {
-    foundChild = false;
-    for (const folder of folders) {
-      if (folder.parentId !== null && ids.has(folder.parentId) && !ids.has(folder.id)) {
-        ids.add(folder.id);
-        foundChild = true;
-      }
-    }
-  }
-  return ids;
-}
-
-function updateBootstrapCounts(
-  bootstrap: BootstrapData,
-  article: Article,
-  unreadDelta: number,
-  starredDelta: number,
-): BootstrapData {
-  return {
-    ...bootstrap,
-    counts: {
-      ...bootstrap.counts,
-      unread: Math.max(0, bootstrap.counts.unread + unreadDelta),
-      starred: Math.max(0, bootstrap.counts.starred + starredDelta),
-    },
-    feeds: bootstrap.feeds.map((feed) =>
-      feed.id === article.feedId
-        ? { ...feed, unreadCount: Math.max(0, feed.unreadCount + unreadDelta) }
-        : feed,
-    ),
-    folders: bootstrap.folders.map((folder) =>
-      folder.id === article.folderId
-        ? { ...folder, unreadCount: Math.max(0, folder.unreadCount + unreadDelta) }
-        : folder,
-    ),
-  };
 }
 
 export function App() {
@@ -522,14 +437,15 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     if (!returnTarget) setArticlesLoading(true);
     setArticlesError(null);
     try {
-      const page = await api.articles({
-        state: articleStateFilter,
-        ...(selectedFeedId !== null ? { feedId: selectedFeedId } : {}),
-        ...(selectedFolderId !== null ? { folderId: selectedFolderId } : {}),
-        ...(search ? { search } : {}),
-        limit: readingMode === "expanded" ? 20 : 100,
-        includeContent: readingMode === "expanded",
-      });
+      const page = await api.articles(
+        articleQueryForReaderRoute(
+          readerRouteForSelection(articleStateFilter, selectedFeedId, selectedFolderId, search),
+          {
+            limit: readingMode === "expanded" ? 20 : 100,
+            includeContent: readingMode === "expanded",
+          },
+        ),
+      );
       if (articleListRequestId.current !== requestId || currentRoute.current.kind !== "reader") {
         return;
       }
@@ -828,7 +744,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         const state = (window.history.state ?? {}) as AppHistoryState;
         const queueRoute =
           readerRouteFromReturnPath(state.returnTo) ??
-          selectedReaderRoute("all", article.feedId, null, "");
+          readerRouteForSelection("all", article.feedId, null, "");
         lastReaderRoute.current = queueRoute;
         setArticleStateFilter(queueRoute.state);
         setSelectedFeedId(queueRoute.scope === "feed" ? queueRoute.scopeId : null);
@@ -1018,7 +934,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
 
   const selectScope = useCallback(
     (feedId: number | null, folderId: number | null, state: ArticleState = articleStateFilter) => {
-      const route = selectedReaderRoute(state, feedId, folderId, search);
+      const route = readerRouteForSelection(state, feedId, folderId, search);
       const reloadArticles = appRoutePath(currentRoute.current) === appRoutePath(route);
       loadedReaderRequestKey.current = null;
       navigateToRoute(route);
@@ -1307,19 +1223,13 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           const reloaded: Article[] = [];
           let cursor: string | null = null;
           do {
-            const page = await api.articles({
-              state: readerRoute.state,
-              ...(readerRoute.scope === "feed" && readerRoute.scopeId !== null
-                ? { feedId: readerRoute.scopeId }
-                : {}),
-              ...(readerRoute.scope === "folder" && readerRoute.scopeId !== null
-                ? { folderId: readerRoute.scopeId }
-                : {}),
-              ...(readerRoute.search ? { search: readerRoute.search } : {}),
-              limit: Math.min(500, targetCount - reloaded.length),
-              includeContent: readingMode === "expanded",
-              ...(cursor ? { cursor } : {}),
-            });
+            const page = await api.articles(
+              articleQueryForReaderRoute(readerRoute, {
+                limit: Math.min(500, targetCount - reloaded.length),
+                includeContent: readingMode === "expanded",
+                ...(cursor ? { cursor } : {}),
+              }),
+            );
             reloaded.push(...page.articles);
             cursor = page.nextCursor;
           } while (cursor && reloaded.length < targetCount);
@@ -1461,16 +1371,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       if (!bootstrap) return;
       let ids: number[] | undefined;
       if (!forceAll) {
-        if (feedId !== undefined) {
-          ids = [feedId];
-        } else if (selectedFeedId !== null) {
-          ids = [selectedFeedId];
-        } else if (selectedFolderId !== null) {
-          const folderIds = folderTreeIds(bootstrap.folders, selectedFolderId);
-          ids = bootstrap.feeds
-            .filter((feed) => feed.folderId !== null && folderIds.has(feed.folderId))
-            .map((feed) => feed.id);
-        }
+        ids = refreshFeedIds(bootstrap, feedId ?? selectedFeedId, selectedFolderId);
       }
       setBootstrap((current) =>
         current
@@ -1594,7 +1495,12 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const submitSearch = (event: FormEvent) => {
     event.preventDefault();
     navigateToRoute(
-      selectedReaderRoute(articleStateFilter, selectedFeedId, selectedFolderId, searchInput.trim()),
+      readerRouteForSelection(
+        articleStateFilter,
+        selectedFeedId,
+        selectedFolderId,
+        searchInput.trim(),
+      ),
     );
   };
 
@@ -1761,7 +1667,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     );
   }
 
-  const title = sourceLabel(bootstrap, selectedFeedId, selectedFolderId);
+  const title = readerScopeLabel(bootstrap, selectedFeedId, selectedFolderId);
 
   return (
     <div className="app-shell">
@@ -1803,14 +1709,14 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               onToggleNav={() => setNavOpen((current) => !current)}
               onStateChange={(state) => {
                 navigateToRoute(
-                  selectedReaderRoute(state, selectedFeedId, selectedFolderId, search),
+                  readerRouteForSelection(state, selectedFeedId, selectedFolderId, search),
                 );
               }}
               onSearchInput={setSearchInput}
               onSearch={submitSearch}
               onClearSearch={() => {
                 navigateToRoute(
-                  selectedReaderRoute(articleStateFilter, selectedFeedId, selectedFolderId, ""),
+                  readerRouteForSelection(articleStateFilter, selectedFeedId, selectedFolderId, ""),
                 );
               }}
               onModeChange={(mode) => {
@@ -1855,12 +1761,17 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   onAddFeed={() => navigateTo("feeds")}
                   onShowAll={() =>
                     navigateToRoute(
-                      selectedReaderRoute("all", selectedFeedId, selectedFolderId, search),
+                      readerRouteForSelection("all", selectedFeedId, selectedFolderId, search),
                     )
                   }
                   onClearSearch={() => {
                     navigateToRoute(
-                      selectedReaderRoute(articleStateFilter, selectedFeedId, selectedFolderId, ""),
+                      readerRouteForSelection(
+                        articleStateFilter,
+                        selectedFeedId,
+                        selectedFolderId,
+                        "",
+                      ),
                     );
                   }}
                 />
@@ -2002,36 +1913,14 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
             onTheme={setTheme}
             onFontSize={setArticleFontSize}
             onSettings={(settings) => {
-              const defaultSummaryPromptChanged =
-                bootstrap.settings.summaryPrompt !== settings.summaryPrompt;
-              const nextCustomPromptsById = new Map(
-                settings.customPrompts.map((prompt) => [prompt.id, prompt]),
-              );
-              const invalidatedCustomPromptIds = new Set(
-                bootstrap.settings.customPrompts
-                  .filter(
-                    (prompt) => nextCustomPromptsById.get(prompt.id)?.prompt !== prompt.prompt,
-                  )
-                  .map((prompt) => prompt.id),
-              );
-              if (
-                bootstrap.settings.translationLanguage !== settings.translationLanguage ||
-                bootstrap.settings.translationPrompt !== settings.translationPrompt
-              ) {
+              const invalidation = articleSettingsInvalidation(bootstrap.settings, settings);
+              if (invalidation.resetTranslationState) {
                 setArticleTranslationStates(new Map());
               }
-              if (defaultSummaryPromptChanged || invalidatedCustomPromptIds.size > 0) {
+              if (invalidation.invalidatedSummaryPromptIds.size > 0) {
                 setArticleSummaryStates(new Map());
                 setArticles((current) =>
-                  current.map((article) => {
-                    const promptId = article.aiSummary?.promptId;
-                    const invalidated =
-                      (promptId === null && defaultSummaryPromptChanged) ||
-                      (promptId !== null &&
-                        promptId !== undefined &&
-                        invalidatedCustomPromptIds.has(promptId));
-                    return invalidated ? { ...article, aiSummary: null } : article;
-                  }),
+                  invalidateArticleSummaries(current, invalidation.invalidatedSummaryPromptIds),
                 );
               }
               setBootstrap((current) => (current ? { ...current, settings } : current));
