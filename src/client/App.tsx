@@ -147,6 +147,15 @@ function isEditable(target: EventTarget | null): boolean {
   );
 }
 
+function usesSpaceForActivation(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(
+      'button, a[href], summary, [role="button"], [role="checkbox"], [role="menuitem"], [role="option"], [role="radio"], [role="switch"], [role="tab"]',
+    ) !== null
+  );
+}
+
 function sourceLabel(
   bootstrap: BootstrapData,
   feedId: number | null,
@@ -369,6 +378,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const currentRoute = useRef<AppRoute>(initialRoute);
   const articleListRequestId = useRef(0);
   const loadedReaderRequestKey = useRef<string | null>(null);
+  const readingWorkspaceRef = useRef<HTMLDivElement>(null);
   const bootstrapReady = bootstrap !== null;
   articlesRef.current = articles;
 
@@ -1588,6 +1598,26 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     );
   };
 
+  const scrollArticlePage = useCallback(
+    (direction: 1 | -1): boolean => {
+      const workspace = readingWorkspaceRef.current;
+      if (!workspace || view !== "reader") return false;
+      const scrollContainer =
+        readingMode === "expanded"
+          ? workspace
+          : readerOpen
+            ? workspace.querySelector<HTMLElement>(".article-swipe-layer.is-active")
+            : null;
+      if (!scrollContainer) return false;
+      scrollContainer.scrollBy({
+        top: direction * scrollContainer.clientHeight * 0.85,
+        behavior: "smooth",
+      });
+      return true;
+    },
+    [readerOpen, readingMode, view],
+  );
+
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
       if (managementRequest) return;
@@ -1597,6 +1627,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         if (readerOpen) returnToArticleList();
         return;
       }
+      if (shortcutHelpOpen) return;
       if (isEditable(event.target) || !bootstrap?.settings.singleKeyShortcuts) return;
       if (event.metaKey || event.ctrlKey || event.altKey) return;
 
@@ -1628,9 +1659,17 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         return;
       }
 
+      if (key === " ") {
+        if (usesSpaceForActivation(event.target)) return;
+        if (scrollArticlePage(event.shiftKey ? -1 : 1)) event.preventDefault();
+        return;
+      }
+
       const actions: Record<string, () => void> = {
         j: () => moveArticle(1),
         k: () => moveArticle(-1),
+        arrowright: () => moveArticle(1),
+        arrowleft: () => moveArticle(-1),
         u: () => {
           if (!activeArticle) return;
           const nextRead = !activeArticle.isRead;
@@ -1707,6 +1746,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     routedArticleId,
     selectScope,
     showToast,
+    shortcutHelpOpen,
+    scrollArticlePage,
     toggleArticleSummary,
     toggleArticleTranslation,
     view,
@@ -1787,6 +1828,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
             />
 
             <div
+              ref={readingWorkspaceRef}
               className={`reading-workspace mode-${readingMode}${readerOpen ? " is-reading-article" : ""}`}
             >
               {articlesLoading ? (

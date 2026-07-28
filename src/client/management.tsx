@@ -3230,7 +3230,7 @@ export function SettingsPage({
         <div className="setting-row">
           <div>
             <strong>Single-key shortcuts</strong>
-            <p>Turn off letter and number shortcuts without affecting normal tab navigation.</p>
+            <p>Turn off navigation and action shortcuts without affecting normal tab navigation.</p>
           </div>
           <button
             className={`switch ${settings.singleKeyShortcuts ? "is-on" : ""}`}
@@ -3274,8 +3274,9 @@ export function SettingsPage({
 }
 
 const shortcuts = [
-  ["J", "Next article"],
-  ["K", "Previous article"],
+  ["J / →", "Next article"],
+  ["K / ←", "Previous article"],
+  ["Space", "Scroll article page"],
   ["U", "Mark active article unread"],
   ["S", "Star or unstar article"],
   ["C", "Copy active article URL"],
