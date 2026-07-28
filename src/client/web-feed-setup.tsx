@@ -15,6 +15,7 @@ import type {
 } from "../shared/types";
 import { appUrl } from "./api";
 import { parseWebFeedSelectionMessage, webFeedHighlightMessage } from "./web-feed-selection";
+import "./web-feed-setup.css";
 
 const WEB_FEED_FIELDS: WebFeedField[] = ["title", "link", "date", "author", "summary", "image"];
 
