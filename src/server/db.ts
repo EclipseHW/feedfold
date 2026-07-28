@@ -30,6 +30,7 @@ import type {
 } from "../shared/types.js";
 import { cleanArticleHtml } from "./article-html.js";
 import { articleMediaRuleText } from "./article-media.js";
+import { InvalidRequestError } from "./errors.js";
 import { migrateDatabase } from "./migrations.js";
 
 interface FeedRecordBase {
@@ -150,7 +151,7 @@ function decodeArticleCursor(cursor: string): ArticleCursor {
     }
     return boundaries;
   } catch {
-    throw new Error("Invalid article cursor");
+    throw new InvalidRequestError("Invalid article cursor");
   }
 }
 
@@ -631,6 +632,12 @@ export class AppDatabase {
     return this.listFolders(userId).find((folder) => folder.id === id) ?? null;
   }
 
+  private assertFolderExists(userId: number, folderId: number | null | undefined): void {
+    if (folderId !== null && folderId !== undefined && !this.getFolder(userId, folderId)) {
+      throw new InvalidRequestError("The selected folder or feed does not exist");
+    }
+  }
+
   createFolder(
     userId: number,
     input: {
@@ -640,9 +647,7 @@ export class AppDatabase {
       sortDirection?: FolderSortDirection;
     },
   ): Folder {
-    if (input.parentId && !this.getFolder(userId, input.parentId)) {
-      throw new Error("The selected folder or feed does not exist");
-    }
+    this.assertFolderExists(userId, input.parentId);
     const timestamp = now();
     const result = this.sqlite
       .prepare(
@@ -674,14 +679,12 @@ export class AppDatabase {
   ): Folder | null {
     const existing = this.getFolder(userId, id);
     if (!existing) return null;
-    if (input.parentId && !this.getFolder(userId, input.parentId)) {
-      throw new Error("The selected folder or feed does not exist");
-    }
+    this.assertFolderExists(userId, input.parentId);
     if (
       input.parentId === id ||
       (input.parentId !== undefined && this.isFolderDescendant(userId, input.parentId, id))
     ) {
-      throw new Error("A folder cannot be moved inside itself");
+      throw new InvalidRequestError("A folder cannot be moved inside itself");
     }
     this.sqlite
       .prepare(
@@ -784,6 +787,12 @@ export class AppDatabase {
     return this.selectFeeds(userId, id)[0] ?? null;
   }
 
+  private assertFeedExists(userId: number, feedId: number | null | undefined): void {
+    if (feedId !== null && feedId !== undefined && !this.getFeed(userId, feedId)) {
+      throw new InvalidRequestError("The selected folder or feed does not exist");
+    }
+  }
+
   createFeed(
     userId: number,
     input: {
@@ -794,9 +803,7 @@ export class AppDatabase {
       paused?: boolean;
     },
   ): Feed {
-    if (input.folderId && !this.getFolder(userId, input.folderId)) {
-      throw new Error("The selected folder or feed does not exist");
-    }
+    this.assertFolderExists(userId, input.folderId);
     const timestamp = now();
     const feedUrl = new URL(input.feedUrl).toString();
     const result = this.sqlite
@@ -829,9 +836,7 @@ export class AppDatabase {
       parsed: ParsedFeed;
     },
   ): Feed {
-    if (input.folderId && !this.getFolder(userId, input.folderId)) {
-      throw new Error("The selected folder or feed does not exist");
-    }
+    this.assertFolderExists(userId, input.folderId);
     if (input.parsed.articles.length === 0) {
       throw new Error("The web feed selection did not match any items");
     }
@@ -939,9 +944,7 @@ export class AppDatabase {
   ): Feed | null {
     const existing = this.getFeed(userId, id);
     if (!existing) return null;
-    if (input.folderId && !this.getFolder(userId, input.folderId)) {
-      throw new Error("The selected folder or feed does not exist");
-    }
+    this.assertFolderExists(userId, input.folderId);
     const feedUrl = input.feedUrl ? new URL(input.feedUrl).toString() : existing.feedUrl;
     if (existing.sourceKind === "web" && feedUrl !== existing.feedUrl) {
       throw new Error("Web feed URLs can only be changed by repairing the page selection");
@@ -2068,12 +2071,8 @@ export class AppDatabase {
     feedId: number | null | undefined,
     folderId: number | null | undefined,
   ): void {
-    if (feedId && !this.getFeed(userId, feedId)) {
-      throw new Error("The selected folder or feed does not exist");
-    }
-    if (folderId && !this.getFolder(userId, folderId)) {
-      throw new Error("The selected folder or feed does not exist");
-    }
+    this.assertFeedExists(userId, feedId);
+    this.assertFolderExists(userId, folderId);
   }
 
   private reapplyRule(ruleId: number): void {

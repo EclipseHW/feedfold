@@ -1,0 +1,157 @@
+import type {
+  AppSettings,
+  Article,
+  ArticleQuery,
+  ArticleState,
+  BootstrapData,
+  Folder,
+} from "../shared/types.js";
+import type { ReaderRoute } from "./routes.js";
+
+const FILTER_RULE_NAME_TEXT_LIMIT = 72;
+
+export interface ArticleSettingsInvalidation {
+  resetTranslationState: boolean;
+  invalidatedSummaryPromptIds: ReadonlySet<string | null>;
+}
+
+export function readerRouteForSelection(
+  state: ArticleState,
+  feedId: number | null,
+  folderId: number | null,
+  search: string,
+): ReaderRoute {
+  if (feedId !== null) {
+    return { kind: "reader", scope: "feed", scopeId: feedId, state, search };
+  }
+  if (folderId !== null) {
+    return { kind: "reader", scope: "folder", scopeId: folderId, state, search };
+  }
+  return { kind: "reader", scope: "all", scopeId: null, state, search };
+}
+
+export function articleQueryForReaderRoute(
+  route: ReaderRoute,
+  options: {
+    limit: number;
+    includeContent: boolean;
+    cursor?: string;
+    anchorId?: number;
+  },
+): ArticleQuery {
+  return {
+    state: route.state,
+    ...(route.scope === "feed" && route.scopeId !== null ? { feedId: route.scopeId } : {}),
+    ...(route.scope === "folder" && route.scopeId !== null ? { folderId: route.scopeId } : {}),
+    ...(route.search ? { search: route.search } : {}),
+    ...options,
+  };
+}
+
+export function filterRuleName(text: string): string {
+  const label =
+    text.length > FILTER_RULE_NAME_TEXT_LIMIT
+      ? `${text.slice(0, FILTER_RULE_NAME_TEXT_LIMIT - 1).trimEnd()}…`
+      : text;
+  return `Filter: ${label}`;
+}
+
+export function readerScopeLabel(
+  bootstrap: BootstrapData,
+  feedId: number | null,
+  folderId: number | null,
+): string {
+  if (feedId !== null) return bootstrap.feeds.find((feed) => feed.id === feedId)?.title ?? "Feed";
+  if (folderId !== null) {
+    return bootstrap.folders.find((folder) => folder.id === folderId)?.name ?? "Folder";
+  }
+  return "All articles";
+}
+
+function folderTreeIds(folders: Folder[], rootId: number): Set<number> {
+  const ids = new Set([rootId]);
+  let foundChild = true;
+  while (foundChild) {
+    foundChild = false;
+    for (const folder of folders) {
+      if (folder.parentId !== null && ids.has(folder.parentId) && !ids.has(folder.id)) {
+        ids.add(folder.id);
+        foundChild = true;
+      }
+    }
+  }
+  return ids;
+}
+
+export function refreshFeedIds(
+  bootstrap: BootstrapData,
+  feedId: number | null,
+  folderId: number | null,
+): number[] | undefined {
+  if (feedId !== null) return [feedId];
+  if (folderId === null) return undefined;
+  const folderIds = folderTreeIds(bootstrap.folders, folderId);
+  return bootstrap.feeds
+    .filter((feed) => feed.folderId !== null && folderIds.has(feed.folderId))
+    .map((feed) => feed.id);
+}
+
+export function articleSettingsInvalidation(
+  previous: AppSettings,
+  next: AppSettings,
+): ArticleSettingsInvalidation {
+  const invalidatedSummaryPromptIds = new Set<string | null>();
+  if (previous.summaryPrompt !== next.summaryPrompt) invalidatedSummaryPromptIds.add(null);
+
+  const nextCustomPrompts = new Map(next.customPrompts.map((prompt) => [prompt.id, prompt.prompt]));
+  for (const prompt of previous.customPrompts) {
+    if (nextCustomPrompts.get(prompt.id) !== prompt.prompt) {
+      invalidatedSummaryPromptIds.add(prompt.id);
+    }
+  }
+
+  return {
+    resetTranslationState:
+      previous.translationLanguage !== next.translationLanguage ||
+      previous.translationPrompt !== next.translationPrompt,
+    invalidatedSummaryPromptIds,
+  };
+}
+
+export function invalidateArticleSummaries(
+  articles: Article[],
+  promptIds: ReadonlySet<string | null>,
+): Article[] {
+  if (promptIds.size === 0) return articles;
+  return articles.map((article) =>
+    article.aiSummary && promptIds.has(article.aiSummary.promptId)
+      ? { ...article, aiSummary: null }
+      : article,
+  );
+}
+
+export function updateBootstrapCounts(
+  bootstrap: BootstrapData,
+  article: Article,
+  unreadDelta: number,
+  starredDelta: number,
+): BootstrapData {
+  return {
+    ...bootstrap,
+    counts: {
+      ...bootstrap.counts,
+      unread: Math.max(0, bootstrap.counts.unread + unreadDelta),
+      starred: Math.max(0, bootstrap.counts.starred + starredDelta),
+    },
+    feeds: bootstrap.feeds.map((feed) =>
+      feed.id === article.feedId
+        ? { ...feed, unreadCount: Math.max(0, feed.unreadCount + unreadDelta) }
+        : feed,
+    ),
+    folders: bootstrap.folders.map((folder) =>
+      folder.id === article.folderId
+        ? { ...folder, unreadCount: Math.max(0, folder.unreadCount + unreadDelta) }
+        : folder,
+    ),
+  };
+}
