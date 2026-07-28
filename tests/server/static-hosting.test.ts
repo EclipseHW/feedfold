@@ -3,9 +3,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createApp } from "../../src/server/app.js";
-import { AuthService } from "../../src/server/auth.js";
-import { AppDatabase } from "../../src/server/db.js";
+import { AppDatabase } from "../../src/server/database.js";
 import { ExtractionQueue } from "../../src/server/extraction.js";
+import { AuthService } from "../../src/server/features/auth/service.js";
 import { FeedRefreshService } from "../../src/server/refresh.js";
 
 describe("production app hosting", () => {
@@ -19,9 +19,9 @@ describe("production app hosting", () => {
     ]);
 
     const database = new AppDatabase(join(directory, "echovale.db"), 20);
-    const authService = new AuthService(database, 20);
-    const extraction = new ExtractionQueue(database, 1, 1_000);
-    const refresh = new FeedRefreshService(database, 1, 1_000);
+    const authService = new AuthService(database.auth, 20);
+    const extraction = new ExtractionQueue(database.extractions, 1, 1_000);
+    const refresh = new FeedRefreshService(database.feeds, 1, 1_000);
     const app = await createApp({
       database,
       authService,

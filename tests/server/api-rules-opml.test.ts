@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/server/app.js";
-import { AuthService } from "../../src/server/auth.js";
-import { AppDatabase } from "../../src/server/db.js";
+import { AppDatabase } from "../../src/server/database.js";
 import { ExtractionQueue } from "../../src/server/extraction.js";
+import { AuthService } from "../../src/server/features/auth/service.js";
 import { FeedRefreshService } from "../../src/server/refresh.js";
 import {
   DEFAULT_ARTICLE_SUMMARY_PROMPT,
@@ -44,9 +44,9 @@ describe("live API, OPML, and filtering rules", () => {
     const directory = await mkdtemp(join(tmpdir(), "echovale-auth-test-"));
     cleanups.push(() => rm(directory, { recursive: true, force: true }));
     const database = new AppDatabase(join(directory, "echovale.db"));
-    const authService = new AuthService(database);
-    const extraction = new ExtractionQueue(database, 1, 1_000);
-    const refresh = new FeedRefreshService(database, 1, 1_000);
+    const authService = new AuthService(database.auth);
+    const extraction = new ExtractionQueue(database.extractions, 1, 1_000);
+    const refresh = new FeedRefreshService(database.feeds, 1, 1_000);
     const app = await createApp({
       database,
       authService,
@@ -162,7 +162,7 @@ describe("live API, OPML, and filtering rules", () => {
     const readerFeed = readerFeedResponse.json() as { id: number };
     const partnerFeed = partnerFeedResponse.json() as { id: number };
 
-    database.markFeedSuccess(readerFeed.id, {
+    database.feeds.completeRefresh(readerFeed.id, {
       httpStatus: 200,
       etag: null,
       lastModified: null,
@@ -184,7 +184,7 @@ describe("live API, OPML, and filtering rules", () => {
         ],
       },
     });
-    const articleId = database.sqlite
+    const articleId = database.connection
       .prepare("SELECT id FROM articles WHERE feed_id = ? AND external_id = ?")
       .pluck()
       .get(readerFeed.id, "private-story") as number;
@@ -254,7 +254,7 @@ describe("live API, OPML, and filtering rules", () => {
     });
     expect(crossAccountRefresh.json()).toEqual({ requested: 0, refreshingFeedIds: [] });
 
-    database.markFeedSuccess(readerFeed.id, {
+    database.feeds.completeRefresh(readerFeed.id, {
       httpStatus: 200,
       etag: null,
       lastModified: null,
@@ -312,8 +312,8 @@ describe("live API, OPML, and filtering rules", () => {
         })
       ).json(),
     ).toEqual({ updated: 1 });
-    expect(database.getArticle(1, articleId)).toMatchObject({ isRead: true });
-    database.updateArticleState(1, articleId, { isRead: false });
+    expect(database.articles.getArticle(1, articleId)).toMatchObject({ isRead: true });
+    database.articles.updateArticleState(1, articleId, { isRead: false });
     expect(
       (
         await app.inject({
@@ -558,12 +558,12 @@ describe("live API, OPML, and filtering rules", () => {
     const directory = await mkdtemp(join(tmpdir(), "echovale-api-test-"));
     cleanups.push(() => rm(directory, { recursive: true, force: true }));
     const database = new AppDatabase(join(directory, "echovale.db"));
-    const authService = new AuthService(database);
+    const authService = new AuthService(database.auth);
     expect(
       authService.register(TEST_ACCOUNTS[0].username, TEST_ACCOUNTS[0].password),
     ).not.toBeNull();
-    const extraction = new ExtractionQueue(database, 2, 2_000, fetch);
-    const refresh = new FeedRefreshService(database, 2, 2_000, undefined, fetch);
+    const extraction = new ExtractionQueue(database.extractions, 2, 2_000, fetch);
+    const refresh = new FeedRefreshService(database.feeds, 2, 2_000, undefined, fetch);
     const app = await createApp({
       database,
       authService,
@@ -648,14 +648,14 @@ describe("live API, OPML, and filtering rules", () => {
       }),
     });
     expect(rule.matchedCount).toBe(1);
-    database.recomputeRulesForArticle(
-      database.sqlite
+    database.rules.recomputeRulesForArticle(
+      database.connection
         .prepare("SELECT id FROM articles WHERE external_id = 'noise'")
         .pluck()
         .get() as number,
     );
-    database.recomputeRulesForArticle(
-      database.sqlite
+    database.rules.recomputeRulesForArticle(
+      database.connection
         .prepare("SELECT id FROM articles WHERE external_id = 'noise'")
         .pluck()
         .get() as number,

@@ -1,6 +1,6 @@
 import { JSDOM } from "jsdom";
 import { firstSafeImageUrl } from "./article-image.js";
-import type { ParsedArticle, ParsedFeed } from "./db.js";
+import type { ParsedArticle, ParsedFeed } from "./features/shared.js";
 import { plainText } from "./feed-parser.js";
 
 const TELEGRAM_HOST = "t.me";

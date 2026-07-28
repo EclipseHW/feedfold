@@ -1,5 +1,6 @@
 import type { FeedErrorKind, FeedHealthStatus, RefreshResult } from "../shared/types.js";
-import type { AppDatabase, FeedRecord, ParsedFeed } from "./db.js";
+import type { FeedService } from "./features/feeds/service.js";
+import type { FeedRecord, ParsedFeed } from "./features/shared.js";
 import { fetchFeed, nitterFeedUrl } from "./feed-http.js";
 import { parseAndNormalizeFeed, parseAndNormalizeWordPressPosts } from "./feed-parser.js";
 import { parseAndNormalizeTelegramFeed, telegramChannelUrls } from "./telegram-feed.js";
@@ -89,7 +90,7 @@ export class FeedRefreshService {
   private idleResolvers: Array<() => void> = [];
 
   constructor(
-    private readonly database: AppDatabase,
+    private readonly feeds: FeedService,
     private readonly concurrency = 3,
     private readonly timeoutMs = 15_000,
     private readonly webFeedService?: WebFeedService,
@@ -98,20 +99,20 @@ export class FeedRefreshService {
 
   start(): void {
     if (this.stopped || this.timer) return;
-    void this.request(this.database.getDueFeedIds());
+    void this.request(this.feeds.getDueFeedIds());
     this.timer = setInterval(() => {
-      void this.request(this.database.getDueFeedIds());
+      void this.request(this.feeds.getDueFeedIds());
     }, 30_000);
     this.timer.unref();
   }
 
   request(feedIds?: number[]): RefreshResult {
     if (this.stopped) return { requested: 0, refreshingFeedIds: [] };
-    const candidates = this.database.getRefreshCandidates(feedIds);
+    const candidates = this.feeds.getRefreshCandidates(feedIds);
     const accepted = candidates.filter((feed) => !this.requestedIds.has(feed.id));
     for (const feed of accepted) {
       this.requestedIds.add(feed.id);
-      this.database.markFeedRefreshing(feed.id);
+      this.feeds.markRefreshing(feed.id);
       this.pending.push(feed);
     }
     this.pump();
@@ -138,7 +139,7 @@ export class FeedRefreshService {
     try {
       if (feed.sourceKind === "web") {
         if (!this.webFeedService) {
-          this.database.markFeedFailure(feed.id, {
+          this.feeds.failRefresh(feed.id, {
             httpStatus: null,
             error: "Web feed loading is unavailable on this server",
             errorKind: "unsupported_content",
@@ -150,7 +151,7 @@ export class FeedRefreshService {
         }
         const result = await this.webFeedService.extract(feed.webConfig);
         httpStatus = result.httpStatus;
-        this.database.markFeedSuccess(feed.id, {
+        this.feeds.completeRefresh(feed.id, {
           httpStatus: result.httpStatus ?? 200,
           etag: null,
           lastModified: null,
@@ -178,7 +179,7 @@ export class FeedRefreshService {
       });
       httpStatus = response.status;
       if (response.status === 304) {
-        this.database.markFeedSuccess(feed.id, {
+        this.feeds.completeRefresh(feed.id, {
           httpStatus: response.status,
           etag: response.headers.get("etag"),
           lastModified: response.headers.get("last-modified"),
@@ -211,7 +212,7 @@ export class FeedRefreshService {
           ? parseAndNormalizeTelegramFeed(feedSource, telegram.channelUrl)
           : parseAndNormalizeFeed(feedSource, response.url || sourceUrl);
       }
-      this.database.markFeedSuccess(feed.id, {
+      this.feeds.completeRefresh(feed.id, {
         httpStatus: response.status,
         etag: response.headers.get("etag"),
         lastModified: response.headers.get("last-modified"),
@@ -220,7 +221,7 @@ export class FeedRefreshService {
       });
     } catch (error) {
       const failure = failureDetails(error, feed.sourceKind, httpStatus);
-      this.database.markFeedFailure(feed.id, {
+      this.feeds.failRefresh(feed.id, {
         ...failure,
         error: message(error),
         retryMinutes: feed.pollIntervalMinutes,
@@ -258,7 +259,7 @@ export class FeedRefreshService {
     this.timer = null;
     for (const feed of this.pending.splice(0)) {
       this.requestedIds.delete(feed.id);
-      this.database.markFeedFailure(feed.id, {
+      this.feeds.failRefresh(feed.id, {
         httpStatus: null,
         error: "Refresh stopped during server shutdown",
         errorKind: "network",

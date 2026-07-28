@@ -17,7 +17,7 @@ import type {
   WebFeedField,
   WebFeedSelectors,
 } from "../shared/types.js";
-import type { ParsedArticle, ParsedFeed } from "./db.js";
+import type { ParsedArticle, ParsedFeed } from "./features/shared.js";
 import {
   type PinnedAddress,
   PinnedPublicProxy,

@@ -8,9 +8,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { api, type FeedInput } from "../../src/client/api.js";
 import { ReaderDataResource } from "../../src/client/data-resource.js";
 import { createApp } from "../../src/server/app.js";
-import { AuthService } from "../../src/server/auth.js";
-import { AppDatabase } from "../../src/server/db.js";
+import { AppDatabase } from "../../src/server/database.js";
 import { ExtractionQueue } from "../../src/server/extraction.js";
+import { AuthService } from "../../src/server/features/auth/service.js";
 import { FeedRefreshService } from "../../src/server/refresh.js";
 import type { ArticlePage, BootstrapData, Feed, Rule } from "../../src/shared/types.js";
 
@@ -92,8 +92,8 @@ describe("reader data resource", () => {
   it("replaces a stale add-feed snapshot after ingestion and reloads articles", async () => {
     const directory = await mkdtemp(join(tmpdir(), "echovale-data-resource-test-"));
     const database = new AppDatabase(join(directory, "echovale.db"));
-    const authService = new AuthService(database);
-    const extraction = new ExtractionQueue(database, 1, 1_000);
+    const authService = new AuthService(database.auth);
+    const extraction = new ExtractionQueue(database.extractions, 1, 1_000);
     const fetchStarted = [deferred(), deferred()];
     const fetchRelease = [deferred(), deferred()];
     let fetchIndex = 0;
@@ -107,7 +107,7 @@ describe("reader data resource", () => {
         headers: { "Content-Type": "application/rss+xml" },
       });
     };
-    const refresh = new FeedRefreshService(database, 1, 1_000, undefined, feedFetcher);
+    const refresh = new FeedRefreshService(database.feeds, 1, 1_000, undefined, feedFetcher);
     const app = await createApp({
       database,
       authService,
