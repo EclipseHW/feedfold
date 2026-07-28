@@ -25,10 +25,12 @@ import type {
   SessionUser,
   WebFeedAnalysis,
   WebFeedConfig,
-} from "../shared/types";
+} from "../shared/types.js";
 
 export const AUTH_REQUIRED_EVENT = "echovale:auth-required";
-const appBase = import.meta.env.BASE_URL.replace(/\/$/, "");
+const appBase =
+  (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL?.replace(/\/$/, "") ??
+  "";
 
 export function appUrl(path: string): string {
   return `${appBase}${path}`;
@@ -98,6 +100,10 @@ export interface FeedInput {
   webConfig?: WebFeedConfig;
 }
 
+export type FeedUpdateInput = Partial<Omit<FeedInput, "sourceKind" | "webConfig">> & {
+  paused?: boolean;
+};
+
 export interface FolderInput {
   name: string;
   parentId: number | null;
@@ -138,11 +144,13 @@ export const api = {
 
   logout: () => request<void>("/api/auth/logout", { method: "POST" }),
 
-  bootstrap: () => request<BootstrapData>("/api/bootstrap"),
+  bootstrap: (signal?: AbortSignal) => request<BootstrapData>("/api/bootstrap", { signal }),
 
-  articles: (query: ArticleQuery) => request<ArticlePage>(`/api/articles?${queryString(query)}`),
+  articles: (query: ArticleQuery, signal?: AbortSignal) =>
+    request<ArticlePage>(`/api/articles?${queryString(query)}`, { signal }),
 
-  article: (id: number) => request<Article>(`/api/articles/${id}`),
+  article: (id: number, signal?: AbortSignal) =>
+    request<Article>(`/api/articles/${id}`, { signal }),
 
   loadFullContent: (id: number) =>
     request<Article>(`/api/articles/${id}/extract`, { method: "POST" }),
@@ -194,15 +202,10 @@ export const api = {
 
   feed: (id: number) => request<Feed>(`/api/feeds/${id}`),
 
-  updateFeed: (
-    id: number,
-    input: Partial<Omit<FeedInput, "sourceKind" | "webConfig">> & { paused?: boolean },
-  ) => request<Feed>(`/api/feeds/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+  updateFeed: (id: number, input: FeedUpdateInput) =>
+    request<Feed>(`/api/feeds/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
 
   deleteFeed: (id: number) => request<void>(`/api/feeds/${id}`, { method: "DELETE" }),
-
-  refreshFeed: (id: number) =>
-    request<RefreshResult>(`/api/feeds/${id}/refresh`, { method: "POST" }),
 
   analyzeWebFeed: (id: number) =>
     request<WebFeedAnalysis>(`/api/feeds/${id}/web-feed/analyze`, { method: "POST" }),
@@ -221,8 +224,8 @@ export const api = {
 
   deleteFolder: (id: number) => request<void>(`/api/folders/${id}`, { method: "DELETE" }),
 
-  async rules(): Promise<Rule[]> {
-    const body = await request<{ rules: Rule[] }>("/api/rules");
+  async rules(signal?: AbortSignal): Promise<Rule[]> {
+    const body = await request<{ rules: Rule[] }>("/api/rules", { signal });
     return body.rules;
   },
 

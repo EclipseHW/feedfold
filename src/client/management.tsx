@@ -65,6 +65,7 @@ import type {
 } from "../shared/types";
 import { DUPLICATE_ARTICLE_WINDOW_DAYS } from "../shared/types";
 import { api, appUrl, errorMessage, type RuleInput } from "./api";
+import type { ReaderDataMutations } from "./data-resource";
 import {
   type FeedStatusFilter,
   type FeedTypeFilter,
@@ -207,10 +208,10 @@ function PageHeader({
 }
 
 function ImportOpmlButton({
-  onImported,
+  mutations,
   showToast,
 }: {
-  onImported: () => Promise<void> | void;
+  mutations: ReaderDataMutations;
   showToast: (message: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -222,11 +223,10 @@ function ImportOpmlButton({
     if (!file) return;
     setBusy(true);
     try {
-      const result = await api.importOpml(file);
+      const result = await mutations.importOpml(file);
       const notes = [`${result.imported} imported`, `${result.duplicates} duplicates`];
       if (result.failed.length > 0) notes.push(`${result.failed.length} failed`);
       showToast(`OPML import complete: ${notes.join(", ")}`);
-      await onImported();
     } catch (error) {
       showToast(`OPML import failed: ${errorMessage(error)}`);
     } finally {
@@ -263,8 +263,8 @@ function ImportOpmlButton({
 export function FeedsPage({
   bootstrap,
   addFeedSourceUrl,
+  mutations,
   onMenu,
-  onReload,
   onRefresh,
   onEditWebFeed,
   onCloseAddFeedRoute,
@@ -272,8 +272,8 @@ export function FeedsPage({
 }: {
   bootstrap: BootstrapData;
   addFeedSourceUrl: string | null;
+  mutations: ReaderDataMutations;
   onMenu: () => void;
-  onReload: () => Promise<void> | void;
   onRefresh: (feedId: number) => void;
   onEditWebFeed: (feed: Feed) => void;
   onCloseAddFeedRoute: () => void;
@@ -345,7 +345,7 @@ export function FeedsPage({
         actions={
           activeTab === "subscriptions" ? (
             <>
-              <ImportOpmlButton onImported={onReload} showToast={showToast} />
+              <ImportOpmlButton mutations={mutations} showToast={showToast} />
               <a
                 className="secondary-button"
                 href={appUrl("/api/opml/export")}
@@ -434,11 +434,11 @@ export function FeedsPage({
               folders={bootstrap.folders}
               initialSourceUrl={addFeedSourceUrl ?? ""}
               motionState={addFeedPresence.state}
+              mutations={mutations}
               onCancel={closeAddFeed}
-              onSaved={async (feed) => {
+              onSaved={(feed) => {
                 showToast(`Added ${feed.title}`);
                 closeAddFeed();
-                await onReload();
               }}
             />
           ) : null}
@@ -547,7 +547,7 @@ export function FeedsPage({
                         key={feed.id}
                         feed={feed}
                         folders={bootstrap.folders}
-                        onReload={onReload}
+                        mutations={mutations}
                         onRefresh={() => onRefresh(feed.id)}
                         onEditSelection={() => onEditWebFeed(feed)}
                         showToast={showToast}
@@ -579,11 +579,11 @@ export function FeedsPage({
           {addFolderOpen ? (
             <FolderForm
               folders={bootstrap.folders}
+              mutations={mutations}
               onCancel={() => setAddFolderOpen(false)}
-              onSaved={async (folder) => {
+              onSaved={(folder) => {
                 showToast(`Created ${folder.name}`);
                 setAddFolderOpen(false);
-                await onReload();
               }}
               showToast={showToast}
             />
@@ -610,7 +610,7 @@ export function FeedsPage({
                   folder={folder}
                   folders={bootstrap.folders}
                   feedCount={bootstrap.feeds.filter((feed) => feed.folderId === folder.id).length}
-                  onReload={onReload}
+                  mutations={mutations}
                   showToast={showToast}
                 />
               ))}
@@ -674,6 +674,7 @@ function AddFeedForm({
   folders,
   initialSourceUrl,
   motionState,
+  mutations,
   onCancel,
   onSaved,
 }: {
@@ -681,6 +682,7 @@ function AddFeedForm({
   folders: Folder[];
   initialSourceUrl: string;
   motionState: MotionState;
+  mutations: ReaderDataMutations;
   onCancel: () => void;
   onSaved: (feed: Feed) => Promise<void> | void;
 }) {
@@ -783,7 +785,7 @@ function AddFeedForm({
     setError(null);
     try {
       const feed = preview
-        ? await api.createFeed({
+        ? await mutations.createFeed({
             title: title.trim() || preview.title,
             feedUrl: preview.feedUrl,
             siteUrl: preview.siteUrl,
@@ -791,7 +793,7 @@ function AddFeedForm({
             sourceKind: "published",
           })
         : selectedCandidate
-          ? await api.createFeed({
+          ? await mutations.createFeed({
               title: title.trim() || webAnalysis?.title,
               feedUrl: selectedCandidate.config.pageUrl,
               siteUrl: selectedCandidate.config.pageUrl,
@@ -1164,14 +1166,14 @@ function feedFailureLabel(feed: Feed): string {
 function FeedRow({
   feed,
   folders,
-  onReload,
+  mutations,
   onRefresh,
   onEditSelection,
   showToast,
 }: {
   feed: Feed;
   folders: Folder[];
-  onReload: () => Promise<void> | void;
+  mutations: ReaderDataMutations;
   onRefresh: () => void;
   onEditSelection: () => void;
   showToast: (message: string) => void;
@@ -1186,7 +1188,7 @@ function FeedRow({
   const save = async () => {
     setBusy(true);
     try {
-      await api.updateFeed(
+      await mutations.updateFeed(
         feed.id,
         feed.sourceKind === "web"
           ? { title: title.trim(), folderId }
@@ -1194,7 +1196,6 @@ function FeedRow({
       );
       showToast(`Saved ${title.trim()}`);
       setEditing(false);
-      await onReload();
     } catch (error) {
       showToast(`Could not save feed: ${errorMessage(error)}`);
     } finally {
@@ -1205,9 +1206,8 @@ function FeedRow({
   const togglePaused = async () => {
     setBusy(true);
     try {
-      await api.updateFeed(feed.id, { paused: !feed.paused });
+      await mutations.updateFeed(feed.id, { paused: !feed.paused });
       showToast(feed.paused ? `Resumed ${feed.title}` : `Paused ${feed.title}`);
-      await onReload();
     } catch (error) {
       showToast(`Could not update feed: ${errorMessage(error)}`);
     } finally {
@@ -1219,9 +1219,8 @@ function FeedRow({
     if (!window.confirm(`Delete “${feed.title}” and all of its articles?`)) return;
     setBusy(true);
     try {
-      await api.deleteFeed(feed.id);
+      await mutations.deleteFeed(feed.id);
       showToast(`Deleted ${feed.title}`);
-      await onReload();
     } catch (error) {
       showToast(`Could not delete feed: ${errorMessage(error)}`);
     } finally {
@@ -1417,6 +1416,7 @@ export function FolderForm({
   folders,
   initial,
   defaultParentId = null,
+  mutations,
   onCancel,
   onSaved,
   showToast,
@@ -1424,6 +1424,7 @@ export function FolderForm({
   folders: Folder[];
   initial?: Folder;
   defaultParentId?: number | null;
+  mutations: ReaderDataMutations;
   onCancel: () => void;
   onSaved: (folder: Folder) => Promise<void> | void;
   showToast: (message: string) => void;
@@ -1458,8 +1459,8 @@ export function FolderForm({
     setSaving(true);
     try {
       const folder = initial
-        ? await api.updateFolder(initial.id, { name: name.trim(), parentId, sortDirection })
-        : await api.createFolder({ name: name.trim(), parentId, sortDirection });
+        ? await mutations.updateFolder(initial.id, { name: name.trim(), parentId, sortDirection })
+        : await mutations.createFolder({ name: name.trim(), parentId, sortDirection });
       await onSaved(folder);
     } catch (error) {
       showToast(`Could not save folder: ${errorMessage(error)}`);
@@ -1524,13 +1525,13 @@ function FolderRow({
   folder,
   folders,
   feedCount,
-  onReload,
+  mutations,
   showToast,
 }: {
   folder: Folder;
   folders: Folder[];
   feedCount: number;
-  onReload: () => Promise<void> | void;
+  mutations: ReaderDataMutations;
   showToast: (message: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
@@ -1542,9 +1543,8 @@ function FolderRow({
     )
       return;
     try {
-      await api.deleteFolder(folder.id);
+      await mutations.deleteFolder(folder.id);
       showToast(`Deleted folder ${folder.name}`);
-      await onReload();
     } catch (error) {
       showToast(`Could not delete folder: ${errorMessage(error)}`);
     }
@@ -1556,11 +1556,11 @@ function FolderRow({
         <FolderForm
           folders={folders}
           initial={folder}
+          mutations={mutations}
           onCancel={() => setEditing(false)}
-          onSaved={async () => {
+          onSaved={() => {
             showToast(`Saved ${folder.name}`);
             setEditing(false);
-            await onReload();
           }}
           showToast={showToast}
         />
@@ -1607,10 +1607,11 @@ export function RulesPage({
   loading,
   error,
   draft,
+  mutations,
   onMenu,
   onClearDraft,
   onReturnToArticle,
-  onReload,
+  onRetry,
   showToast,
 }: {
   bootstrap: BootstrapData;
@@ -1618,10 +1619,11 @@ export function RulesPage({
   loading: boolean;
   error: string | null;
   draft: RuleFormDraft | null;
+  mutations: ReaderDataMutations;
   onMenu: () => void;
   onClearDraft: () => void;
   onReturnToArticle: (draft: RuleFormDraft) => void;
-  onReload: () => Promise<void> | void;
+  onRetry: () => Promise<void> | void;
   showToast: (message: string) => void;
 }) {
   const [formOpen, setFormOpen] = useState(draft !== null);
@@ -1676,6 +1678,7 @@ export function RulesPage({
           initial={displayedEditing ?? undefined}
           preset={displayedEditing ? undefined : (displayedDraft ?? undefined)}
           motionState={formPresence.state}
+          mutations={mutations}
           onCancel={() => {
             const returnDraft = editing ? null : draft;
             onClearDraft();
@@ -1687,7 +1690,7 @@ export function RulesPage({
             }
             ruleFormOpenerRef.current?.focus();
           }}
-          onSaved={async (rule) => {
+          onSaved={(rule) => {
             const returnDraft = editing ? null : draft;
             showToast(editing ? `Saved ${rule.name}` : `Added ${rule.name}`);
             onClearDraft();
@@ -1698,7 +1701,6 @@ export function RulesPage({
             } else {
               addRuleTriggerRef.current?.focus();
             }
-            await onReload();
           }}
           showToast={showToast}
         />
@@ -1723,7 +1725,7 @@ export function RulesPage({
           <div className="section-error" role="alert">
             <AlertTriangle aria-hidden="true" size={18} />
             <span>{error}</span>
-            <button className="secondary-button" type="button" onClick={() => void onReload()}>
+            <button className="secondary-button" type="button" onClick={() => void onRetry()}>
               Try again
             </button>
           </div>
@@ -1767,6 +1769,7 @@ export function RulesPage({
                     key={rule.id}
                     rule={rule}
                     bootstrap={bootstrap}
+                    mutations={mutations}
                     onEdit={(trigger) => {
                       ruleFormOpenerRef.current = trigger;
                       onClearDraft();
@@ -1775,7 +1778,6 @@ export function RulesPage({
                       setFormOpen(true);
                       window.scrollTo({ top: 0 });
                     }}
-                    onReload={onReload}
                     showToast={showToast}
                   />
                 ))}
@@ -1799,6 +1801,7 @@ export function RuleForm({
   initial,
   preset,
   motionState,
+  mutations,
   onCancel,
   onSaved,
   showToast,
@@ -1807,6 +1810,7 @@ export function RuleForm({
   initial?: Rule;
   preset?: RuleFormPreset;
   motionState: MotionState;
+  mutations: ReaderDataMutations;
   onCancel: () => void;
   onSaved: (rule: Rule) => Promise<void> | void;
   showToast: (message: string) => void;
@@ -1878,7 +1882,9 @@ export function RuleForm({
     };
     setSaving(true);
     try {
-      const rule = initial ? await api.updateRule(initial.id, input) : await api.createRule(input);
+      const rule = initial
+        ? await mutations.updateRule(initial.id, input)
+        : await mutations.createRule(input);
       await onSaved(rule);
     } catch (error) {
       showToast(`Could not save rule: ${errorMessage(error)}`);
@@ -2147,14 +2153,14 @@ export function RuleForm({
 function RuleRow({
   rule,
   bootstrap,
+  mutations,
   onEdit,
-  onReload,
   showToast,
 }: {
   rule: Rule;
   bootstrap: BootstrapData;
+  mutations: ReaderDataMutations;
   onEdit: (trigger: HTMLButtonElement) => void;
-  onReload: () => Promise<void> | void;
   showToast: (message: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -2172,9 +2178,8 @@ function RuleRow({
   const toggle = async () => {
     setBusy(true);
     try {
-      await api.updateRule(rule.id, { enabled: !rule.enabled });
+      await mutations.updateRule(rule.id, { enabled: !rule.enabled });
       showToast(rule.enabled ? `Disabled ${rule.name}` : `Enabled ${rule.name}`);
-      await onReload();
     } catch (error) {
       showToast(`Could not update rule: ${errorMessage(error)}`);
     } finally {
@@ -2185,9 +2190,8 @@ function RuleRow({
     if (!window.confirm(`Delete rule “${rule.name}”?`)) return;
     setBusy(true);
     try {
-      await api.deleteRule(rule.id);
+      await mutations.deleteRule(rule.id);
       showToast(`Deleted ${rule.name}`);
-      await onReload();
     } catch (error) {
       showToast(`Could not delete rule: ${errorMessage(error)}`);
     } finally {
@@ -2986,24 +2990,24 @@ export function SettingsPage({
   aiSettings,
   theme,
   fontSize,
+  mutations,
   onMenu,
   onTheme,
   onFontSize,
   onSettings,
   onAiSettings,
-  onReload,
   showToast,
 }: {
   settings: AppSettings;
   aiSettings: AiSettings;
   theme: Theme;
   fontSize: number;
+  mutations: ReaderDataMutations;
   onMenu: () => void;
   onTheme: (theme: Theme) => void;
   onFontSize: (value: number | ((current: number) => number)) => void;
   onSettings: (settings: AppSettings) => void;
   onAiSettings: (settings: AiSettings) => void;
-  onReload: () => Promise<void> | void;
   showToast: (message: string) => void;
 }) {
   const [saving, setSaving] = useState(false);
@@ -3257,7 +3261,7 @@ export function SettingsPage({
             <p>Imports skip subscriptions that already exist.</p>
           </div>
           <div className="settings-actions">
-            <ImportOpmlButton onImported={onReload} showToast={showToast} />
+            <ImportOpmlButton mutations={mutations} showToast={showToast} />
             <a
               className="secondary-button"
               href={appUrl("/api/opml/export")}
