@@ -91,6 +91,50 @@ function titles(database: AppDatabase, state: "all" | "unread" = "all"): string[
 }
 
 describe("article filtering rules", () => {
+  it("applies saved rules when a feed refresh stores several articles at once", () => {
+    const database = new AppDatabase(":memory:");
+    databases.push(database);
+    const feed = database.createFeed(TEST_USER_ID, {
+      title: "Incoming",
+      feedUrl: "https://incoming.example.test/feed",
+    });
+    const hiddenRule = database.createRule(TEST_USER_ID, {
+      name: "Hide hidden stories",
+      feedId: feed.id,
+      conditions: [{ field: "title", pattern: "hidden" }],
+      conditionOperator: "and",
+      action: "hide",
+    });
+    const readRule = database.createRule(TEST_USER_ID, {
+      name: "Read robot stories",
+      feedId: feed.id,
+      conditions: [{ field: "author", pattern: "robot" }],
+      conditionOperator: "and",
+      action: "mark_read",
+    });
+
+    database.markFeedSuccess(feed.id, {
+      httpStatus: 200,
+      etag: null,
+      lastModified: null,
+      pollIntervalMinutes: 20,
+      parsed: {
+        title: "Incoming",
+        siteUrl: null,
+        articles: [
+          article("hidden", "Hidden story", "Person", "2026-07-16T12:00:00.000Z"),
+          article("robot", "Robot story", "Robot", "2026-07-16T11:00:00.000Z"),
+          article("plain", "Plain story", "Person", "2026-07-16T10:00:00.000Z"),
+        ],
+      },
+    });
+
+    expect(database.getRule(TEST_USER_ID, hiddenRule.id)?.matchedCount).toBe(1);
+    expect(database.getRule(TEST_USER_ID, readRule.id)?.matchedCount).toBe(1);
+    expect(new Set(titles(database))).toEqual(new Set(["Robot story", "Plain story"]));
+    expect(titles(database, "unread")).toEqual(["Plain story"]);
+  });
+
   it("applies one AND or OR operator to every condition and leaves articles outside scope alone", () => {
     const { database, folderId, scopedFeedId, outsideFeedId } = seededDatabase();
     const conditions = [

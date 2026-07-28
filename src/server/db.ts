@@ -1,8 +1,4 @@
 import Sqlite from "better-sqlite3";
-import {
-  DEFAULT_ARTICLE_SUMMARY_PROMPT,
-  DEFAULT_ARTICLE_TRANSLATION_PROMPT,
-} from "../shared/ai-prompts.js";
 import type {
   AiArticleSourceKind,
   AiCustomPrompt,
@@ -32,9 +28,9 @@ import type {
   RuleField,
   WebFeedConfig,
 } from "../shared/types.js";
-import { cleanArticleHtml, removeStoredSrcsetsWithFallback } from "./article-html.js";
-import { firstSafeImageUrl } from "./article-image.js";
-import { articleMediaRuleText, youtubeMediaFromUrl } from "./article-media.js";
+import { cleanArticleHtml } from "./article-html.js";
+import { articleMediaRuleText } from "./article-media.js";
+import { migrateDatabase } from "./migrations.js";
 
 interface FeedRecordBase {
   id: number;
@@ -114,697 +110,6 @@ const feedPollIntervalSql = `CASE
   WHEN feeds.source_kind = 'web' THEN ${WEB_FEED_POLL_INTERVAL_MINUTES}
   ELSE settings.poll_interval_minutes
 END`;
-
-interface Migration {
-  sql: string;
-  after?: (database: Sqlite.Database) => void;
-  foreignKeysOff?: boolean;
-}
-
-type ArticleStructureTag = "blockquote" | "table";
-
-function sqlString(value: string): string {
-  return `'${value.replaceAll("'", "''")}'`;
-}
-
-function recleanStructuredArticleHtml(
-  database: Sqlite.Database,
-  tags: ArticleStructureTag[],
-): void {
-  for (const column of ["feed_content_html", "content_html"] as const) {
-    const structureCondition = tags.map((tag) => `${column} LIKE '%<${tag}%'`).join(" OR ");
-    const selectBatch = database.prepare(
-      `SELECT id, url, ${column} AS html
-       FROM articles
-       WHERE id > ? AND (${structureCondition})
-       ORDER BY id
-       LIMIT 50`,
-    );
-    const update = database.prepare(`UPDATE articles SET ${column} = ? WHERE id = ?`);
-    let lastId = 0;
-    while (true) {
-      const rows = selectBatch.all(lastId) as Array<{
-        id: number;
-        url: string | null;
-        html: string;
-      }>;
-      if (rows.length === 0) break;
-      for (const row of rows) {
-        update.run(cleanArticleHtml(row.html, row.url ?? undefined), row.id);
-      }
-      lastId = rows.at(-1)?.id ?? lastId;
-    }
-  }
-}
-
-function repairStoredArticleSrcsets(database: Sqlite.Database): void {
-  for (const column of ["feed_content_html", "content_html"] as const) {
-    const selectBatch = database.prepare(
-      `SELECT id, ${column} AS html
-       FROM articles
-       WHERE id > ? AND ${column} LIKE '%srcset=%'
-       ORDER BY id
-       LIMIT 50`,
-    );
-    const update = database.prepare(`UPDATE articles SET ${column} = ? WHERE id = ?`);
-    let lastId = 0;
-    while (true) {
-      const rows = selectBatch.all(lastId) as Array<{ id: number; html: string }>;
-      if (rows.length === 0) break;
-      for (const row of rows) {
-        const repairedHtml = removeStoredSrcsetsWithFallback(row.html);
-        if (repairedHtml !== row.html) update.run(repairedHtml, row.id);
-      }
-      lastId = rows.at(-1)?.id ?? lastId;
-    }
-  }
-}
-
-const migrations: Migration[] = [
-  {
-    sql: `
-    CREATE TABLE folders (
-      id INTEGER PRIMARY KEY,
-      parent_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
-      name TEXT NOT NULL,
-      position INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE feeds (
-      id INTEGER PRIMARY KEY,
-      folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
-      title TEXT NOT NULL,
-      feed_url TEXT NOT NULL UNIQUE,
-      site_url TEXT,
-      paused INTEGER NOT NULL DEFAULT 0,
-      refreshing INTEGER NOT NULL DEFAULT 0,
-      etag TEXT,
-      last_modified TEXT,
-      last_attempt_at TEXT,
-      last_success_at TEXT,
-      last_http_status INTEGER,
-      last_error TEXT,
-      next_poll_at TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE articles (
-      id INTEGER PRIMARY KEY,
-      feed_id INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
-      external_id TEXT NOT NULL,
-      title TEXT NOT NULL,
-      url TEXT,
-      author TEXT,
-      published_at TEXT,
-      discovered_at TEXT NOT NULL,
-      summary TEXT NOT NULL DEFAULT '',
-      feed_content_html TEXT,
-      content_html TEXT,
-      content_source TEXT CHECK(content_source IN ('article', 'feed')),
-      extraction_status TEXT NOT NULL DEFAULT 'pending'
-        CHECK(extraction_status IN ('pending', 'processing', 'complete', 'failed', 'feed')),
-      extraction_error TEXT,
-      is_read INTEGER NOT NULL DEFAULT 0,
-      is_starred INTEGER NOT NULL DEFAULT 0,
-      UNIQUE(feed_id, external_id)
-    );
-
-    CREATE TABLE rules (
-      id INTEGER PRIMARY KEY,
-      name TEXT NOT NULL,
-      feed_id INTEGER REFERENCES feeds(id) ON DELETE CASCADE,
-      folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
-      field TEXT NOT NULL CHECK(field IN ('title', 'author', 'summary', 'content', 'any')),
-      pattern TEXT NOT NULL,
-      action TEXT NOT NULL CHECK(action IN ('hide', 'mark_read')),
-      enabled INTEGER NOT NULL DEFAULT 1,
-      matched_count INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    );
-
-    CREATE TABLE article_rule_matches (
-      article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-      rule_id INTEGER NOT NULL REFERENCES rules(id) ON DELETE CASCADE,
-      PRIMARY KEY(article_id, rule_id)
-    );
-
-    CREATE TABLE settings (
-      id INTEGER PRIMARY KEY CHECK(id = 1),
-      poll_interval_minutes INTEGER NOT NULL,
-      single_key_shortcuts INTEGER NOT NULL
-    );
-
-    CREATE INDEX articles_feed_id_idx ON articles(feed_id);
-    CREATE INDEX articles_read_idx ON articles(is_read);
-    CREATE INDEX articles_starred_idx ON articles(is_starred);
-    CREATE INDEX articles_published_idx ON articles(published_at DESC);
-    CREATE INDEX feeds_folder_id_idx ON feeds(folder_id);
-    CREATE INDEX rules_feed_id_idx ON rules(feed_id);
-    CREATE INDEX rules_folder_id_idx ON rules(folder_id);
-    INSERT INTO settings (id, poll_interval_minutes, single_key_shortcuts) VALUES (1, 20, 1);
-  `,
-  },
-  {
-    sql: `
-      ALTER TABLE settings ADD COLUMN mark_read_on_scroll INTEGER NOT NULL DEFAULT 1;
-      ALTER TABLE articles ADD COLUMN image_url TEXT;
-      UPDATE articles
-      SET content_html = NULL,
-          content_source = NULL,
-          extraction_status = 'pending',
-          extraction_error = NULL,
-          image_url = NULL
-      WHERE extraction_status IN ('complete', 'processing')
-        AND (
-          lower(url) LIKE '%.mp4'
-          OR instr(lower(url), '.mp4?') > 0
-          OR instr(lower(url), '.mp4#') > 0
-        );
-    `,
-    after: (database) => {
-      const rows = database
-        .prepare(
-          `SELECT id, url, content_html AS contentHtml, feed_content_html AS feedContentHtml
-           FROM articles
-           WHERE content_html IS NOT NULL OR feed_content_html IS NOT NULL`,
-        )
-        .all() as Array<{
-        id: number;
-        url: string | null;
-        contentHtml: string | null;
-        feedContentHtml: string | null;
-      }>;
-      const update = database.prepare("UPDATE articles SET image_url = ? WHERE id = ?");
-      for (const row of rows) {
-        const baseUrl = row.url ?? undefined;
-        const imageUrl =
-          firstSafeImageUrl(row.contentHtml, baseUrl) ??
-          firstSafeImageUrl(row.feedContentHtml, baseUrl);
-        update.run(imageUrl, row.id);
-      }
-    },
-  },
-  {
-    foreignKeysOff: true,
-    sql: `
-      CREATE TABLE users (
-        id INTEGER PRIMARY KEY,
-        username TEXT NOT NULL COLLATE NOCASE UNIQUE,
-        password_hash TEXT NOT NULL,
-        enabled INTEGER NOT NULL DEFAULT 1,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      INSERT INTO users (id, username, password_hash, enabled, created_at, updated_at)
-      VALUES (1, '__legacy_owner__', '', 0, datetime('now'), datetime('now'));
-
-      CREATE TABLE sessions (
-        token_hash TEXT PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        created_at TEXT NOT NULL,
-        expires_at TEXT NOT NULL
-      );
-
-      ALTER TABLE folders RENAME TO folders_v2;
-      ALTER TABLE feeds RENAME TO feeds_v2;
-      ALTER TABLE articles RENAME TO articles_v2;
-      ALTER TABLE rules RENAME TO rules_v2;
-      ALTER TABLE article_rule_matches RENAME TO article_rule_matches_v2;
-      ALTER TABLE settings RENAME TO settings_v2;
-
-      DROP INDEX IF EXISTS articles_feed_id_idx;
-      DROP INDEX IF EXISTS articles_read_idx;
-      DROP INDEX IF EXISTS articles_starred_idx;
-      DROP INDEX IF EXISTS articles_published_idx;
-      DROP INDEX IF EXISTS feeds_folder_id_idx;
-      DROP INDEX IF EXISTS rules_feed_id_idx;
-      DROP INDEX IF EXISTS rules_folder_id_idx;
-
-      CREATE TABLE folders (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        parent_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
-        name TEXT NOT NULL,
-        position INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE feeds (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        folder_id INTEGER REFERENCES folders(id) ON DELETE SET NULL,
-        title TEXT NOT NULL,
-        feed_url TEXT NOT NULL,
-        site_url TEXT,
-        paused INTEGER NOT NULL DEFAULT 0,
-        refreshing INTEGER NOT NULL DEFAULT 0,
-        etag TEXT,
-        last_modified TEXT,
-        last_attempt_at TEXT,
-        last_success_at TEXT,
-        last_http_status INTEGER,
-        last_error TEXT,
-        next_poll_at TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        UNIQUE(user_id, feed_url)
-      );
-
-      CREATE TABLE articles (
-        id INTEGER PRIMARY KEY,
-        feed_id INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
-        external_id TEXT NOT NULL,
-        title TEXT NOT NULL,
-        url TEXT,
-        author TEXT,
-        published_at TEXT,
-        discovered_at TEXT NOT NULL,
-        summary TEXT NOT NULL DEFAULT '',
-        feed_content_html TEXT,
-        content_html TEXT,
-        content_source TEXT CHECK(content_source IN ('article', 'feed')),
-        extraction_status TEXT NOT NULL DEFAULT 'pending'
-          CHECK(extraction_status IN ('pending', 'processing', 'complete', 'failed', 'feed')),
-        extraction_error TEXT,
-        is_read INTEGER NOT NULL DEFAULT 0,
-        is_starred INTEGER NOT NULL DEFAULT 0,
-        image_url TEXT,
-        UNIQUE(feed_id, external_id)
-      );
-
-      CREATE TABLE rules (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        name TEXT NOT NULL,
-        feed_id INTEGER REFERENCES feeds(id) ON DELETE CASCADE,
-        folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
-        field TEXT NOT NULL CHECK(field IN ('title', 'author', 'summary', 'content', 'any')),
-        pattern TEXT NOT NULL,
-        action TEXT NOT NULL CHECK(action IN ('hide', 'mark_read')),
-        enabled INTEGER NOT NULL DEFAULT 1,
-        matched_count INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE article_rule_matches (
-        article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-        rule_id INTEGER NOT NULL REFERENCES rules(id) ON DELETE CASCADE,
-        PRIMARY KEY(article_id, rule_id)
-      );
-
-      CREATE TABLE settings (
-        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-        poll_interval_minutes INTEGER NOT NULL,
-        single_key_shortcuts INTEGER NOT NULL,
-        mark_read_on_scroll INTEGER NOT NULL DEFAULT 1
-      );
-
-      INSERT INTO folders (id, user_id, parent_id, name, position, created_at, updated_at)
-      SELECT id, 1, parent_id, name, position, created_at, updated_at FROM folders_v2;
-
-      INSERT INTO feeds (
-        id, user_id, folder_id, title, feed_url, site_url, paused, refreshing, etag,
-        last_modified, last_attempt_at, last_success_at, last_http_status, last_error,
-        next_poll_at, created_at, updated_at
-      )
-      SELECT id, 1, folder_id, title, feed_url, site_url, paused, refreshing, etag,
-             last_modified, last_attempt_at, last_success_at, last_http_status, last_error,
-             next_poll_at, created_at, updated_at
-      FROM feeds_v2;
-
-      INSERT INTO articles (
-        id, feed_id, external_id, title, url, author, published_at, discovered_at, summary,
-        feed_content_html, content_html, content_source, extraction_status, extraction_error,
-        is_read, is_starred, image_url
-      )
-      SELECT id, feed_id, external_id, title, url, author, published_at, discovered_at, summary,
-             feed_content_html, content_html, content_source, extraction_status, extraction_error,
-             is_read, is_starred, image_url
-      FROM articles_v2;
-
-      INSERT INTO rules (
-        id, user_id, name, feed_id, folder_id, field, pattern, action, enabled,
-        matched_count, created_at, updated_at
-      )
-      SELECT id, 1, name, feed_id, folder_id, field, pattern, action, enabled,
-             matched_count, created_at, updated_at
-      FROM rules_v2;
-
-      INSERT INTO article_rule_matches (article_id, rule_id)
-      SELECT article_id, rule_id FROM article_rule_matches_v2;
-
-      INSERT INTO settings (
-        user_id, poll_interval_minutes, single_key_shortcuts, mark_read_on_scroll
-      )
-      SELECT 1, poll_interval_minutes, single_key_shortcuts, mark_read_on_scroll FROM settings_v2;
-
-      DROP TABLE article_rule_matches_v2;
-      DROP TABLE rules_v2;
-      DROP TABLE articles_v2;
-      DROP TABLE feeds_v2;
-      DROP TABLE folders_v2;
-      DROP TABLE settings_v2;
-
-      CREATE INDEX sessions_user_id_idx ON sessions(user_id);
-      CREATE INDEX sessions_expires_at_idx ON sessions(expires_at);
-      CREATE INDEX folders_user_id_idx ON folders(user_id);
-      CREATE INDEX articles_feed_id_idx ON articles(feed_id);
-      CREATE INDEX articles_read_idx ON articles(is_read);
-      CREATE INDEX articles_starred_idx ON articles(is_starred);
-      CREATE INDEX articles_published_idx ON articles(published_at DESC);
-      CREATE INDEX feeds_user_id_idx ON feeds(user_id);
-      CREATE INDEX feeds_folder_id_idx ON feeds(folder_id);
-      CREATE INDEX rules_user_id_idx ON rules(user_id);
-      CREATE INDEX rules_feed_id_idx ON rules(feed_id);
-      CREATE INDEX rules_folder_id_idx ON rules(folder_id);
-    `,
-  },
-  {
-    foreignKeysOff: true,
-    sql: `
-      ALTER TABLE article_rule_matches RENAME TO article_rule_matches_v3;
-      ALTER TABLE rules RENAME TO rules_v3;
-
-      DROP INDEX IF EXISTS rules_user_id_idx;
-      DROP INDEX IF EXISTS rules_feed_id_idx;
-      DROP INDEX IF EXISTS rules_folder_id_idx;
-
-      CREATE TABLE rules (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        name TEXT NOT NULL,
-        feed_id INTEGER REFERENCES feeds(id) ON DELETE CASCADE,
-        folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
-        field TEXT NOT NULL
-          CHECK(field IN ('title', 'author', 'summary', 'content', 'media', 'any')),
-        pattern TEXT NOT NULL,
-        action TEXT NOT NULL CHECK(action IN ('hide', 'mark_read')),
-        enabled INTEGER NOT NULL DEFAULT 1,
-        matched_count INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE article_rule_matches (
-        article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-        rule_id INTEGER NOT NULL REFERENCES rules(id) ON DELETE CASCADE,
-        PRIMARY KEY(article_id, rule_id)
-      );
-
-      INSERT INTO rules (
-        id, user_id, name, feed_id, folder_id, field, pattern, action, enabled,
-        matched_count, created_at, updated_at
-      )
-      SELECT id, user_id, name, feed_id, folder_id, field, pattern, action, enabled,
-             matched_count, created_at, updated_at
-      FROM rules_v3;
-
-      INSERT INTO article_rule_matches (article_id, rule_id)
-      SELECT article_id, rule_id FROM article_rule_matches_v3;
-
-      DROP TABLE article_rule_matches_v3;
-      DROP TABLE rules_v3;
-
-      CREATE INDEX rules_user_id_idx ON rules(user_id);
-      CREATE INDEX rules_feed_id_idx ON rules(feed_id);
-      CREATE INDEX rules_folder_id_idx ON rules(folder_id);
-
-      ALTER TABLE articles ADD COLUMN media_json TEXT;
-    `,
-    after: (database) => {
-      const rows = database
-        .prepare("SELECT id, url FROM articles WHERE url IS NOT NULL")
-        .all() as Array<{ id: number; url: string }>;
-      const update = database.prepare(
-        `UPDATE articles
-         SET media_json = ?, image_url = COALESCE(image_url, ?), content_html = NULL,
-             content_source = NULL, extraction_status = 'feed', extraction_error = NULL
-         WHERE id = ?`,
-      );
-      for (const row of rows) {
-        const media = youtubeMediaFromUrl(row.url);
-        if (media) update.run(JSON.stringify(media), media.thumbnailUrl, row.id);
-      }
-    },
-  },
-  {
-    foreignKeysOff: true,
-    sql: `
-      ALTER TABLE article_rule_matches RENAME TO article_rule_matches_v4;
-      ALTER TABLE rules RENAME TO rules_v4;
-
-      DROP INDEX IF EXISTS rules_user_id_idx;
-      DROP INDEX IF EXISTS rules_feed_id_idx;
-      DROP INDEX IF EXISTS rules_folder_id_idx;
-
-      CREATE TABLE rules (
-        id INTEGER PRIMARY KEY,
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        name TEXT NOT NULL,
-        feed_id INTEGER REFERENCES feeds(id) ON DELETE CASCADE,
-        folder_id INTEGER REFERENCES folders(id) ON DELETE CASCADE,
-        conditions_json TEXT NOT NULL
-          CHECK(json_valid(conditions_json) AND json_array_length(conditions_json) > 0),
-        condition_operator TEXT NOT NULL CHECK(condition_operator IN ('and', 'or')),
-        action TEXT NOT NULL CHECK(action IN ('hide', 'keep', 'mark_read')),
-        enabled INTEGER NOT NULL DEFAULT 1,
-        matched_count INTEGER NOT NULL DEFAULT 0,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-
-      CREATE TABLE article_rule_matches (
-        article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-        rule_id INTEGER NOT NULL REFERENCES rules(id) ON DELETE CASCADE,
-        PRIMARY KEY(article_id, rule_id)
-      );
-
-      INSERT INTO rules (
-        id, user_id, name, feed_id, folder_id, conditions_json, condition_operator, action,
-        enabled, matched_count, created_at, updated_at
-      )
-      SELECT id, user_id, name, feed_id, folder_id,
-             json_array(json_object('field', field, 'pattern', pattern)), 'and', action,
-             enabled, matched_count, created_at, updated_at
-      FROM rules_v4;
-
-      INSERT INTO article_rule_matches (article_id, rule_id)
-      SELECT article_id, rule_id FROM article_rule_matches_v4;
-
-      DROP TABLE article_rule_matches_v4;
-      DROP TABLE rules_v4;
-
-      CREATE INDEX rules_user_id_idx ON rules(user_id);
-      CREATE INDEX rules_feed_id_idx ON rules(feed_id);
-      CREATE INDEX rules_folder_id_idx ON rules(folder_id);
-    `,
-  },
-  {
-    sql: `
-      UPDATE articles
-      SET content_html = CASE
-            WHEN content_source = 'article' AND content_html IS NOT NULL THEN content_html
-            ELSE NULL
-          END,
-          content_source = CASE
-            WHEN content_source = 'article' AND content_html IS NOT NULL THEN 'article'
-            ELSE NULL
-          END,
-          extraction_status = CASE
-            WHEN content_source = 'article' AND content_html IS NOT NULL THEN 'complete'
-            ELSE 'feed'
-          END,
-          extraction_error = NULL;
-    `,
-    after: (database) => {
-      const rows = database
-        .prepare(
-          `SELECT id, url, feed_content_html AS feedContentHtml
-           FROM articles WHERE feed_content_html IS NOT NULL`,
-        )
-        .all() as Array<{ id: number; url: string | null; feedContentHtml: string }>;
-      const update = database.prepare("UPDATE articles SET feed_content_html = ? WHERE id = ?");
-      for (const row of rows) {
-        update.run(cleanArticleHtml(row.feedContentHtml, row.url ?? undefined), row.id);
-      }
-    },
-  },
-  {
-    sql: "",
-    after: (database) => recleanStructuredArticleHtml(database, ["blockquote", "table"]),
-  },
-  {
-    sql: "",
-    after: (database) => recleanStructuredArticleHtml(database, ["blockquote"]),
-  },
-  {
-    sql: "",
-    after: repairStoredArticleSrcsets,
-  },
-  {
-    sql: "",
-    after: (database) => recleanStructuredArticleHtml(database, ["blockquote"]),
-  },
-  {
-    sql: `
-      ALTER TABLE articles ADD COLUMN content_revision INTEGER NOT NULL DEFAULT 1;
-
-      CREATE TABLE ai_credentials (
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        provider TEXT NOT NULL,
-        encrypted_api_key TEXT NOT NULL,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        PRIMARY KEY(user_id, provider)
-      );
-
-      CREATE TABLE ai_feature_settings (
-        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        feature TEXT NOT NULL,
-        provider TEXT NOT NULL,
-        model TEXT NOT NULL,
-        updated_at TEXT NOT NULL,
-        PRIMARY KEY(user_id, feature)
-      );
-
-      CREATE TABLE article_ai_summaries (
-        article_id INTEGER PRIMARY KEY REFERENCES articles(id) ON DELETE CASCADE,
-        source_revision INTEGER NOT NULL,
-        prompt_version INTEGER NOT NULL,
-        source_kind TEXT NOT NULL CHECK(source_kind IN ('full', 'feed', 'excerpt')),
-        provider TEXT NOT NULL,
-        model TEXT NOT NULL,
-        summary_text TEXT NOT NULL,
-        input_tokens INTEGER CHECK(input_tokens IS NULL OR input_tokens >= 0),
-        output_tokens INTEGER CHECK(output_tokens IS NULL OR output_tokens >= 0),
-        generated_at TEXT NOT NULL
-      );
-    `,
-  },
-  {
-    sql: `
-      UPDATE articles
-      SET title = '', content_revision = content_revision + 1
-      WHERE title <> ''
-        AND feed_id IN (
-          SELECT id FROM feeds
-          WHERE lower(feed_url) LIKE 'https://nitter.net/%'
-             OR lower(feed_url) LIKE 'http://nitter.net/%'
-             OR lower(feed_url) LIKE 'https://t.me/%'
-             OR lower(feed_url) LIKE 'http://t.me/%'
-        );
-
-      UPDATE feeds
-      SET etag = NULL, last_modified = NULL, next_poll_at = NULL
-      WHERE lower(feed_url) LIKE 'https://nitter.net/%'
-         OR lower(feed_url) LIKE 'http://nitter.net/%'
-         OR lower(feed_url) LIKE 'https://t.me/%'
-         OR lower(feed_url) LIKE 'http://t.me/%';
-    `,
-  },
-  {
-    sql: `
-      ALTER TABLE folders ADD COLUMN sort_direction TEXT NOT NULL DEFAULT 'newest'
-        CHECK(sort_direction IN ('newest', 'oldest'));
-    `,
-  },
-  {
-    sql: `
-      ALTER TABLE settings ADD COLUMN translation_language TEXT NOT NULL DEFAULT 'English';
-
-      CREATE TABLE article_ai_translations (
-        article_id INTEGER NOT NULL REFERENCES articles(id) ON DELETE CASCADE,
-        target_language TEXT NOT NULL COLLATE NOCASE,
-        source_kind TEXT NOT NULL CHECK(source_kind IN ('full', 'feed', 'excerpt')),
-        source_revision INTEGER NOT NULL,
-        prompt_version INTEGER NOT NULL,
-        provider TEXT NOT NULL,
-        model TEXT NOT NULL,
-        translation_text TEXT NOT NULL,
-        input_tokens INTEGER CHECK(input_tokens IS NULL OR input_tokens >= 0),
-        output_tokens INTEGER CHECK(output_tokens IS NULL OR output_tokens >= 0),
-        generated_at TEXT NOT NULL,
-        PRIMARY KEY(article_id, target_language, source_kind)
-      );
-    `,
-  },
-  {
-    sql: `
-      ALTER TABLE article_ai_translations RENAME COLUMN translation_text TO translation_html;
-      DELETE FROM article_ai_translations;
-    `,
-  },
-  {
-    sql: `
-      ALTER TABLE settings ADD COLUMN summary_prompt TEXT NOT NULL
-        DEFAULT ${sqlString(DEFAULT_ARTICLE_SUMMARY_PROMPT)};
-      ALTER TABLE settings ADD COLUMN translation_prompt TEXT NOT NULL
-        DEFAULT ${sqlString(DEFAULT_ARTICLE_TRANSLATION_PROMPT)};
-    `,
-  },
-  {
-    sql: `
-      ALTER TABLE settings ADD COLUMN duplicate_article_window_days INTEGER NOT NULL DEFAULT 7
-        CHECK(duplicate_article_window_days IN (1, 7, 30));
-
-      CREATE INDEX articles_url_discovered_idx
-        ON articles(url, discovered_at) WHERE url IS NOT NULL;
-      CREATE INDEX articles_title_discovered_idx
-        ON articles(title, discovered_at) WHERE title <> '';
-    `,
-  },
-  {
-    sql: `
-      ALTER TABLE settings ADD COLUMN custom_prompts_json TEXT NOT NULL DEFAULT '[]';
-      ALTER TABLE article_ai_summaries ADD COLUMN prompt_id TEXT;
-    `,
-  },
-  {
-    sql: `
-      ALTER TABLE feeds ADD COLUMN source_kind TEXT NOT NULL DEFAULT 'published'
-        CHECK(source_kind IN ('published', 'web'));
-      ALTER TABLE feeds ADD COLUMN health_status TEXT NOT NULL DEFAULT 'healthy'
-        CHECK(health_status IN ('healthy', 'failing', 'needs_attention'));
-      ALTER TABLE feeds ADD COLUMN last_error_kind TEXT
-        CHECK(last_error_kind IS NULL OR last_error_kind IN (
-          'network', 'http', 'timeout', 'parse', 'inaccessible', 'access_blocked',
-          'javascript_timeout', 'unsupported_content', 'selection_broken'
-        ));
-
-      UPDATE feeds
-      SET health_status = 'failing',
-          last_error_kind = CASE WHEN last_http_status IS NULL THEN 'network' ELSE 'http' END
-      WHERE last_error IS NOT NULL;
-
-      CREATE TABLE web_feed_configs (
-        feed_id INTEGER PRIMARY KEY REFERENCES feeds(id) ON DELETE CASCADE,
-        config_json TEXT NOT NULL CHECK(json_valid(config_json)),
-        selection_revision INTEGER NOT NULL DEFAULT 1 CHECK(selection_revision > 0),
-        last_match_count INTEGER NOT NULL CHECK(last_match_count >= 0),
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-    `,
-  },
-  {
-    sql: `
-      UPDATE feeds
-      SET next_poll_at = strftime(
-        '%Y-%m-%dT%H:%M:%fZ',
-        COALESCE(last_attempt_at, created_at),
-        '+${WEB_FEED_POLL_INTERVAL_MINUTES} minutes'
-      )
-      WHERE source_kind = 'web';
-    `,
-  },
-];
 
 function now(): string {
   return new Date().toISOString();
@@ -1095,7 +400,7 @@ export class AppDatabase {
       this.sqlite
         .prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'settings'")
         .get() === undefined;
-    this.migrate();
+    migrateDatabase(this.sqlite, WEB_FEED_POLL_INTERVAL_MINUTES);
     if (this.wasNewDatabase && defaultPollIntervalMinutes !== 20) {
       this.sqlite
         .prepare("UPDATE settings SET poll_interval_minutes = ? WHERE user_id = 1")
@@ -1107,33 +412,6 @@ export class AppDatabase {
         "UPDATE articles SET extraction_status = 'pending' WHERE extraction_status = 'processing'",
       )
       .run();
-  }
-
-  private migrate(): void {
-    this.sqlite.exec(
-      "CREATE TABLE IF NOT EXISTS migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)",
-    );
-    const current = this.sqlite
-      .prepare("SELECT COALESCE(MAX(version), 0) AS version FROM migrations")
-      .get() as { version: number };
-    for (let index = current.version; index < migrations.length; index += 1) {
-      const migration = migrations[index];
-      const apply = this.sqlite.transaction(() => {
-        this.sqlite.exec(migration.sql);
-        migration.after?.(this.sqlite);
-        this.sqlite
-          .prepare("INSERT INTO migrations (version, applied_at) VALUES (?, ?)")
-          .run(index + 1, now());
-      });
-      if (migration.foreignKeysOff) this.sqlite.pragma("foreign_keys = OFF");
-      try {
-        apply();
-      } finally {
-        if (migration.foreignKeysOff) this.sqlite.pragma("foreign_keys = ON");
-      }
-      const violations = this.sqlite.pragma("foreign_key_check") as Row[];
-      if (violations.length > 0) throw new Error(`Migration ${index + 1} broke foreign keys`);
-    }
   }
 
   close(): void {
@@ -1462,6 +740,11 @@ export class AppDatabase {
   }
 
   listFeeds(userId: number): Feed[] {
+    return this.selectFeeds(userId);
+  }
+
+  private selectFeeds(userId: number, feedId?: number): Feed[] {
+    const feedIdClause = feedId === undefined ? "" : "AND feeds.id = ?";
     const rows = this.sqlite
       .prepare(
         `SELECT feeds.id,
@@ -1489,15 +772,16 @@ export class AppDatabase {
          LEFT JOIN web_feed_configs ON web_feed_configs.feed_id = feeds.id
          LEFT JOIN articles ON articles.feed_id = feeds.id
          WHERE feeds.user_id = ?
+           ${feedIdClause}
          GROUP BY feeds.id
          ORDER BY feeds.title COLLATE NOCASE`,
       )
-      .all(userId) as Row[];
+      .all(...(feedId === undefined ? [userId] : [userId, feedId])) as Row[];
     return rows.map(mapFeed);
   }
 
   getFeed(userId: number, id: number): Feed | null {
-    return this.listFeeds(userId).find((feed) => feed.id === id) ?? null;
+    return this.selectFeeds(userId, id)[0] ?? null;
   }
 
   createFeed(
@@ -1691,7 +975,7 @@ export class AppDatabase {
       const articles = this.sqlite
         .prepare("SELECT id FROM articles WHERE feed_id = ?")
         .all(id) as Array<{ id: number }>;
-      for (const article of articles) this.recomputeRulesForArticle(article.id);
+      this.recomputeRulesForArticles(articles.map((article) => article.id));
     }
     return this.getFeed(userId, id);
   }
@@ -2005,7 +1289,7 @@ export class AppDatabase {
           )
           .run(input.webMatchCount, completedAt, id);
       }
-      for (const articleId of ruleArticleIds) this.recomputeRulesForArticle(articleId);
+      this.recomputeRulesForArticles(ruleArticleIds);
     });
     complete();
   }
@@ -2811,17 +2095,26 @@ export class AppDatabase {
   }
 
   recomputeRulesForArticle(articleId: number): void {
-    this.sqlite.prepare("DELETE FROM article_rule_matches WHERE article_id = ?").run(articleId);
-    const rules = this.sqlite
-      .prepare(
-        `SELECT rules.id
-         FROM rules
-         JOIN feeds ON feeds.user_id = rules.user_id
-         JOIN articles ON articles.feed_id = feeds.id
-         WHERE articles.id = ?`,
-      )
-      .all(articleId) as Array<{ id: number }>;
-    for (const rule of rules) this.applyRuleToArticle(rule.id, articleId);
+    this.recomputeRulesForArticles([articleId]);
+  }
+
+  private recomputeRulesForArticles(articleIds: Iterable<number>): void {
+    let recomputed = false;
+    for (const articleId of articleIds) {
+      recomputed = true;
+      this.sqlite.prepare("DELETE FROM article_rule_matches WHERE article_id = ?").run(articleId);
+      const rules = this.sqlite
+        .prepare(
+          `SELECT rules.id
+           FROM rules
+           JOIN feeds ON feeds.user_id = rules.user_id
+           JOIN articles ON articles.feed_id = feeds.id
+           WHERE articles.id = ?`,
+        )
+        .all(articleId) as Array<{ id: number }>;
+      for (const rule of rules) this.applyRuleToArticle(rule.id, articleId);
+    }
+    if (!recomputed) return;
     this.sqlite
       .prepare(
         `UPDATE rules
@@ -2840,7 +2133,7 @@ export class AppDatabase {
          WHERE feeds.user_id = ?`,
       )
       .all(userId) as Array<{ id: number }>;
-    for (const article of articles) this.recomputeRulesForArticle(article.id);
+    this.recomputeRulesForArticles(articles.map((article) => article.id));
   }
 
   private applyRuleToArticle(ruleId: number, articleId: number): void {
