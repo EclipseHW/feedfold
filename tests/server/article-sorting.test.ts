@@ -4,9 +4,9 @@ import { join } from "node:path";
 import type { InjectOptions } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/server/app.js";
-import { AuthService } from "../../src/server/auth.js";
-import { AppDatabase } from "../../src/server/db.js";
+import { AppDatabase } from "../../src/server/database.js";
 import { ExtractionQueue } from "../../src/server/extraction.js";
+import { AuthService } from "../../src/server/features/auth/service.js";
 import { FeedRefreshService } from "../../src/server/refresh.js";
 import type { ArticlePage, Folder } from "../../src/shared/types.js";
 
@@ -20,9 +20,9 @@ describe("folder article sorting", () => {
   it("applies each folder order to its feeds and fairly merges aggregate pages", async () => {
     const directory = await mkdtemp(join(tmpdir(), "echovale-sorting-test-"));
     const database = new AppDatabase(join(directory, "echovale.db"));
-    const authService = new AuthService(database);
-    const extraction = new ExtractionQueue(database, 1, 1_000);
-    const refresh = new FeedRefreshService(database, 1, 1_000);
+    const authService = new AuthService(database.auth);
+    const extraction = new ExtractionQueue(database.extractions, 1, 1_000);
+    const refresh = new FeedRefreshService(database.feeds, 1, 1_000);
     const app = await createApp({
       database,
       authService,
@@ -103,7 +103,7 @@ describe("folder article sorting", () => {
       title: string,
       articles: Array<{ externalId: string; title: string; publishedAt: string }>,
     ) =>
-      database.markFeedSuccess(feedId, {
+      database.feeds.completeRefresh(feedId, {
         httpStatus: 200,
         etag: null,
         lastModified: null,

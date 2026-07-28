@@ -3,7 +3,8 @@ import { JSDOM, VirtualConsole } from "jsdom";
 import sanitizeHtml from "sanitize-html";
 import { cleanArticleHtml } from "./article-html.js";
 import { firstSafeImageUrl } from "./article-image.js";
-import type { AppDatabase, ExtractionRecord } from "./db.js";
+import type { ExtractionService } from "./features/extraction/service.js";
+import type { ExtractionRecord } from "./features/shared.js";
 import { fetchPublic } from "./public-network.js";
 
 const MAX_ARTICLE_BYTES = 5 * 1024 * 1024;
@@ -128,7 +129,7 @@ export class ExtractionQueue {
   private idleResolvers: Array<() => void> = [];
 
   constructor(
-    private readonly database: AppDatabase,
+    private readonly extractions: ExtractionService,
     private readonly concurrency = 2,
     private readonly timeoutMs = 20_000,
     private readonly fetcher: typeof fetchPublic = fetchPublic,
@@ -179,15 +180,15 @@ export class ExtractionQueue {
   }
 
   private async process(articleId: number): Promise<void> {
-    const record = this.database.getExtractionRecord(articleId);
-    if (!record || !this.database.markExtractionProcessing(articleId)) return;
+    const record = this.extractions.getExtractionRecord(articleId);
+    if (!record || !this.extractions.markExtractionProcessing(articleId)) return;
     const outcome = await extractArticle(record, this.timeoutMs, this.fetcher);
-    this.database.completeExtraction(articleId, outcome);
+    this.extractions.completeExtraction(articleId, outcome);
   }
 
   private refill(): void {
     if (this.stopped) return;
-    this.enqueue(this.database.getPendingExtractions(100).map((article) => article.id));
+    this.enqueue(this.extractions.getPendingExtractions(100).map((article) => article.id));
   }
 
   async waitForIdle(): Promise<void> {

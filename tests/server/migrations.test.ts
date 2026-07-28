@@ -4,8 +4,8 @@ import { join } from "node:path";
 import Sqlite from "better-sqlite3";
 import { JSDOM } from "jsdom";
 import { afterEach, describe, expect, it } from "vitest";
-import { AuthService } from "../../src/server/auth.js";
-import { AppDatabase } from "../../src/server/db.js";
+import { AppDatabase } from "../../src/server/database.js";
+import { AuthService } from "../../src/server/features/auth/service.js";
 import {
   DEFAULT_ARTICLE_SUMMARY_PROMPT,
   DEFAULT_ARTICLE_TRANSLATION_PROMPT,
@@ -154,7 +154,7 @@ describe("database migrations", () => {
 
     const database = new AppDatabase(path);
     try {
-      const authService = new AuthService(database);
+      const authService = new AuthService(database.auth);
       const registration = authService.register("reader", "reader-password");
       expect(registration?.user).toEqual({ id: 1, username: "reader" });
       expect(authService.login("reader", "wrong-password")).toBeNull();
@@ -162,7 +162,7 @@ describe("database migrations", () => {
         id: 1,
         username: "reader",
       });
-      expect(database.listFeeds(1)).toMatchObject([
+      expect(database.feeds.listFeeds(1)).toMatchObject([
         {
           title: "Migration feed",
           sourceKind: "published",
@@ -178,7 +178,7 @@ describe("database migrations", () => {
           lastMatchCount: null,
         },
       ]);
-      expect(database.listRules(1)).toMatchObject([
+      expect(database.rules.listRules(1)).toMatchObject([
         {
           name: "Hide video articles",
           conditions: [{ field: "title", pattern: "Video" }],
@@ -187,12 +187,12 @@ describe("database migrations", () => {
           matchedCount: 1,
         },
       ]);
-      database.recomputeRulesForArticle(1);
-      expect(database.listArticles(1, { state: "all" })).toHaveLength(4);
+      database.rules.recomputeRulesForArticle(1);
+      expect(database.articles.listArticles(1, { state: "all" })).toHaveLength(4);
       expect(
-        database.listArticles(1, { state: "all" }).map((article) => article.title),
+        database.articles.listArticles(1, { state: "all" }).map((article) => article.title),
       ).not.toContain("Video");
-      const storedUser = database.sqlite
+      const storedUser = database.connection
         .prepare("SELECT username, password_hash AS passwordHash FROM users WHERE id = 1")
         .get() as { username: string; passwordHash: string };
       expect(storedUser).toMatchObject({ username: "reader" });
@@ -201,8 +201,8 @@ describe("database migrations", () => {
 
       const partner = authService.register("partner", "partner-password");
       expect(partner?.user).toEqual({ id: 2, username: "partner" });
-      expect(database.listFeeds(2)).toEqual([]);
-      expect(database.getSettings(2)).toEqual({
+      expect(database.feeds.listFeeds(2)).toEqual([]);
+      expect(database.settings.getSettings(2)).toEqual({
         pollIntervalMinutes: 20,
         duplicateArticleWindowDays: 7,
         singleKeyShortcuts: true,
@@ -214,9 +214,9 @@ describe("database migrations", () => {
       });
       expect(authService.register("READER", "another-password")).toBeNull();
 
-      expect(database.getSettings(1)).toMatchObject({ markReadOnScroll: true });
+      expect(database.settings.getSettings(1)).toMatchObject({ markReadOnScroll: true });
       expect(
-        database.sqlite
+        database.connection
           .prepare(
             `SELECT id, content_html AS contentHtml, content_source AS contentSource,
                     extraction_status AS extractionStatus, extraction_error AS extractionError,
@@ -252,18 +252,18 @@ describe("database migrations", () => {
           imageUrl: "https://example.test/feed-hero.jpg",
         },
       ]);
-      expect(database.getArticle(1, 3)?.feedContentHtml).toContain(
+      expect(database.articles.getArticle(1, 3)?.feedContentHtml).toContain(
         'src="https://example.test/feed-hero.jpg"',
       );
       for (const articleId of [2, 3]) {
-        const article = database.getArticle(1, articleId);
+        const article = database.articles.getArticle(1, articleId);
         const html = articleId === 2 ? article?.contentHtml : article?.feedContentHtml;
         const body = new JSDOM(`<body>${html}</body>`).window.document.body;
         expect(body.querySelectorAll("[srcset]")).toHaveLength(0);
         expect(body.querySelectorAll("source")).toHaveLength(0);
         expect(body.querySelector("img[src]")).not.toBeNull();
       }
-      expect(database.getArticle(1, 4)).toMatchObject({
+      expect(database.articles.getArticle(1, 4)).toMatchObject({
         title: "YouTube Short",
         imageUrl: "https://i.ytimg.com/vi/short123/hqdefault.jpg",
         extractionStatus: "feed",
@@ -276,7 +276,7 @@ describe("database migrations", () => {
         },
       });
       expect(
-        database.sqlite
+        database.connection
           .prepare("SELECT id, content_revision AS contentRevision FROM articles ORDER BY id")
           .all(),
       ).toMatchObject([
@@ -287,26 +287,28 @@ describe("database migrations", () => {
         { id: 5, contentRevision: 2 },
       ]);
       expect(
-        database.sqlite
+        database.connection
           .prepare(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'ai_%' ORDER BY name",
           )
           .pluck()
           .all(),
       ).toEqual(["ai_credentials", "ai_feature_settings"]);
-      expect(database.getArticle(1, 5)?.title).toBe("");
+      expect(database.articles.getArticle(1, 5)?.title).toBe("");
       expect(
-        database.sqlite
+        database.connection
           .prepare("SELECT etag, last_modified AS lastModified FROM feeds WHERE id = 2")
           .get(),
       ).toEqual({ etag: null, lastModified: null });
-      expect(database.createFolder(1, { name: "Default order" })).toMatchObject({
+      expect(database.folders.createFolder(1, { name: "Default order" })).toMatchObject({
         name: "Default order",
         sortDirection: "newest",
       });
-      expect(database.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(20);
+      expect(database.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
+        20,
+      );
       expect(
-        database.sqlite
+        database.connection
           .prepare(
             `SELECT name FROM pragma_table_info('feeds')
              WHERE name IN ('source_kind', 'health_status', 'last_error_kind')
@@ -316,7 +318,7 @@ describe("database migrations", () => {
           .all(),
       ).toEqual(["health_status", "last_error_kind", "source_kind"]);
       expect(
-        database.sqlite
+        database.connection
           .prepare(
             "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'web_feed_configs'",
           )
@@ -324,7 +326,7 @@ describe("database migrations", () => {
           .get(),
       ).toBe("web_feed_configs");
       expect(
-        database.sqlite
+        database.connection
           .prepare(
             "SELECT name FROM pragma_table_info('article_ai_translations') WHERE name LIKE 'translation_%'",
           )
@@ -337,16 +339,18 @@ describe("database migrations", () => {
 
     const reopened = new AppDatabase(path);
     try {
-      const authService = new AuthService(reopened);
+      const authService = new AuthService(reopened.auth);
       expect(authService.login("reader", "reader-password")?.user).toEqual({
         id: 1,
         username: "reader",
       });
-      expect(reopened.sqlite.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(20);
+      expect(reopened.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
+        20,
+      );
       expect(
-        reopened.sqlite.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
+        reopened.connection.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),
       ).toBe("https://example.test/hero.jpg");
-      expect(reopened.getArticle(1, 4)?.media?.type).toBe("short");
+      expect(reopened.articles.getArticle(1, 4)?.media?.type).toBe("short");
     } finally {
       reopened.close();
     }

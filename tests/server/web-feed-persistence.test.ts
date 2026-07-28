@@ -2,7 +2,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { AppDatabase, type ParsedFeed } from "../../src/server/db.js";
+import { AppDatabase, type ParsedFeed } from "../../src/server/database.js";
 import type { WebFeedConfig } from "../../src/shared/types.js";
 
 const directories: string[] = [];
@@ -54,7 +54,7 @@ describe("web feed persistence", () => {
     const database = await temporaryDatabase();
     const pageUrl = "https://example.test/releases";
     try {
-      const folder = database.createFolder(TEST_USER_ID, { name: "Releases" });
+      const folder = database.folders.createFolder(TEST_USER_ID, { name: "Releases" });
       const initial: ParsedFeed = {
         title: "Example releases",
         siteUrl: pageUrl,
@@ -64,7 +64,7 @@ describe("web feed persistence", () => {
           article("web:duplicate-link", "Repeated card", "https://example.test/releases/one"),
         ],
       };
-      const feed = database.createWebFeed(TEST_USER_ID, {
+      const feed = database.feeds.createWebFeed(TEST_USER_ID, {
         title: "Tracked releases",
         pageUrl,
         folderId: folder.id,
@@ -82,7 +82,7 @@ describe("web feed persistence", () => {
         lastMatchCount: 3,
         totalCount: 2,
       });
-      const record = database.getFeedRecord(feed.id);
+      const record = database.feeds.getFeedRecord(feed.id);
       expect(record).toMatchObject({
         sourceKind: "web",
         pollIntervalMinutes: 180,
@@ -91,10 +91,10 @@ describe("web feed persistence", () => {
         lastMatchCount: 3,
       });
       if (record?.sourceKind !== "web") throw new Error("Expected a stored web feed config");
-      expect(database.getWebFeedConfig(TEST_USER_ID, feed.id)).toEqual(config(pageUrl));
-      expect(database.getWebFeedConfig(999, feed.id)).toBeNull();
+      expect(database.feeds.getWebFeedConfig(TEST_USER_ID, feed.id)).toEqual(config(pageUrl));
+      expect(database.feeds.getWebFeedConfig(999, feed.id)).toBeNull();
 
-      const initialArticles = database.listArticles(TEST_USER_ID, {
+      const initialArticles = database.articles.listArticles(TEST_USER_ID, {
         state: "all",
         includeContent: true,
       });
@@ -109,7 +109,10 @@ describe("web feed persistence", () => {
 
       const first = initialArticles.find(({ url }) => url === "https://example.test/releases/one");
       if (!first) throw new Error("Expected the first web article");
-      database.updateArticleState(TEST_USER_ID, first.id, { isRead: true, isStarred: true });
+      database.articles.updateArticleState(TEST_USER_ID, first.id, {
+        isRead: true,
+        isStarred: true,
+      });
       const firstPublishedAt = first.publishedAt;
 
       const revised: ParsedFeed = {
@@ -124,7 +127,7 @@ describe("web feed persistence", () => {
         ],
       };
       expect(
-        database.updateWebFeedSelection(
+        database.feeds.updateWebFeedSelection(
           TEST_USER_ID,
           feed.id,
           config(pageUrl, "article.release"),
@@ -132,13 +135,13 @@ describe("web feed persistence", () => {
         ),
       ).toMatchObject({ lastMatchCount: 2, totalCount: 3 });
 
-      expect(database.getFeedRecord(feed.id)).toMatchObject({
+      expect(database.feeds.getFeedRecord(feed.id)).toMatchObject({
         sourceKind: "web",
         webConfig: config(pageUrl, "article.release"),
         selectionRevision: 2,
         lastMatchCount: 2,
       });
-      expect(database.getArticle(TEST_USER_ID, first.id)).toMatchObject({
+      expect(database.articles.getArticle(TEST_USER_ID, first.id)).toMatchObject({
         title: "Corrected title",
         summary: "Corrected summary",
         publishedAt: firstPublishedAt,
@@ -146,7 +149,7 @@ describe("web feed persistence", () => {
         isStarred: true,
       });
       expect(
-        database
+        database.articles
           .listArticles(TEST_USER_ID, { state: "all" })
           .map(({ url }) => url)
           .sort(),
@@ -156,7 +159,7 @@ describe("web feed persistence", () => {
         "https://example.test/releases/two",
       ]);
 
-      database.markFeedFailure(feed.id, {
+      database.feeds.failRefresh(feed.id, {
         httpStatus: 200,
         error: "Stale selection failed",
         errorKind: "selection_broken",
@@ -164,7 +167,7 @@ describe("web feed persistence", () => {
         retryMinutes: 20,
         expectedSelectionRevision: 1,
       });
-      database.markFeedSuccess(feed.id, {
+      database.feeds.completeRefresh(feed.id, {
         httpStatus: 200,
         etag: null,
         lastModified: null,
@@ -177,53 +180,53 @@ describe("web feed persistence", () => {
         webMatchCount: 1,
         expectedSelectionRevision: 1,
       });
-      expect(database.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
+      expect(database.feeds.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
         healthStatus: "healthy",
         lastErrorKind: null,
         lastMatchCount: 2,
         totalCount: 3,
       });
       expect(
-        database
+        database.articles
           .listArticles(TEST_USER_ID, { state: "all" })
           .some(({ url }) => url === "https://example.test/releases/stale"),
       ).toBe(false);
 
-      database.markFeedRefreshing(feed.id);
-      database.markFeedFailure(feed.id, {
+      database.feeds.markRefreshing(feed.id);
+      database.feeds.failRefresh(feed.id, {
         httpStatus: null,
         error: "The page could not be reached",
         errorKind: "network",
         healthStatus: "failing",
         retryMinutes: 20,
       });
-      expect(database.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
+      expect(database.feeds.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
         healthStatus: "failing",
         lastErrorKind: "network",
         lastMatchCount: 2,
         totalCount: 3,
       });
-      database.markFeedRefreshing(feed.id);
-      expect(database.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
+      database.feeds.markRefreshing(feed.id);
+      expect(database.feeds.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
         refreshing: true,
         healthStatus: "failing",
         lastErrorKind: "network",
       });
-      database.markFeedFailure(feed.id, {
+      database.feeds.failRefresh(feed.id, {
         httpStatus: 200,
         error: "The saved page selection no longer matches meaningful items",
         errorKind: "selection_broken",
         healthStatus: "needs_attention",
         retryMinutes: 20,
       });
-      expect(database.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
+      expect(database.feeds.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
         healthStatus: "needs_attention",
         lastErrorKind: "selection_broken",
         lastMatchCount: 0,
         totalCount: 3,
       });
 
-      database.markFeedSuccess(feed.id, {
+      database.feeds.completeRefresh(feed.id, {
         httpStatus: 200,
         etag: null,
         lastModified: null,
@@ -231,7 +234,7 @@ describe("web feed persistence", () => {
         parsed: revised,
         webMatchCount: 2,
       });
-      expect(database.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
+      expect(database.feeds.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
         healthStatus: "healthy",
         lastErrorKind: null,
         lastError: null,
@@ -240,18 +243,20 @@ describe("web feed persistence", () => {
       });
 
       expect(() =>
-        database.updateFeed(TEST_USER_ID, feed.id, {
+        database.feeds.updateFeed(TEST_USER_ID, feed.id, {
           feedUrl: "https://example.test/other-page",
         }),
       ).toThrow("Web feed URLs can only be changed by repairing the page selection");
       expect(
-        database.updateFeed(TEST_USER_ID, feed.id, { title: "Renamed web feed" }),
+        database.feeds.updateFeed(TEST_USER_ID, feed.id, { title: "Renamed web feed" }),
       ).toMatchObject({ title: "Renamed web feed", feedUrl: pageUrl });
-      expect(database.listOpmlFeeds(TEST_USER_ID)).toEqual([]);
+      expect(database.feeds.listOpmlFeeds(TEST_USER_ID)).toEqual([]);
 
-      expect(database.deleteFeed(TEST_USER_ID, feed.id)).toBe(true);
+      expect(database.feeds.deleteFeed(TEST_USER_ID, feed.id)).toBe(true);
       expect(
-        database.sqlite.prepare("SELECT 1 FROM web_feed_configs WHERE feed_id = ?").get(feed.id),
+        database.connection
+          .prepare("SELECT 1 FROM web_feed_configs WHERE feed_id = ?")
+          .get(feed.id),
       ).toBeUndefined();
     } finally {
       database.close();
@@ -264,7 +269,7 @@ describe("web feed persistence", () => {
     const path = join(directory, "echovale.db");
     const pageUrl = "https://example.test/publications";
     const database = new AppDatabase(path);
-    const webFeed = database.createWebFeed(TEST_USER_ID, {
+    const webFeed = database.feeds.createWebFeed(TEST_USER_ID, {
       title: "Publications",
       pageUrl,
       folderId: null,
@@ -275,7 +280,7 @@ describe("web feed persistence", () => {
         articles: [article("web:first", "First paper", `${pageUrl}/first`)],
       },
     });
-    const publishedFeed = database.createFeed(TEST_USER_ID, {
+    const publishedFeed = database.feeds.createFeed(TEST_USER_ID, {
       title: "Published feed",
       feedUrl: "https://example.test/feed.xml",
     });
@@ -283,19 +288,19 @@ describe("web feed persistence", () => {
     expect(webFeed.pollIntervalMinutes).toBe(180);
     expect(publishedFeed.pollIntervalMinutes).toBe(20);
 
-    database.updateSettings(TEST_USER_ID, { pollIntervalMinutes: 60 });
-    expect(database.getFeed(TEST_USER_ID, webFeed.id)?.pollIntervalMinutes).toBe(180);
-    expect(database.getFeed(TEST_USER_ID, publishedFeed.id)?.pollIntervalMinutes).toBe(60);
+    database.settings.updateSettings(TEST_USER_ID, { pollIntervalMinutes: 60 });
+    expect(database.feeds.getFeed(TEST_USER_ID, webFeed.id)?.pollIntervalMinutes).toBe(180);
+    expect(database.feeds.getFeed(TEST_USER_ID, publishedFeed.id)?.pollIntervalMinutes).toBe(60);
 
-    database.sqlite
+    database.connection
       .prepare("UPDATE feeds SET last_attempt_at = ?, next_poll_at = ? WHERE id = ?")
       .run("2026-07-27T12:00:00.000Z", "2026-07-27T12:20:00.000Z", webFeed.id);
-    database.sqlite.prepare("DELETE FROM migrations WHERE version = 20").run();
+    database.connection.prepare("DELETE FROM migrations WHERE version = 20").run();
     database.close();
 
     const migrated = new AppDatabase(path);
     try {
-      expect(migrated.getFeed(TEST_USER_ID, webFeed.id)).toMatchObject({
+      expect(migrated.feeds.getFeed(TEST_USER_ID, webFeed.id)).toMatchObject({
         pollIntervalMinutes: 180,
         nextPollAt: "2026-07-27T15:00:00.000Z",
       });
@@ -309,7 +314,7 @@ describe("web feed persistence", () => {
     const pageUrl = "https://example.test/jobs";
     try {
       expect(() =>
-        database.createWebFeed(TEST_USER_ID, {
+        database.feeds.createWebFeed(TEST_USER_ID, {
           title: "Jobs",
           pageUrl,
           folderId: null,
@@ -317,9 +322,9 @@ describe("web feed persistence", () => {
           parsed: { title: "Jobs", siteUrl: pageUrl, articles: [] },
         }),
       ).toThrow("The web feed selection did not match any items");
-      expect(database.listFeeds(TEST_USER_ID)).toEqual([]);
+      expect(database.feeds.listFeeds(TEST_USER_ID)).toEqual([]);
 
-      const published = database.createFeed(TEST_USER_ID, {
+      const published = database.feeds.createFeed(TEST_USER_ID, {
         title: "Published feed",
         feedUrl: "https://example.test/feed.xml",
       });
@@ -329,12 +334,12 @@ describe("web feed persistence", () => {
         lastErrorKind: null,
         lastMatchCount: null,
       });
-      expect(database.getFeedRecord(published.id)).toMatchObject({
+      expect(database.feeds.getFeedRecord(published.id)).toMatchObject({
         sourceKind: "published",
         webConfig: null,
       });
       expect(() =>
-        database.updateWebFeedSelection(
+        database.feeds.updateWebFeedSelection(
           TEST_USER_ID,
           published.id,
           config("https://example.test/feed.xml"),
@@ -345,7 +350,7 @@ describe("web feed persistence", () => {
           },
         ),
       ).toThrow("Only web feeds have page selections");
-      expect(database.listOpmlFeeds(TEST_USER_ID)).toMatchObject([
+      expect(database.feeds.listOpmlFeeds(TEST_USER_ID)).toMatchObject([
         { title: "Published feed", feedUrl: "https://example.test/feed.xml" },
       ]);
     } finally {

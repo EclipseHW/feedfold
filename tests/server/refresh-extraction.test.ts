@@ -6,9 +6,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/server/app.js";
 import { youtubeMediaFromUrl } from "../../src/server/article-media.js";
-import { AuthService } from "../../src/server/auth.js";
-import { AppDatabase, type ParsedFeed } from "../../src/server/db.js";
+import { AppDatabase, type ParsedFeed } from "../../src/server/database.js";
 import { ExtractionQueue, extractArticle } from "../../src/server/extraction.js";
+import { AuthService } from "../../src/server/features/auth/service.js";
 import { FeedRefreshService } from "../../src/server/refresh.js";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -111,9 +111,9 @@ describe("feed refresh and full-text extraction", () => {
     baseUrl = await listen(server);
 
     const database = await temporaryDatabase();
-    const extraction = new ExtractionQueue(database, 2, 2_000, fetch);
-    const refresh = new FeedRefreshService(database, 2, 2_000, undefined, fetch);
-    const authService = new AuthService(database);
+    const extraction = new ExtractionQueue(database.extractions, 2, 2_000, fetch);
+    const refresh = new FeedRefreshService(database.feeds, 2, 2_000, undefined, fetch);
+    const authService = new AuthService(database.auth);
     expect(authService.register(TEST_ACCOUNT.username, TEST_ACCOUNT.password)).not.toBeNull();
     const app = await createApp({
       database,
@@ -161,15 +161,18 @@ describe("feed refresh and full-text extraction", () => {
       error: "Article response exceeds the 5 MiB extraction limit",
     });
 
-    const feed = database.createFeed(TEST_USER_ID, { feedUrl: `${baseUrl}/feed` });
+    const feed = database.feeds.createFeed(TEST_USER_ID, { feedUrl: `${baseUrl}/feed` });
     expect(refresh.request([feed.id])).toEqual({ requested: 1, refreshingFeedIds: [feed.id] });
     await refresh.waitForIdle();
     await extraction.waitForIdle();
     expect(articleRequests).toBe(0);
     expect(missingRequests).toBe(0);
-    expect(database.getPendingExtractions()).toEqual([]);
+    expect(database.extractions.getPendingExtractions()).toEqual([]);
 
-    const articles = database.listArticles(TEST_USER_ID, { state: "all", includeContent: true });
+    const articles = database.articles.listArticles(TEST_USER_ID, {
+      state: "all",
+      includeContent: true,
+    });
     expect(articles).toHaveLength(2);
     const extracted = articles.find((article) => article.title === "Extract me");
     expect(extracted).toMatchObject({
@@ -199,17 +202,17 @@ describe("feed refresh and full-text extraction", () => {
     expect(["pending", "processing"]).toContain(extractResponse.json().extractionStatus);
     await extraction.waitForIdle();
     expect(articleRequests).toBe(1);
-    expect(database.getArticle(TEST_USER_ID, extracted.id)).toMatchObject({
+    expect(database.articles.getArticle(TEST_USER_ID, extracted.id)).toMatchObject({
       extractionStatus: "complete",
       contentSource: "article",
     });
-    const fullContent = database.getArticle(TEST_USER_ID, extracted.id)?.contentHtml;
+    const fullContent = database.articles.getArticle(TEST_USER_ID, extracted.id)?.contentHtml;
     expect(fullContent).toContain(`href="${baseUrl}/more"`);
     expect(fullContent).toContain('target="_blank"');
     expect(fullContent).toContain(`src="${baseUrl}/image.jpg"`);
     expect(fullContent).not.toContain("<script");
 
-    const magazineArticle = database
+    const magazineArticle = database.articles
       .listArticles(TEST_USER_ID, { state: "all" })
       .find((article) => article.id === extracted.id);
     expect(magazineArticle).toMatchObject({
@@ -237,29 +240,32 @@ describe("feed refresh and full-text extraction", () => {
     expect(failedResponse.statusCode).toBe(200);
     await extraction.waitForIdle();
     expect(missingRequests).toBe(1);
-    expect(database.getArticle(TEST_USER_ID, fallback.id)).toMatchObject({
+    expect(database.articles.getArticle(TEST_USER_ID, fallback.id)).toMatchObject({
       extractionStatus: "failed",
       contentHtml: null,
       feedContentHtml: expect.stringContaining("Complete text supplied by the feed"),
       extractionError: "Article request returned HTTP 503",
     });
 
-    expect(database.getFeed(TEST_USER_ID, feed.id)?.title).toBe("Remote title");
+    expect(database.feeds.getFeed(TEST_USER_ID, feed.id)?.title).toBe("Remote title");
     refresh.request([feed.id]);
     await refresh.waitForIdle();
     expect(feedRequests).toBe(2);
     expect(conditionalHeader).toBe('"v1"');
-    expect(database.getFeed(TEST_USER_ID, feed.id)?.lastHttpStatus).toBe(304);
-    expect(database.listArticles(TEST_USER_ID, { state: "all" })).toHaveLength(2);
+    expect(database.feeds.getFeed(TEST_USER_ID, feed.id)?.lastHttpStatus).toBe(304);
+    expect(database.articles.listArticles(TEST_USER_ID, { state: "all" })).toHaveLength(2);
 
-    database.updateArticleState(TEST_USER_ID, extracted.id, { isRead: true, isStarred: true });
+    database.articles.updateArticleState(TEST_USER_ID, extracted.id, {
+      isRead: true,
+      isStarred: true,
+    });
     forceFullResponse = true;
     revised = true;
     refresh.request([feed.id]);
     await refresh.waitForIdle();
     expect(feedRequests).toBe(3);
     expect(articleRequests).toBe(1);
-    expect(database.getArticle(TEST_USER_ID, extracted.id)).toMatchObject({
+    expect(database.articles.getArticle(TEST_USER_ID, extracted.id)).toMatchObject({
       title: "Extract me (corrected)",
       summary: "Corrected feed summary",
       isRead: true,
@@ -267,23 +273,23 @@ describe("feed refresh and full-text extraction", () => {
       extractionStatus: "feed",
       contentHtml: null,
     });
-    expect(database.getArticle(TEST_USER_ID, extracted.id)?.feedContentHtml).toContain(
+    expect(database.articles.getArticle(TEST_USER_ID, extracted.id)?.feedContentHtml).toContain(
       "Corrected feed summary",
     );
-    expect(database.listArticles(TEST_USER_ID, { state: "all" })).toHaveLength(2);
+    expect(database.articles.listArticles(TEST_USER_ID, { state: "all" })).toHaveLength(2);
 
-    const broken = database.createFeed(TEST_USER_ID, {
+    const broken = database.feeds.createFeed(TEST_USER_ID, {
       feedUrl: `${baseUrl}/broken`,
       title: "Broken",
     });
     refresh.request([broken.id]);
     await refresh.waitForIdle();
-    expect(database.getFeed(TEST_USER_ID, broken.id)).toMatchObject({
+    expect(database.feeds.getFeed(TEST_USER_ID, broken.id)).toMatchObject({
       lastHttpStatus: 503,
       lastSuccessAt: null,
       refreshing: false,
     });
-    expect(database.getFeed(TEST_USER_ID, broken.id)?.lastError).toContain("HTTP 503");
+    expect(database.feeds.getFeed(TEST_USER_ID, broken.id)?.lastError).toContain("HTTP 503");
   });
 
   it("uses the publisher's WordPress API when bot protection replaces its feed", async () => {
@@ -325,14 +331,14 @@ describe("feed refresh and full-text extraction", () => {
     });
     const baseUrl = await listen(server);
     const database = await temporaryDatabase();
-    const extraction = new ExtractionQueue(database, 1, 2_000, fetch);
-    const refresh = new FeedRefreshService(database, 1, 2_000, undefined, fetch);
+    const extraction = new ExtractionQueue(database.extractions, 1, 2_000, fetch);
+    const refresh = new FeedRefreshService(database.feeds, 1, 2_000, undefined, fetch);
     cleanups.push(async () => {
       await Promise.all([refresh.stop(), extraction.stop()]);
       database.close();
     });
 
-    const feed = database.createFeed(TEST_USER_ID, {
+    const feed = database.feeds.createFeed(TEST_USER_ID, {
       feedUrl: `${baseUrl}/feed`,
       title: "Publisher",
     });
@@ -341,7 +347,7 @@ describe("feed refresh and full-text extraction", () => {
     await extraction.waitForIdle();
 
     expect(wordpressRequests).toBe(1);
-    expect(database.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
+    expect(database.feeds.getFeed(TEST_USER_ID, feed.id)).toMatchObject({
       title: "Publisher",
       siteUrl: baseUrl,
       lastHttpStatus: 200,
@@ -349,7 +355,7 @@ describe("feed refresh and full-text extraction", () => {
       totalCount: 1,
     });
     expect(
-      database.listArticles(TEST_USER_ID, { state: "all", includeContent: true })[0],
+      database.articles.listArticles(TEST_USER_ID, { state: "all", includeContent: true })[0],
     ).toMatchObject({
       title: "Publisher & post",
       summary: "Fallback summary.",
@@ -379,20 +385,23 @@ describe("feed refresh and full-text extraction", () => {
     });
     const baseUrl = await listen(server);
     const database = await temporaryDatabase();
-    const extraction = new ExtractionQueue(database, 1, 2_000, fetch);
-    const refresh = new FeedRefreshService(database, 3, 2_000, undefined, fetch);
+    const extraction = new ExtractionQueue(database.extractions, 1, 2_000, fetch);
+    const refresh = new FeedRefreshService(database.feeds, 3, 2_000, undefined, fetch);
     cleanups.push(async () => {
       await Promise.all([refresh.stop(), extraction.stop()]);
       database.close();
     });
 
     const feeds = ["imunify", "cloudflare", "vercel"].map((provider) =>
-      database.createFeed(TEST_USER_ID, { feedUrl: `${baseUrl}/${provider}`, title: provider }),
+      database.feeds.createFeed(TEST_USER_ID, {
+        feedUrl: `${baseUrl}/${provider}`,
+        title: provider,
+      }),
     );
     refresh.request(feeds.map((feed) => feed.id));
     await refresh.waitForIdle();
 
-    expect(feeds.map((feed) => database.getFeed(TEST_USER_ID, feed.id)?.lastError)).toEqual([
+    expect(feeds.map((feed) => database.feeds.getFeed(TEST_USER_ID, feed.id)?.lastError)).toEqual([
       "Feed host requires browser verification (Imunify360); automated refresh cannot access this URL",
       "Feed host requires browser verification (Cloudflare); automated refresh cannot access this URL",
       "Feed host requires browser verification (Vercel); automated refresh cannot access this URL",
@@ -402,7 +411,7 @@ describe("feed refresh and full-text extraction", () => {
   it("stores large feed batches without scheduling publisher extraction", async () => {
     const database = await temporaryDatabase();
     cleanups.push(() => database.close());
-    const feed = database.createFeed(TEST_USER_ID, {
+    const feed = database.feeds.createFeed(TEST_USER_ID, {
       feedUrl: "https://example.test/feed",
       title: "Batch",
     });
@@ -420,7 +429,7 @@ describe("feed refresh and full-text extraction", () => {
         feedContentHtml: `<p>Readable feed content ${index}</p>`,
       })),
     };
-    database.markFeedSuccess(feed.id, {
+    database.feeds.completeRefresh(feed.id, {
       httpStatus: 200,
       etag: null,
       lastModified: null,
@@ -428,16 +437,16 @@ describe("feed refresh and full-text extraction", () => {
       parsed,
     });
 
-    const count = database.sqlite
+    const count = database.connection
       .prepare("SELECT COUNT(*) AS count FROM articles WHERE extraction_status = 'feed'")
       .get() as { count: number };
     expect(count.count).toBe(125);
-    expect(database.getPendingExtractions()).toHaveLength(0);
+    expect(database.extractions.getPendingExtractions()).toHaveLength(0);
 
-    const firstPage = database.listArticlePage(TEST_USER_ID, { state: "all", limit: 100 });
+    const firstPage = database.articles.listArticlePage(TEST_USER_ID, { state: "all", limit: 100 });
     expect(firstPage.articles).toHaveLength(100);
     expect(firstPage.nextCursor).not.toBeNull();
-    const secondPage = database.listArticlePage(TEST_USER_ID, {
+    const secondPage = database.articles.listArticlePage(TEST_USER_ID, {
       state: "all",
       limit: 100,
       cursor: firstPage.nextCursor ?? undefined,
@@ -452,7 +461,7 @@ describe("feed refresh and full-text extraction", () => {
     if (!target) throw new Error("Deep queue target was not stored");
     expect(firstPage.articles.some((article) => article.id === target.id)).toBe(false);
 
-    const anchoredPage = database.listArticlePage(TEST_USER_ID, {
+    const anchoredPage = database.articles.listArticlePage(TEST_USER_ID, {
       state: "all",
       limit: 20,
       anchorId: target.id,
@@ -463,8 +472,8 @@ describe("feed refresh and full-text extraction", () => {
     );
     expect(anchoredPage.nextCursor).not.toBeNull();
 
-    database.updateArticleState(TEST_USER_ID, target.id, { isRead: true });
-    const unreadAnchoredPage = database.listArticlePage(TEST_USER_ID, {
+    database.articles.updateArticleState(TEST_USER_ID, target.id, { isRead: true });
+    const unreadAnchoredPage = database.articles.listArticlePage(TEST_USER_ID, {
       state: "unread",
       limit: 20,
       anchorId: target.id,
@@ -473,7 +482,7 @@ describe("feed refresh and full-text extraction", () => {
     expect(unreadAnchoredPage.articles[9]?.id).toBe(fullQueue[targetIndex - 1]?.id);
     expect(unreadAnchoredPage.articles[10]?.id).toBe(target.id);
     expect(unreadAnchoredPage.articles[11]?.id).toBe(fullQueue[targetIndex + 1]?.id);
-    const unreadOlderPage = database.listArticlePage(TEST_USER_ID, {
+    const unreadOlderPage = database.articles.listArticlePage(TEST_USER_ID, {
       state: "unread",
       limit: 20,
       cursor: unreadAnchoredPage.nextCursor ?? undefined,
@@ -486,7 +495,7 @@ describe("feed refresh and full-text extraction", () => {
   it("skips exact URL or title duplicates across feeds within the configured window", async () => {
     const database = await temporaryDatabase();
     cleanups.push(() => database.close());
-    const authService = new AuthService(database);
+    const authService = new AuthService(database.auth);
     const reader = authService.register("reader", "reader-password")?.user;
     const partner = authService.register("partner", "partner-password")?.user;
     if (!reader || !partner) throw new Error("Expected test accounts");
@@ -502,14 +511,14 @@ describe("feed refresh and full-text extraction", () => {
       feedContentHtml: null,
     });
     const refreshFeed = (feedId: number, articles: ParsedFeed["articles"]) =>
-      database.markFeedSuccess(feedId, {
+      database.feeds.completeRefresh(feedId, {
         httpStatus: 200,
         etag: null,
         lastModified: null,
         pollIntervalMinutes: 20,
         parsed: { title: "Feed", siteUrl: "https://example.test", articles },
       });
-    const sourceFeed = database.createFeed(reader.id, {
+    const sourceFeed = database.feeds.createFeed(reader.id, {
       feedUrl: "https://example.test/source-feed",
     });
     refreshFeed(sourceFeed.id, [
@@ -522,7 +531,7 @@ describe("feed refresh and full-text extraction", () => {
     ]);
 
     const setDiscoveredAge = (externalId: string, days: number) => {
-      database.sqlite
+      database.connection
         .prepare("UPDATE articles SET discovered_at = ? WHERE external_id = ?")
         .run(new Date(Date.now() - days * 24 * 60 * 60 * 1_000).toISOString(), externalId);
     };
@@ -530,8 +539,8 @@ describe("feed refresh and full-text extraction", () => {
     setDiscoveredAge("two-day-seven", 2);
     setDiscoveredAge("eight-day-thirty", 8);
 
-    database.updateSettings(reader.id, { duplicateArticleWindowDays: 1 });
-    const oneDayFeed = database.createFeed(reader.id, {
+    database.settings.updateSettings(reader.id, { duplicateArticleWindowDays: 1 });
+    const oneDayFeed = database.feeds.createFeed(reader.id, {
       feedUrl: "https://example.test/one-day-feed",
     });
     refreshFeed(oneDayFeed.id, [
@@ -545,8 +554,8 @@ describe("feed refresh and full-text extraction", () => {
       article("batch-copy", "Same-batch title", "https://example.test/batch-copy"),
     ]);
 
-    database.updateSettings(reader.id, { duplicateArticleWindowDays: 7 });
-    const sevenDayFeed = database.createFeed(reader.id, {
+    database.settings.updateSettings(reader.id, { duplicateArticleWindowDays: 7 });
+    const sevenDayFeed = database.feeds.createFeed(reader.id, {
       feedUrl: "https://example.test/seven-day-feed",
     });
     refreshFeed(sevenDayFeed.id, [
@@ -554,8 +563,8 @@ describe("feed refresh and full-text extraction", () => {
       article("seven-day-unique", "Seven-day unique", "https://example.test/seven-day-unique"),
     ]);
 
-    database.updateSettings(reader.id, { duplicateArticleWindowDays: 30 });
-    const thirtyDayFeed = database.createFeed(reader.id, {
+    database.settings.updateSettings(reader.id, { duplicateArticleWindowDays: 30 });
+    const thirtyDayFeed = database.feeds.createFeed(reader.id, {
       feedUrl: "https://example.test/thirty-day-feed",
     });
     refreshFeed(thirtyDayFeed.id, [
@@ -563,7 +572,7 @@ describe("feed refresh and full-text extraction", () => {
       article("thirty-day-unique", "Thirty-day unique", "https://example.test/thirty-day-unique"),
     ]);
 
-    const readerArticleIds = database.sqlite
+    const readerArticleIds = database.connection
       .prepare(
         `SELECT articles.external_id
          FROM articles
@@ -589,13 +598,13 @@ describe("feed refresh and full-text extraction", () => {
       ]),
     );
 
-    const partnerFeed = database.createFeed(partner.id, {
+    const partnerFeed = database.feeds.createFeed(partner.id, {
       feedUrl: "https://example.test/partner-feed",
     });
     refreshFeed(partnerFeed.id, [
       article("partner-copy", "Exact shared title", "https://example.test/shared-url"),
     ]);
-    expect(database.listArticles(partner.id, { state: "all" })).toMatchObject([
+    expect(database.articles.listArticles(partner.id, { state: "all" })).toMatchObject([
       { title: "Exact shared title", url: "https://example.test/shared-url" },
     ]);
   });
@@ -603,7 +612,7 @@ describe("feed refresh and full-text extraction", () => {
   it("preserves an extracted thumbnail when feed metadata changes", async () => {
     const database = await temporaryDatabase();
     cleanups.push(() => database.close());
-    const feed = database.createFeed(TEST_USER_ID, {
+    const feed = database.feeds.createFeed(TEST_USER_ID, {
       feedUrl: "https://example.test/feed",
       title: "Feed",
     });
@@ -617,18 +626,18 @@ describe("feed refresh and full-text extraction", () => {
       imageUrl: null,
       feedContentHtml: "<p>Feed summary without an image.</p>",
     };
-    database.markFeedSuccess(feed.id, {
+    database.feeds.completeRefresh(feed.id, {
       httpStatus: 200,
       etag: null,
       lastModified: null,
       pollIntervalMinutes: 20,
       parsed: { title: "Feed", siteUrl: "https://example.test", articles: [parsedArticle] },
     });
-    const articleId = database.listArticles(TEST_USER_ID, { state: "all" })[0]?.id;
+    const articleId = database.articles.listArticles(TEST_USER_ID, { state: "all" })[0]?.id;
     if (!articleId) throw new Error("Article was not stored");
-    expect(database.requestExtraction(TEST_USER_ID, articleId)).toBe(true);
-    expect(database.markExtractionProcessing(articleId)).toBe(true);
-    database.completeExtraction(articleId, {
+    expect(database.extractions.requestExtraction(TEST_USER_ID, articleId)).toBe(true);
+    expect(database.extractions.markExtractionProcessing(articleId)).toBe(true);
+    database.extractions.completeExtraction(articleId, {
       contentHtml: '<p>Full article.</p><img src="https://cdn.example.test/hero.jpg">',
       imageUrl: "https://cdn.example.test/hero.jpg",
       contentSource: "article",
@@ -636,7 +645,7 @@ describe("feed refresh and full-text extraction", () => {
       error: null,
     });
 
-    database.markFeedSuccess(feed.id, {
+    database.feeds.completeRefresh(feed.id, {
       httpStatus: 200,
       etag: null,
       lastModified: null,
@@ -648,7 +657,7 @@ describe("feed refresh and full-text extraction", () => {
       },
     });
 
-    expect(database.getArticle(TEST_USER_ID, articleId)).toMatchObject({
+    expect(database.articles.getArticle(TEST_USER_ID, articleId)).toMatchObject({
       title: "Updated title",
       imageUrl: "https://cdn.example.test/hero.jpg",
       extractionStatus: "complete",
@@ -658,7 +667,7 @@ describe("feed refresh and full-text extraction", () => {
   it("does not let an obsolete extraction overwrite a changed feed item", async () => {
     const database = await temporaryDatabase();
     cleanups.push(() => database.close());
-    const feed = database.createFeed(TEST_USER_ID, {
+    const feed = database.feeds.createFeed(TEST_USER_ID, {
       feedUrl: "https://example.test/feed",
       title: "Feed",
     });
@@ -672,19 +681,19 @@ describe("feed refresh and full-text extraction", () => {
       imageUrl: null,
       feedContentHtml: "<p>Old feed article.</p>",
     };
-    database.markFeedSuccess(feed.id, {
+    database.feeds.completeRefresh(feed.id, {
       httpStatus: 200,
       etag: null,
       lastModified: null,
       pollIntervalMinutes: 20,
       parsed: { title: "Feed", siteUrl: "https://example.test", articles: [article] },
     });
-    const articleId = database.listArticles(TEST_USER_ID, { state: "all" })[0]?.id;
+    const articleId = database.articles.listArticles(TEST_USER_ID, { state: "all" })[0]?.id;
     if (!articleId) throw new Error("Article was not stored");
-    expect(database.requestExtraction(TEST_USER_ID, articleId)).toBe(true);
-    expect(database.markExtractionProcessing(articleId)).toBe(true);
+    expect(database.extractions.requestExtraction(TEST_USER_ID, articleId)).toBe(true);
+    expect(database.extractions.markExtractionProcessing(articleId)).toBe(true);
 
-    database.markFeedSuccess(feed.id, {
+    database.feeds.completeRefresh(feed.id, {
       httpStatus: 200,
       etag: null,
       lastModified: null,
@@ -702,7 +711,7 @@ describe("feed refresh and full-text extraction", () => {
         ],
       },
     });
-    database.completeExtraction(articleId, {
+    database.extractions.completeExtraction(articleId, {
       contentHtml: "<p>Obsolete extracted article.</p>",
       imageUrl: null,
       contentSource: "article",
@@ -710,7 +719,7 @@ describe("feed refresh and full-text extraction", () => {
       error: null,
     });
 
-    expect(database.getArticle(TEST_USER_ID, articleId)).toMatchObject({
+    expect(database.articles.getArticle(TEST_USER_ID, articleId)).toMatchObject({
       url: "https://example.test/new-story",
       summary: "New summary",
       feedContentHtml: "<p>New feed article.</p>",
@@ -722,7 +731,7 @@ describe("feed refresh and full-text extraction", () => {
   it("stores playable media without text extraction and filters Shorts by media type", async () => {
     const database = await temporaryDatabase();
     cleanups.push(() => database.close());
-    const feed = database.createFeed(TEST_USER_ID, {
+    const feed = database.feeds.createFeed(TEST_USER_ID, {
       feedUrl: "https://www.youtube.com/feeds/videos.xml?channel_id=UCexample",
       title: "Video feed",
     });
@@ -730,7 +739,7 @@ describe("feed refresh and full-text extraction", () => {
     const short = youtubeMediaFromUrl("https://www.youtube.com/shorts/short123");
     if (!video || !short) throw new Error("Expected YouTube media metadata");
 
-    database.markFeedSuccess(feed.id, {
+    database.feeds.completeRefresh(feed.id, {
       httpStatus: 200,
       etag: null,
       lastModified: null,
@@ -765,12 +774,12 @@ describe("feed refresh and full-text extraction", () => {
       },
     });
 
-    expect(database.listArticles(TEST_USER_ID, { state: "all" })).toMatchObject([
+    expect(database.articles.listArticles(TEST_USER_ID, { state: "all" })).toMatchObject([
       { title: "Regular upload", extractionStatus: "feed", media: { type: "video" } },
       { title: "Short upload", extractionStatus: "feed", media: { type: "short" } },
     ]);
 
-    const rule = database.createRule(TEST_USER_ID, {
+    const rule = database.rules.createRule(TEST_USER_ID, {
       name: "Hide Shorts",
       conditions: [{ field: "media", pattern: "short" }],
       conditionOperator: "and",
@@ -778,7 +787,9 @@ describe("feed refresh and full-text extraction", () => {
     });
     expect(rule.matchedCount).toBe(1);
     expect(
-      database.listArticles(TEST_USER_ID, { state: "all" }).map((article) => article.title),
+      database.articles
+        .listArticles(TEST_USER_ID, { state: "all" })
+        .map((article) => article.title),
     ).toEqual(["Regular upload"]);
   });
 
@@ -809,9 +820,9 @@ describe("feed refresh and full-text extraction", () => {
     });
     const baseUrl = await listen(server);
     const database = await temporaryDatabase();
-    const extraction = new ExtractionQueue(database, 1, 2_000, fetch);
-    const refresh = new FeedRefreshService(database, 1, 2_000, undefined, fetch);
-    const authService = new AuthService(database);
+    const extraction = new ExtractionQueue(database.extractions, 1, 2_000, fetch);
+    const refresh = new FeedRefreshService(database.feeds, 1, 2_000, undefined, fetch);
+    const authService = new AuthService(database.auth);
     expect(authService.register(TEST_ACCOUNT.username, TEST_ACCOUNT.password)).not.toBeNull();
     const app = await createApp({
       database,
@@ -826,11 +837,11 @@ describe("feed refresh and full-text extraction", () => {
       database.close();
     });
 
-    const feed = database.createFeed(TEST_USER_ID, {
+    const feed = database.feeds.createFeed(TEST_USER_ID, {
       feedUrl: `${baseUrl}/feed`,
       title: "Priority",
     });
-    database.markFeedSuccess(feed.id, {
+    database.feeds.completeRefresh(feed.id, {
       httpStatus: 200,
       etag: null,
       lastModified: null,
@@ -851,7 +862,7 @@ describe("feed refresh and full-text extraction", () => {
       },
     });
     const articleIds = new Map(
-      database
+      database.articles
         .listArticles(TEST_USER_ID, { state: "all" })
         .map((article) => [article.title, article.id]),
     );
@@ -860,10 +871,10 @@ describe("feed refresh and full-text extraction", () => {
     const openedId = articleIds.get("opened");
     if (!firstId || !secondId || !openedId) throw new Error("Expected queued articles");
 
-    expect(database.requestExtraction(TEST_USER_ID, firstId)).toBe(true);
+    expect(database.extractions.requestExtraction(TEST_USER_ID, firstId)).toBe(true);
     extraction.prioritize(firstId);
     await firstStarted;
-    expect(database.requestExtraction(TEST_USER_ID, secondId)).toBe(true);
+    expect(database.extractions.requestExtraction(TEST_USER_ID, secondId)).toBe(true);
     extraction.prioritize(secondId);
 
     const login = await app.inject({

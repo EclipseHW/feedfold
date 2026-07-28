@@ -3,7 +3,7 @@ import { parseFeed } from "feedsmith";
 import sanitizeHtml from "sanitize-html";
 import { firstSafeImageUrl } from "./article-image.js";
 import { youtubeMediaFromUrl } from "./article-media.js";
-import type { ParsedArticle, ParsedFeed } from "./db.js";
+import type { ParsedArticle, ParsedFeed } from "./features/shared.js";
 import { nitterFeedUrl } from "./feed-http.js";
 
 type UnknownRecord = Record<string, unknown>;

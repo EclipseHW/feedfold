@@ -1,7 +1,7 @@
 import { JSDOM } from "jsdom";
 import { extractHttpLinks } from "../../shared/article-links.js";
 import type { AiArticleSourceKind } from "../../shared/types.js";
-import type { AiArticleRecord } from "../db.js";
+import type { AiArticleRecord } from "../features/shared.js";
 import { AiError } from "./errors.js";
 
 export const ARTICLE_TRANSLATION_PROMPT_VERSION = 2;

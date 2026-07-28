@@ -3,9 +3,9 @@ import type { AddressInfo } from "node:net";
 import type { InjectOptions } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/server/app.js";
-import { AuthService } from "../../src/server/auth.js";
-import { AppDatabase } from "../../src/server/db.js";
+import { AppDatabase } from "../../src/server/database.js";
 import { ExtractionQueue } from "../../src/server/extraction.js";
+import { AuthService } from "../../src/server/features/auth/service.js";
 import { FeedRefreshService } from "../../src/server/refresh.js";
 import { WebFeedService } from "../../src/server/web-feed.js";
 import type {
@@ -140,8 +140,8 @@ describe("authenticated web-feed API", () => {
 
     const database = new AppDatabase(":memory:");
     cleanups.push(() => database.close());
-    const authService = new AuthService(database);
-    const extractionQueue = new ExtractionQueue(database, 1, 4_000);
+    const authService = new AuthService(database.auth);
+    const extractionQueue = new ExtractionQueue(database.extractions, 1, 4_000);
     cleanups.push(() => extractionQueue.stop());
     const webFeedService = new WebFeedService({
       allowPrivateNetworks: true,
@@ -150,7 +150,7 @@ describe("authenticated web-feed API", () => {
       settleTimeoutMs: 3_000,
     });
     cleanups.push(() => webFeedService.close());
-    const refreshService = new FeedRefreshService(database, 1, 4_000, webFeedService);
+    const refreshService = new FeedRefreshService(database.feeds, 1, 4_000, webFeedService);
     cleanups.push(() => refreshService.stop());
     const app = await createApp({
       database,
@@ -292,7 +292,7 @@ describe("authenticated web-feed API", () => {
       isStarred: true,
     });
     expect(refreshedArticles.some(({ url }) => url === `${pageUrl}/updates/beta`)).toBe(true);
-    expect(database.getFeed(1, created.id)).toMatchObject({
+    expect(database.feeds.getFeed(1, created.id)).toMatchObject({
       healthStatus: "healthy",
       lastMatchCount: 3,
       totalCount: 4,
@@ -300,18 +300,18 @@ describe("authenticated web-feed API", () => {
 
     mode = "http_error";
     await refresh();
-    expect(database.getFeed(1, created.id)).toMatchObject({
+    expect(database.feeds.getFeed(1, created.id)).toMatchObject({
       healthStatus: "failing",
       lastErrorKind: "http",
       lastHttpStatus: 503,
       lastMatchCount: 3,
       totalCount: 4,
     });
-    expect(database.getFeed(1, created.id)?.lastErrorKind).not.toBe("selection_broken");
+    expect(database.feeds.getFeed(1, created.id)?.lastErrorKind).not.toBe("selection_broken");
 
     mode = "changed";
     await refresh();
-    expect(database.getFeed(1, created.id)).toMatchObject({
+    expect(database.feeds.getFeed(1, created.id)).toMatchObject({
       healthStatus: "needs_attention",
       lastErrorKind: "selection_broken",
       lastHttpStatus: 200,

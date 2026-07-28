@@ -10,9 +10,9 @@ import {
 import { CredentialCipher } from "../../src/server/ai/credential-cipher.js";
 import { AiError } from "../../src/server/ai/errors.js";
 import { createAiProviders } from "../../src/server/ai/providers.js";
-import { AiService } from "../../src/server/ai/service.js";
-import { AuthService } from "../../src/server/auth.js";
-import { AppDatabase, type ParsedFeed } from "../../src/server/db.js";
+import { AppDatabase, type ParsedFeed } from "../../src/server/database.js";
+import { AiService } from "../../src/server/features/ai/service.js";
+import { AuthService } from "../../src/server/features/auth/service.js";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 const CREDENTIAL_KEY = "11".repeat(32);
@@ -24,7 +24,7 @@ afterEach(async () => {
 function databaseWithUsers(): { database: AppDatabase; readerId: number; partnerId: number } {
   const database = new AppDatabase(":memory:");
   cleanups.push(() => database.close());
-  const auth = new AuthService(database);
+  const auth = new AuthService(database.auth);
   const reader = auth.register("reader", "reader-password")?.user;
   const partner = auth.register("partner", "partner-password")?.user;
   if (!reader || !partner) throw new Error("Test accounts could not be created");
@@ -32,7 +32,7 @@ function databaseWithUsers(): { database: AppDatabase; readerId: number; partner
 }
 
 function addArticle(database: AppDatabase, userId: number): { feedId: number; articleId: number } {
-  const feed = database.createFeed(userId, {
+  const feed = database.feeds.createFeed(userId, {
     title: "Engineering",
     feedUrl: `https://example.test/feed-${userId}`,
   });
@@ -53,14 +53,14 @@ function addArticle(database: AppDatabase, userId: number): { feedId: number; ar
       },
     ],
   };
-  database.markFeedSuccess(feed.id, {
+  database.feeds.completeRefresh(feed.id, {
     httpStatus: 200,
     etag: null,
     lastModified: null,
     pollIntervalMinutes: 20,
     parsed,
   });
-  const articleId = database.listArticles(userId, { state: "all" })[0]?.id;
+  const articleId = database.articles.listArticles(userId, { state: "all" })[0]?.id;
   if (!articleId) throw new Error("Test article was not stored");
   return { feedId: feed.id, articleId };
 }
@@ -129,7 +129,7 @@ describe("AI article summaries", () => {
     expect(partnerSettings.providers.find((provider) => provider.id === "openai")).toMatchObject({
       configured: false,
     });
-    const stored = database.getEncryptedAiCredential(readerId, "openai");
+    const stored = database.ai.getEncryptedAiCredential(readerId, "openai");
     expect(stored).not.toBeNull();
     expect(stored).not.toContain("reader-secret-key");
     expect(() => cipher.decrypt(partnerId, "openai", stored ?? "")).toThrow(AiError);
@@ -225,7 +225,7 @@ describe("AI article summaries", () => {
     const service = new AiService(database, { credentialCipher: cipher, providers });
     service.setApiKey(readerId, "openai", "live-provider-test-key");
     service.setFeatureSetting(readerId, "article_summary", "openai", "shared-reader-model");
-    database.updateSettings(readerId, { translationLanguage: "Polish" });
+    database.settings.updateSettings(readerId, { translationLanguage: "Polish" });
 
     const first = await service.translateArticle(readerId, articleId, "feed");
     expect(first).toMatchObject({
@@ -251,7 +251,7 @@ describe("AI article summaries", () => {
     expect(requests).toHaveLength(1);
 
     service.setApiKey(readerId, "openai", "live-provider-test-key");
-    database.updateSettings(readerId, { translationLanguage: "French" });
+    database.settings.updateSettings(readerId, { translationLanguage: "French" });
     expect(await service.translateArticle(readerId, articleId, "feed")).toMatchObject({
       html: "<article><p>Français fragment 0</p></article>",
       language: "French",
@@ -269,7 +269,7 @@ describe("AI article summaries", () => {
     const service = new AiService(database, { credentialCipher: cipher, providers });
     service.setApiKey(readerId, "openai", "live-provider-test-key");
     service.setFeatureSetting(readerId, "article_summary", "openai", "shared-reader-model");
-    database.updateSettings(readerId, {
+    database.settings.updateSettings(readerId, {
       translationLanguage: "Polish",
       summaryPrompt: "Write one short summary paragraph.",
       translationPrompt: "Translate every marked fragment and return one JSON object.",
@@ -287,11 +287,11 @@ describe("AI article summaries", () => {
     await service.translateArticle(readerId, articleId, "feed");
     expect(requests).toHaveLength(2);
 
-    database.updateSettings(readerId, {
+    database.settings.updateSettings(readerId, {
       summaryPrompt: "Write a detailed summary with key points.",
       translationPrompt: "Translate all marked fragments and return only their JSON object.",
     });
-    expect(database.getArticle(readerId, articleId)?.aiSummary).toBeNull();
+    expect(database.articles.getArticle(readerId, articleId)?.aiSummary).toBeNull();
 
     await service.summarizeArticle(readerId, articleId, null);
     await service.translateArticle(readerId, articleId, "feed");
@@ -304,7 +304,7 @@ describe("AI article summaries", () => {
     });
 
     const customPromptId = "5caa245e-f441-4d33-95cc-287f50f07b91";
-    database.updateSettings(readerId, {
+    database.settings.updateSettings(readerId, {
       customPrompts: [
         {
           id: customPromptId,
@@ -313,7 +313,9 @@ describe("AI article summaries", () => {
         },
       ],
     });
-    expect(database.getArticle(readerId, articleId)?.aiSummary).toMatchObject({ promptId: null });
+    expect(database.articles.getArticle(readerId, articleId)?.aiSummary).toMatchObject({
+      promptId: null,
+    });
     expect(await service.summarizeArticle(readerId, articleId, customPromptId)).toMatchObject({
       promptId: customPromptId,
     });
@@ -323,7 +325,7 @@ describe("AI article summaries", () => {
     await service.summarizeArticle(readerId, articleId, customPromptId);
     expect(requests).toHaveLength(5);
 
-    database.updateSettings(readerId, {
+    database.settings.updateSettings(readerId, {
       customPrompts: [
         {
           id: customPromptId,
@@ -332,7 +334,7 @@ describe("AI article summaries", () => {
         },
       ],
     });
-    expect(database.getArticle(readerId, articleId)?.aiSummary).toBeNull();
+    expect(database.articles.getArticle(readerId, articleId)?.aiSummary).toBeNull();
     await service.summarizeArticle(readerId, articleId, customPromptId);
     expect(requests[5]).toMatchObject({
       instructions: "Return only a bullet list of decisions and their owners.",
@@ -345,9 +347,9 @@ describe("AI article summaries", () => {
   it("keeps a summary for metadata-only refreshes and invalidates it when source text changes", () => {
     const { database, readerId, partnerId } = databaseWithUsers();
     const { feedId, articleId } = addArticle(database, readerId);
-    const article = database.getArticleForAi(readerId, articleId);
+    const article = database.ai.getArticleForAi(readerId, articleId);
     if (!article) throw new Error("Test article is unavailable");
-    database.saveArticleAiSummary(readerId, articleId, article.revision, {
+    database.ai.saveArticleAiSummary(readerId, articleId, article.revision, {
       promptVersion: 1,
       promptId: null,
       sourceKind: "feed",
@@ -368,7 +370,7 @@ describe("AI article summaries", () => {
       feedContentHtml:
         "<article><p>The full feed article explains an important result.</p></article>",
     };
-    database.markFeedSuccess(feedId, {
+    database.feeds.completeRefresh(feedId, {
       httpStatus: 200,
       etag: null,
       lastModified: null,
@@ -379,9 +381,11 @@ describe("AI article summaries", () => {
         articles: [metadataOnly],
       },
     });
-    expect(database.getArticle(readerId, articleId)?.aiSummary?.text).toBe("Stored summary");
+    expect(database.articles.getArticle(readerId, articleId)?.aiSummary?.text).toBe(
+      "Stored summary",
+    );
 
-    database.markFeedSuccess(feedId, {
+    database.feeds.completeRefresh(feedId, {
       httpStatus: 200,
       etag: null,
       lastModified: null,
@@ -392,8 +396,8 @@ describe("AI article summaries", () => {
         articles: [{ ...metadataOnly, title: "A corrected story" }],
       },
     });
-    expect(database.getArticle(readerId, articleId)?.aiSummary).toBeNull();
-    expect(database.getArticleForAi(partnerId, articleId)).toBeNull();
+    expect(database.articles.getArticle(readerId, articleId)?.aiSummary).toBeNull();
+    expect(database.ai.getArticleForAi(partnerId, articleId)).toBeNull();
   });
 
   it("explains whether the provider selection or its API key is missing", async () => {

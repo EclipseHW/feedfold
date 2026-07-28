@@ -4,9 +4,9 @@ import { join } from "node:path";
 import type { InjectOptions } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
 import { createApp } from "../../src/server/app.js";
-import { AuthService } from "../../src/server/auth.js";
-import { AppDatabase } from "../../src/server/db.js";
+import { AppDatabase } from "../../src/server/database.js";
 import { ExtractionQueue } from "../../src/server/extraction.js";
+import { AuthService } from "../../src/server/features/auth/service.js";
 import { FeedRefreshService } from "../../src/server/refresh.js";
 import type { Feed, Folder, Rule } from "../../src/shared/types.js";
 
@@ -20,9 +20,9 @@ describe("feed and folder management", () => {
   it("manages a subscription in place and returns persisted feed settings", async () => {
     const directory = await mkdtemp(join(tmpdir(), "echovale-feed-management-test-"));
     const database = new AppDatabase(join(directory, "echovale.db"), 37);
-    const authService = new AuthService(database, 37);
-    const extraction = new ExtractionQueue(database, 1, 1_000);
-    const refresh = new FeedRefreshService(database, 1, 1_000);
+    const authService = new AuthService(database.auth, 37);
+    const extraction = new ExtractionQueue(database.extractions, 1, 1_000);
+    const refresh = new FeedRefreshService(database.feeds, 1, 1_000);
     const app = await createApp({
       database,
       authService,
@@ -108,7 +108,7 @@ describe("feed and folder management", () => {
     });
     expect(createResponse.statusCode).toBe(200);
     const createdFeed = createResponse.json<Feed>();
-    const storedPollInterval = database.sqlite
+    const storedPollInterval = database.connection
       .prepare("SELECT poll_interval_minutes FROM settings WHERE user_id = 1")
       .pluck()
       .get();

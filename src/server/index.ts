@@ -2,11 +2,11 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CredentialCipher } from "./ai/credential-cipher.js";
-import { AiService } from "./ai/service.js";
 import { createApp } from "./app.js";
-import { AuthService } from "./auth.js";
-import { AppDatabase } from "./db.js";
+import { AppDatabase } from "./database.js";
 import { ExtractionQueue } from "./extraction.js";
+import { AiService } from "./features/ai/service.js";
+import { AuthService } from "./features/auth/service.js";
 import { closePublicNetwork } from "./public-network.js";
 import { FeedRefreshService } from "./refresh.js";
 import { WebFeedService } from "./web-feed.js";
@@ -51,10 +51,15 @@ const staticDir = fileURLToPath(new URL("../client", import.meta.url));
 
 mkdirSync(dirname(databasePath), { recursive: true });
 const database = new AppDatabase(databasePath, pollIntervalMinutes);
-const authService = new AuthService(database, pollIntervalMinutes);
-const extractionQueue = new ExtractionQueue(database, 2, articleFetchTimeoutMs);
+const authService = new AuthService(database.auth, pollIntervalMinutes);
+const extractionQueue = new ExtractionQueue(database.extractions, 2, articleFetchTimeoutMs);
 const webFeedService = new WebFeedService({ timeoutMs: webFeedLoadTimeoutMs });
-const refreshService = new FeedRefreshService(database, 3, feedFetchTimeoutMs, webFeedService);
+const refreshService = new FeedRefreshService(
+  database.feeds,
+  3,
+  feedFetchTimeoutMs,
+  webFeedService,
+);
 const aiService = new AiService(database, {
   credentialCipher: CredentialCipher.fromHex(process.env.AI_CREDENTIALS_KEY),
   requestTimeoutMs: aiRequestTimeoutMs,

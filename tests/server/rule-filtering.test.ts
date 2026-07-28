@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { AppDatabase, type ParsedArticle } from "../../src/server/db.js";
+import { AppDatabase, type ParsedArticle } from "../../src/server/database.js";
 
 const TEST_USER_ID = 1;
 const databases: AppDatabase[] = [];
@@ -35,18 +35,18 @@ function seededDatabase(): {
   const database = new AppDatabase(":memory:");
   databases.push(database);
 
-  const folder = database.createFolder(TEST_USER_ID, { name: "Scoped" });
-  const scopedFeed = database.createFeed(TEST_USER_ID, {
+  const folder = database.folders.createFolder(TEST_USER_ID, { name: "Scoped" });
+  const scopedFeed = database.feeds.createFeed(TEST_USER_ID, {
     title: "Scoped feed",
     feedUrl: "https://scoped.example.test/feed",
     folderId: folder.id,
   });
-  const outsideFeed = database.createFeed(TEST_USER_ID, {
+  const outsideFeed = database.feeds.createFeed(TEST_USER_ID, {
     title: "Outside feed",
     feedUrl: "https://outside.example.test/feed",
   });
 
-  database.markFeedSuccess(scopedFeed.id, {
+  database.feeds.completeRefresh(scopedFeed.id, {
     httpStatus: 200,
     etag: null,
     lastModified: null,
@@ -64,7 +64,7 @@ function seededDatabase(): {
       ],
     },
   });
-  database.markFeedSuccess(outsideFeed.id, {
+  database.feeds.completeRefresh(outsideFeed.id, {
     httpStatus: 200,
     etag: null,
     lastModified: null,
@@ -87,25 +87,27 @@ function seededDatabase(): {
 }
 
 function titles(database: AppDatabase, state: "all" | "unread" = "all"): string[] {
-  return database.listArticles(TEST_USER_ID, { state }).map((candidate) => candidate.title);
+  return database.articles
+    .listArticles(TEST_USER_ID, { state })
+    .map((candidate) => candidate.title);
 }
 
 describe("article filtering rules", () => {
   it("applies saved rules when a feed refresh stores several articles at once", () => {
     const database = new AppDatabase(":memory:");
     databases.push(database);
-    const feed = database.createFeed(TEST_USER_ID, {
+    const feed = database.feeds.createFeed(TEST_USER_ID, {
       title: "Incoming",
       feedUrl: "https://incoming.example.test/feed",
     });
-    const hiddenRule = database.createRule(TEST_USER_ID, {
+    const hiddenRule = database.rules.createRule(TEST_USER_ID, {
       name: "Hide hidden stories",
       feedId: feed.id,
       conditions: [{ field: "title", pattern: "hidden" }],
       conditionOperator: "and",
       action: "hide",
     });
-    const readRule = database.createRule(TEST_USER_ID, {
+    const readRule = database.rules.createRule(TEST_USER_ID, {
       name: "Read robot stories",
       feedId: feed.id,
       conditions: [{ field: "author", pattern: "robot" }],
@@ -113,7 +115,7 @@ describe("article filtering rules", () => {
       action: "mark_read",
     });
 
-    database.markFeedSuccess(feed.id, {
+    database.feeds.completeRefresh(feed.id, {
       httpStatus: 200,
       etag: null,
       lastModified: null,
@@ -129,8 +131,8 @@ describe("article filtering rules", () => {
       },
     });
 
-    expect(database.getRule(TEST_USER_ID, hiddenRule.id)?.matchedCount).toBe(1);
-    expect(database.getRule(TEST_USER_ID, readRule.id)?.matchedCount).toBe(1);
+    expect(database.rules.getRule(TEST_USER_ID, hiddenRule.id)?.matchedCount).toBe(1);
+    expect(database.rules.getRule(TEST_USER_ID, readRule.id)?.matchedCount).toBe(1);
     expect(new Set(titles(database))).toEqual(new Set(["Robot story", "Plain story"]));
     expect(titles(database, "unread")).toEqual(["Plain story"]);
   });
@@ -142,7 +144,7 @@ describe("article filtering rules", () => {
       { field: "author" as const, pattern: "avery" },
     ];
 
-    const rule = database.createRule(TEST_USER_ID, {
+    const rule = database.rules.createRule(TEST_USER_ID, {
       name: "Focused topics",
       feedId: scopedFeedId,
       conditions,
@@ -156,18 +158,22 @@ describe("article filtering rules", () => {
       matchedCount: 1,
     });
     expect(titles(database)).toEqual(["Alpha Rust", "Outside unmatched"]);
-    expect(database.getBootstrap(TEST_USER_ID).counts).toEqual({ unread: 2, starred: 0, all: 2 });
-    expect(database.getFeed(TEST_USER_ID, scopedFeedId)).toMatchObject({
+    expect(database.bootstrap.getBootstrap(TEST_USER_ID).counts).toEqual({
+      unread: 2,
+      starred: 0,
+      all: 2,
+    });
+    expect(database.feeds.getFeed(TEST_USER_ID, scopedFeedId)).toMatchObject({
       unreadCount: 1,
       totalCount: 1,
     });
-    expect(database.getFeed(TEST_USER_ID, outsideFeedId)).toMatchObject({
+    expect(database.feeds.getFeed(TEST_USER_ID, outsideFeedId)).toMatchObject({
       unreadCount: 1,
       totalCount: 1,
     });
-    expect(database.getFolder(TEST_USER_ID, folderId)).toMatchObject({ unreadCount: 1 });
+    expect(database.folders.getFolder(TEST_USER_ID, folderId)).toMatchObject({ unreadCount: 1 });
 
-    const updated = database.updateRule(TEST_USER_ID, rule.id, { conditionOperator: "or" });
+    const updated = database.rules.updateRule(TEST_USER_ID, rule.id, { conditionOperator: "or" });
 
     expect(updated).toMatchObject({ conditionOperator: "or", matchedCount: 4 });
     expect(titles(database)).toEqual([
@@ -177,24 +183,28 @@ describe("article filtering rules", () => {
       "Rust report",
       "Other",
     ]);
-    expect(database.getBootstrap(TEST_USER_ID).counts).toEqual({ unread: 5, starred: 0, all: 5 });
-    expect(database.getFeed(TEST_USER_ID, scopedFeedId)).toMatchObject({
+    expect(database.bootstrap.getBootstrap(TEST_USER_ID).counts).toEqual({
+      unread: 5,
+      starred: 0,
+      all: 5,
+    });
+    expect(database.feeds.getFeed(TEST_USER_ID, scopedFeedId)).toMatchObject({
       unreadCount: 4,
       totalCount: 4,
     });
-    expect(database.getFolder(TEST_USER_ID, folderId)).toMatchObject({ unreadCount: 4 });
+    expect(database.folders.getFolder(TEST_USER_ID, folderId)).toMatchObject({ unreadCount: 4 });
   });
 
   it("unites applicable keep rules, lets matching hide rules win, and ignores disabled keep rules", () => {
     const { database, folderId, scopedFeedId } = seededDatabase();
-    const keepAlpha = database.createRule(TEST_USER_ID, {
+    const keepAlpha = database.rules.createRule(TEST_USER_ID, {
       name: "Keep Alpha",
       feedId: scopedFeedId,
       conditions: [{ field: "title", pattern: "alpha" }],
       conditionOperator: "and",
       action: "keep",
     });
-    const keepAvery = database.createRule(TEST_USER_ID, {
+    const keepAvery = database.rules.createRule(TEST_USER_ID, {
       name: "Keep Avery",
       folderId,
       conditions: [{ field: "author", pattern: "avery" }],
@@ -212,7 +222,7 @@ describe("article filtering rules", () => {
       "Other",
     ]);
 
-    database.createRule(TEST_USER_ID, {
+    database.rules.createRule(TEST_USER_ID, {
       name: "Hide Rust",
       folderId,
       conditions: [{ field: "title", pattern: "rust" }],
@@ -221,30 +231,42 @@ describe("article filtering rules", () => {
     });
 
     expect(titles(database)).toEqual(["Alpha only", "Outside unmatched", "Other"]);
-    expect(database.getBootstrap(TEST_USER_ID).counts).toEqual({ unread: 3, starred: 0, all: 3 });
-    expect(database.getFeed(TEST_USER_ID, scopedFeedId)).toMatchObject({
+    expect(database.bootstrap.getBootstrap(TEST_USER_ID).counts).toEqual({
+      unread: 3,
+      starred: 0,
+      all: 3,
+    });
+    expect(database.feeds.getFeed(TEST_USER_ID, scopedFeedId)).toMatchObject({
       unreadCount: 2,
       totalCount: 2,
     });
 
-    expect(database.updateRule(TEST_USER_ID, keepAvery.id, { enabled: false })).toMatchObject({
-      enabled: false,
-      matchedCount: 3,
-    });
+    expect(database.rules.updateRule(TEST_USER_ID, keepAvery.id, { enabled: false })).toMatchObject(
+      {
+        enabled: false,
+        matchedCount: 3,
+      },
+    );
     expect(titles(database)).toEqual(["Alpha only", "Outside unmatched"]);
 
-    expect(database.updateRule(TEST_USER_ID, keepAlpha.id, { enabled: false })).toMatchObject({
-      enabled: false,
-      matchedCount: 2,
-    });
+    expect(database.rules.updateRule(TEST_USER_ID, keepAlpha.id, { enabled: false })).toMatchObject(
+      {
+        enabled: false,
+        matchedCount: 2,
+      },
+    );
     expect(titles(database)).toEqual(["Alpha only", "Outside unmatched", "Other", "Plain"]);
-    expect(database.getBootstrap(TEST_USER_ID).counts).toEqual({ unread: 4, starred: 0, all: 4 });
+    expect(database.bootstrap.getBootstrap(TEST_USER_ID).counts).toEqual({
+      unread: 4,
+      starred: 0,
+      all: 4,
+    });
   });
 
   it("uses the same multi-condition matcher when marking articles as read", () => {
     const { database, scopedFeedId } = seededDatabase();
 
-    const rule = database.createRule(TEST_USER_ID, {
+    const rule = database.rules.createRule(TEST_USER_ID, {
       name: "Read Rust by Avery",
       feedId: scopedFeedId,
       conditions: [
@@ -272,6 +294,10 @@ describe("article filtering rules", () => {
       "Other",
       "Plain",
     ]);
-    expect(database.getBootstrap(TEST_USER_ID).counts).toEqual({ unread: 5, starred: 0, all: 7 });
+    expect(database.bootstrap.getBootstrap(TEST_USER_ID).counts).toEqual({
+      unread: 5,
+      starred: 0,
+      all: 7,
+    });
   });
 });

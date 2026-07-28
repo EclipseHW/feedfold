@@ -1,5 +1,5 @@
 import type { AiArticleSourceKind } from "../../shared/types.js";
-import type { AiArticleRecord } from "../db.js";
+import type { AiArticleRecord } from "../features/shared.js";
 import { plainText } from "../feed-parser.js";
 import { AiError } from "./errors.js";
 

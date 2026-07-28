@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import {
   DEFAULT_ARTICLE_SUMMARY_PROMPT,
   DEFAULT_ARTICLE_TRANSLATION_PROMPT,
-} from "../../shared/ai-prompts.js";
+} from "../../../shared/ai-prompts.js";
 import type {
   AiArticleSourceKind,
   AiFeature,
@@ -11,23 +11,24 @@ import type {
   AiSettings,
   ArticleAiSummary,
   ArticleAiTranslation,
-} from "../../shared/types.js";
-import type { AppDatabase, StoredArticleAiSummary, StoredArticleAiTranslation } from "../db.js";
+} from "../../../shared/types.js";
 import {
   ARTICLE_SUMMARY_MAX_OUTPUT_TOKENS,
   ARTICLE_SUMMARY_PROMPT_VERSION,
   prepareArticleSummary,
-} from "./article-summary.js";
+} from "../../ai/article-summary.js";
 import {
   ARTICLE_TRANSLATION_MAX_OUTPUT_TOKENS,
   ARTICLE_TRANSLATION_PROMPT_VERSION,
   prepareArticleTranslation,
   renderArticleTranslation,
-} from "./article-translation.js";
-import type { CredentialCipher } from "./credential-cipher.js";
-import { AiError } from "./errors.js";
-import { createAiProviders } from "./providers.js";
-import type { AiGenerationResult, AiProviderAdapter } from "./types.js";
+} from "../../ai/article-translation.js";
+import type { CredentialCipher } from "../../ai/credential-cipher.js";
+import { AiError } from "../../ai/errors.js";
+import { createAiProviders } from "../../ai/providers.js";
+import type { AiGenerationResult, AiProviderAdapter } from "../../ai/types.js";
+import type { AppDatabase } from "../../database.js";
+import type { StoredArticleAiSummary, StoredArticleAiTranslation } from "../shared.js";
 
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
@@ -93,9 +94,9 @@ export class AiService {
   }
 
   getSettings(userId: number): AiSettings {
-    const configured = new Set(this.database.listConfiguredAiProviders(userId));
+    const configured = new Set(this.database.ai.listConfiguredAiProviders(userId));
     const articleSummary = this.validFeatureSetting(
-      this.database.getAiFeatureSetting(userId, "article_summary"),
+      this.database.ai.getAiFeatureSetting(userId, "article_summary"),
     );
     return {
       credentialStorageAvailable: this.options.credentialCipher !== null,
@@ -121,7 +122,7 @@ export class AiService {
       throw new AiError("AI_NOT_CONFIGURED", 422, "Choose a supported AI provider.");
     }
     const selectedModel = model?.trim() || provider.defaultModel;
-    this.database.setAiFeatureSetting(userId, feature, {
+    this.database.ai.setAiFeatureSetting(userId, feature, {
       provider: providerId,
       model: selectedModel,
     });
@@ -138,12 +139,12 @@ export class AiService {
       );
     }
     const encrypted = cipher.encrypt(userId, provider, apiKey.trim());
-    this.database.setEncryptedAiCredential(userId, provider, encrypted);
+    this.database.ai.setEncryptedAiCredential(userId, provider, encrypted);
     return this.getSettings(userId);
   }
 
   deleteApiKey(userId: number, provider: AiProvider): AiSettings {
-    this.database.deleteAiCredential(userId, provider);
+    this.database.ai.deleteAiCredential(userId, provider);
     return this.getSettings(userId);
   }
 
@@ -152,7 +153,7 @@ export class AiService {
     feature: AiFeature,
     request: FeatureGenerationRequest,
   ): Promise<FeatureGenerationResult> {
-    const setting = this.validFeatureSetting(this.database.getAiFeatureSetting(userId, feature));
+    const setting = this.validFeatureSetting(this.database.ai.getAiFeatureSetting(userId, feature));
     if (!setting) {
       throw new AiError(
         "AI_NOT_CONFIGURED",
@@ -161,7 +162,7 @@ export class AiService {
       );
     }
     const provider = this.providers.get(setting.provider) as AiProviderAdapter;
-    const encryptedKey = this.database.getEncryptedAiCredential(userId, setting.provider);
+    const encryptedKey = this.database.ai.getEncryptedAiCredential(userId, setting.provider);
     if (!encryptedKey) {
       throw new AiError(
         "AI_KEY_MISSING",
@@ -192,7 +193,7 @@ export class AiService {
     customPromptId: string | null,
     regenerate = false,
   ): Promise<ArticleAiSummary | null> {
-    const { summaryPrompt, customPrompts } = this.database.getSettings(userId);
+    const { summaryPrompt, customPrompts } = this.database.settings.getSettings(userId);
     const customPrompt = customPromptId
       ? customPrompts.find((prompt) => prompt.id === customPromptId)
       : null;
@@ -227,7 +228,8 @@ export class AiService {
     articleId: number,
     sourceKind: AiArticleSourceKind,
   ): Promise<ArticleAiTranslation | null> {
-    const { translationLanguage: language, translationPrompt } = this.database.getSettings(userId);
+    const { translationLanguage: language, translationPrompt } =
+      this.database.settings.getSettings(userId);
     const version = promptVersion(
       translationPrompt,
       DEFAULT_ARTICLE_TRANSLATION_PROMPT,
@@ -258,7 +260,7 @@ export class AiService {
     promptId: string | null,
     version: number,
   ): Promise<ArticleAiSummary | null> {
-    const article = this.database.getArticleForAi(userId, articleId);
+    const article = this.database.ai.getArticleForAi(userId, articleId);
     if (!article) return null;
     if (
       !regenerate &&
@@ -273,7 +275,7 @@ export class AiService {
       input: prepared.input,
       maxOutputTokens: ARTICLE_SUMMARY_MAX_OUTPUT_TOKENS,
     });
-    const saved = this.database.saveArticleAiSummary(userId, articleId, article.revision, {
+    const saved = this.database.ai.saveArticleAiSummary(userId, articleId, article.revision, {
       promptVersion: version,
       promptId,
       sourceKind: prepared.sourceKind,
@@ -300,9 +302,14 @@ export class AiService {
     prompt: string,
     version: number,
   ): Promise<ArticleAiTranslation | null> {
-    const article = this.database.getArticleForAi(userId, articleId);
+    const article = this.database.ai.getArticleForAi(userId, articleId);
     if (!article) return null;
-    const current = this.database.getArticleAiTranslation(userId, articleId, language, sourceKind);
+    const current = this.database.ai.getArticleAiTranslation(
+      userId,
+      articleId,
+      language,
+      sourceKind,
+    );
     if (current?.promptVersion === version) {
       return publicTranslation(current);
     }
@@ -313,7 +320,7 @@ export class AiService {
       maxOutputTokens: ARTICLE_TRANSLATION_MAX_OUTPUT_TOKENS,
     });
     const html = renderArticleTranslation(prepared, generated.text);
-    const saved = this.database.saveArticleAiTranslation(userId, articleId, article.revision, {
+    const saved = this.database.ai.saveArticleAiTranslation(userId, articleId, article.revision, {
       promptVersion: version,
       language,
       sourceKind: prepared.sourceKind,
