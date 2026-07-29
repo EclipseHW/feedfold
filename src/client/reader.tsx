@@ -2279,14 +2279,7 @@ function TelegramPostMedia({ article }: { article: Article }) {
     return () => requestController.current?.abort();
   }, [loadMedia]);
 
-  if (state.status === "loading") {
-    return (
-      <div className="telegram-media-state" role="status">
-        <LoaderCircle className="spin" aria-hidden="true" size={16} />
-        <span>Loading Telegram media</span>
-      </div>
-    );
-  }
+  if (state.status === "loading") return null;
   if (state.status === "error") {
     return (
       <div className="telegram-media-state telegram-media-error" role="alert">
