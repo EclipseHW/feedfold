@@ -1,6 +1,6 @@
 import { setTimeout } from "node:timers/promises";
 
-const healthUrl = "http://127.0.0.1:3000/health";
+const healthUrl = "http://127.0.0.1:43001/health";
 const deadline = Date.now() + 30_000;
 
 while (Date.now() < deadline) {
