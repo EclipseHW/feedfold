@@ -1900,6 +1900,7 @@ kbd {
   min-height: 24px;
   align-items: center;
   gap: 3px;
+  margin-inline-start: -4px;
   padding: 2px 4px;
   border: 0;
   border-radius: var(--radius-sm);
@@ -3360,7 +3361,6 @@ kbd {
   }
   .mode-magazine.is-reading-article .article-source-trigger {
     min-height: 22px;
-    margin-inline-start: -4px;
     padding-block: 0;
   }
   .mode-magazine.is-reading-article .article-header h2 {
