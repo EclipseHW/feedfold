@@ -3,6 +3,7 @@ import {
   articleQueryForReaderRoute,
   articleSettingsInvalidation,
   filterRuleName,
+  fullContentIdsAfterReload,
   invalidateArticleSummaries,
   readerRouteForSelection,
   readerScopeLabel,
@@ -149,6 +150,17 @@ describe("reader state", () => {
     expect(refreshFeedIds(data, 12, 1)).toEqual([12]);
     expect(refreshFeedIds(data, null, 1)).toEqual([10, 11]);
     expect(refreshFeedIds(data, null, null)).toBeUndefined();
+  });
+
+  it("tracks which replacement records still have full article content", () => {
+    const articles = [
+      { ...article, id: 1 },
+      { ...article, id: 2 },
+    ];
+
+    expect(fullContentIdsAfterReload("magazine", articles, null)).toEqual(new Set());
+    expect(fullContentIdsAfterReload("magazine", articles, 2)).toEqual(new Set([2]));
+    expect(fullContentIdsAfterReload("expanded", articles, null)).toEqual(new Set([1, 2]));
   });
 
   it("updates only the affected counters and never makes a count negative", () => {

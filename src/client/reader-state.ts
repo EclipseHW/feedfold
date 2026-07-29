@@ -5,6 +5,7 @@ import type {
   ArticleState,
   BootstrapData,
   Folder,
+  ReadingMode,
 } from "../shared/types.js";
 import type { ReaderRoute } from "./routes.js";
 
@@ -46,6 +47,20 @@ export function articleQueryForReaderRoute(
     ...(route.search ? { search: route.search } : {}),
     ...options,
   };
+}
+
+export function fullContentIdsAfterReload(
+  readingMode: ReadingMode,
+  articles: Article[],
+  refreshedActiveArticleId: number | null,
+): Set<number> {
+  return new Set(
+    readingMode === "expanded"
+      ? articles.map((article) => article.id)
+      : refreshedActiveArticleId === null
+        ? []
+        : [refreshedActiveArticleId],
+  );
 }
 
 export function filterRuleName(text: string): string {

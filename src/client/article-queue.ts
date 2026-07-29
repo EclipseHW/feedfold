@@ -12,7 +12,7 @@ import { api, errorMessage } from "./api";
 import type { AppRouteController } from "./app-route";
 import { articlesWithContextReturn, type ContextArticleReturn } from "./contextual-filter";
 import type { ReaderDataResource } from "./data-resource";
-import { articleQueryForReaderRoute } from "./reader-state";
+import { articleQueryForReaderRoute, fullContentIdsAfterReload } from "./reader-state";
 import { appRoutePath, type ReaderRoute } from "./routes";
 
 export interface ArticleQueueController {
@@ -228,9 +228,11 @@ export function useArticleQueue({
             ? current
             : (nextArticles[0]?.id ?? null),
         );
-        if (readingMode === "expanded") {
-          for (const article of reloaded) fullContentLoadedIds.current.add(article.id);
-        }
+        fullContentLoadedIds.current = fullContentIdsAfterReload(
+          readingMode,
+          nextArticles,
+          refreshedActiveArticle?.id ?? null,
+        );
         loadedReaderRequestKey.current = `${appRoutePath(queryRoute)}:${readingMode}`;
       } catch (caught) {
         if (!signal.aborted) setError(errorMessage(caught));
