@@ -69,7 +69,7 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: Session
           </p>
         </div>
         <form className="login-form" onSubmit={submit}>
-          <label className="field" htmlFor="auth-username">
+          <label className="login-field" htmlFor="auth-username">
             <span>Username</span>
             <input
               id="auth-username"
@@ -83,7 +83,7 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: Session
               onChange={(event) => setUsername(event.target.value)}
             />
           </label>
-          <label className="field" htmlFor="auth-password">
+          <label className="login-field" htmlFor="auth-password">
             <span>Password</span>
             <input
               id="auth-password"
