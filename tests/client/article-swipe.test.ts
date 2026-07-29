@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   articleSwipeDirection,
+  articleSwipeDownAction,
   articleSwipeIntent,
   articleSwipeOffset,
 } from "../../src/client/article-swipe.js";
@@ -125,6 +126,18 @@ describe("article swipe intent", () => {
     expect(articleSwipeIntent(8, 8)).toBe("pending");
     expect(articleSwipeIntent(12, 4)).toBe("horizontal");
     expect(articleSwipeIntent(4, 12)).toBe("vertical");
+  });
+});
+
+describe("article swipe-down action", () => {
+  it("accepts a deliberate downward swipe", () => {
+    expect(articleSwipeDownAction({ startX: 190, startY: 120, endX: 198, endY: 196 })).toBe(true);
+  });
+
+  it("rejects short, upward, and horizontally dominant gestures", () => {
+    expect(articleSwipeDownAction({ startX: 190, startY: 120, endX: 190, endY: 180 })).toBe(false);
+    expect(articleSwipeDownAction({ startX: 190, startY: 196, endX: 190, endY: 120 })).toBe(false);
+    expect(articleSwipeDownAction({ startX: 190, startY: 120, endX: 280, endY: 196 })).toBe(false);
   });
 });
 

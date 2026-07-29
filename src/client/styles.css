@@ -1577,6 +1577,7 @@ kbd {
   overflow-x: clip;
   overflow-y: auto;
   overscroll-behavior-x: contain;
+  overscroll-behavior-y: contain;
   scroll-behavior: smooth;
   touch-action: pan-y pinch-zoom;
 }
@@ -3284,7 +3285,13 @@ kbd {
   }
   :where(.mode-magazine.is-reading-article)
     .article-actions
-    > :is(.read-state-action, .star-state-action, .copy-action, .open-source-action) {
+    > :is(
+      .full-content-action,
+      .read-state-action,
+      .star-state-action,
+      .copy-action,
+      .open-source-action
+    ) {
     display: none;
   }
   :where(.mode-magazine.is-reading-article) .article-actions > .article-more-action {
@@ -3296,6 +3303,13 @@ kbd {
     justify-content: space-between;
     gap: 0;
     padding: 0;
+  }
+  :where(.mode-magazine.is-reading-article) .article-actions > button.article-navigation-action {
+    width: 66px;
+    min-width: 66px;
+    max-width: 66px;
+    height: 66px;
+    flex-basis: 66px;
   }
   :where(.mode-magazine.is-reading-article)
     .article-actions
@@ -3311,8 +3325,29 @@ kbd {
     width: 18px;
     height: 18px;
   }
+  :where(.mode-magazine.is-reading-article)
+    .article-actions
+    > button.article-navigation-action
+    > svg {
+    width: 27px;
+    height: 27px;
+  }
+  .summary-prompt-menu,
+  .article-more-menu {
+    position-area: none;
+    inset: auto 9px calc(82px + env(safe-area-inset-bottom)) 9px;
+    width: auto;
+    max-height: calc(100dvh - 100px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    margin: 0;
+    transform: translateY(4px) scale(0.98);
+    transform-origin: bottom center;
+  }
+  .summary-prompt-menu:popover-open,
+  .article-more-menu:popover-open {
+    transform: translateY(0) scale(1);
+  }
   .mode-magazine.is-reading-article .article-document {
-    padding: 18px 22px max(92px, calc(76px + env(safe-area-inset-bottom)));
+    padding: 18px 22px max(114px, calc(98px + env(safe-area-inset-bottom)));
   }
   .mode-magazine.is-reading-article .article-header {
     margin-bottom: 28px;
