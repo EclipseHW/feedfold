@@ -985,14 +985,13 @@ kbd {
   }
 }
 
-.article-source-menu {
+.article-source-menu,
+.summary-prompt-menu,
+.article-more-menu {
   position: fixed;
-  position-area: block-end span-inline-end;
   position-try-fallbacks: flip-block, flip-inline;
   z-index: var(--z-context-menu);
   inset: auto;
-  width: min(188px, calc(100vw - 16px));
-  margin: 6px 0 0;
   padding: 6px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
@@ -1008,38 +1007,37 @@ kbd {
     overlay var(--duration-fast) allow-discrete;
 }
 
-.article-source-menu:popover-open {
-  opacity: 1;
-  transform: translateY(0) scale(1);
+.article-source-menu {
+  position-area: block-end span-inline-end;
+  width: min(188px, calc(100vw - 16px));
+  margin: 6px 0 0;
+  transform-origin: top left;
 }
 
 .summary-prompt-menu {
-  position: fixed;
   position-area: block-end span-inline-end;
-  position-try-fallbacks: flip-block, flip-inline;
-  z-index: var(--z-context-menu);
-  inset: auto;
   width: min(214px, calc(100vw - 16px));
   max-height: min(420px, calc(100dvh - 16px));
   margin: 6px 0 0;
-  padding: 6px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface-raised);
-  box-shadow: 0 4px 8px oklch(0 0 0 / 0.3);
-  opacity: 0;
-  transform: translateY(-4px) scale(0.98);
   transform-origin: top right;
-  transition:
-    opacity var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out),
-    display var(--duration-fast) allow-discrete,
-    overlay var(--duration-fast) allow-discrete;
 }
 
-.summary-prompt-menu:popover-open {
+.article-more-menu {
+  position-area: block-start span-inline-end;
+  width: min(224px, calc(100vw - 16px));
+  max-height: min(420px, calc(100dvh - 16px));
+  margin: 0 0 8px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  transform: translateY(4px) scale(0.98);
+  transform-origin: bottom right;
+}
+
+.article-source-menu:popover-open,
+.summary-prompt-menu:popover-open,
+.article-more-menu:popover-open {
   opacity: 1;
   transform: translateY(0) scale(1);
 }
@@ -1117,6 +1115,11 @@ kbd {
   .summary-prompt-menu:popover-open {
     opacity: 0;
     transform: translateY(-4px) scale(0.98);
+  }
+
+  .article-more-menu:popover-open {
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
   }
 }
 
@@ -1644,6 +1647,10 @@ kbd {
   transition: transform var(--duration-fast) var(--ease-out);
 }
 
+.article-actions .article-more-action {
+  display: none;
+}
+
 :where(.reader-action-row) .article-actions {
   min-width: 0;
   min-height: 44px;
@@ -1687,7 +1694,7 @@ kbd {
   opacity: 0.72;
 }
 
-.article-actions .summary-prompt-menu > button {
+.article-actions :is(.summary-prompt-menu, .article-more-menu) > button {
   display: flex;
   width: 100%;
   min-width: 0;
@@ -1701,14 +1708,15 @@ kbd {
   font-size: 13px;
 }
 
-.article-actions .summary-prompt-menu > button > span {
+.article-actions :is(.summary-prompt-menu, .article-more-menu) > button > span {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.summary-prompt-menu kbd {
+.summary-prompt-menu kbd,
+.article-more-menu kbd {
   margin-left: auto;
 }
 
@@ -3186,7 +3194,7 @@ kbd {
   }
   :where(.mode-magazine.is-reading-article) .reader-action-row {
     flex-wrap: nowrap;
-    padding-inline: 0;
+    padding-inline: 6px;
     padding-block: 4px;
   }
   :where(.mode-magazine.is-reading-article) .reader-action-divider,
@@ -3197,18 +3205,23 @@ kbd {
     display: none;
   }
   :where(.mode-magazine.is-reading-article) .reader-back-button,
-  :where(.mode-magazine.is-reading-article) .article-actions button {
-    width: auto;
-    min-width: 30px;
+  :where(.mode-magazine.is-reading-article) .article-actions > button {
+    width: 44px;
+    min-width: 44px;
     max-width: 44px;
     height: 44px;
-    flex: 1 1 0;
+    flex: 0 0 44px;
   }
   :where(.mode-magazine.is-reading-article) .reader-back-button {
-    width: 36px;
-    min-width: 36px;
-    max-width: 36px;
-    flex: 0 0 36px;
+    flex: 0 0 44px;
+  }
+  :where(.mode-magazine.is-reading-article)
+    .article-actions
+    > :is(.read-state-action, .star-state-action, .copy-action, .open-source-action) {
+    display: none;
+  }
+  :where(.mode-magazine.is-reading-article) .article-actions > .article-more-action {
+    display: inline-flex;
   }
   :where(.mode-magazine.is-reading-article) .article-actions {
     min-width: 0;
@@ -3216,6 +3229,20 @@ kbd {
     justify-content: space-between;
     gap: 0;
     padding: 0;
+  }
+  :where(.mode-magazine.is-reading-article)
+    .article-actions
+    :is(.summary-prompt-menu, .article-more-menu)
+    > button {
+    min-height: 44px;
+  }
+  :where(.mode-magazine.is-reading-article) .reader-back-button > svg,
+  :where(.mode-magazine.is-reading-article)
+    .article-actions
+    > button
+    > svg:not(.summary-action-chevron) {
+    width: 18px;
+    height: 18px;
   }
   .mode-magazine.is-reading-article .article-document {
     padding: 18px 22px max(92px, calc(76px + env(safe-area-inset-bottom)));
@@ -3231,6 +3258,7 @@ kbd {
   }
   .mode-magazine.is-reading-article .article-source-trigger {
     min-height: 22px;
+    margin-inline-start: -4px;
     padding-block: 0;
   }
   .mode-magazine.is-reading-article .article-header h2 {
@@ -3561,6 +3589,7 @@ kbd {
   .article-selection-menu,
   .article-source-menu,
   .summary-prompt-menu,
+  .article-more-menu,
   .mark-read-menu,
   .toast > span,
   .toast > span[data-state="open"] {
@@ -3606,7 +3635,9 @@ kbd {
   .article-source-menu,
   .article-source-menu:popover-open,
   .summary-prompt-menu,
-  .summary-prompt-menu:popover-open {
+  .summary-prompt-menu:popover-open,
+  .article-more-menu,
+  .article-more-menu:popover-open {
     transform: none;
   }
 
@@ -3677,12 +3708,6 @@ kbd {
   }
   .view-switcher button kbd {
     display: none;
-  }
-  :where(.mode-magazine.is-reading-article) .reader-back-button,
-  :where(.mode-magazine.is-reading-article) .article-actions button,
-  :where(.mode-magazine.is-reading-article) .article-actions button.article-navigation-action {
-    width: auto;
-    min-width: 32px;
   }
 }
 

@@ -9,6 +9,7 @@ import {
   Circle,
   Copy,
   Download,
+  Ellipsis,
   ExternalLink,
   FileText,
   Inbox,
@@ -25,8 +26,10 @@ import {
   Star,
 } from "lucide-react";
 import {
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type SyntheticEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -130,6 +133,68 @@ function mediaTypeLabel(article: Article): string | null {
 
 function Kbd({ children }: { children: React.ReactNode }) {
   return <kbd>{children}</kbd>;
+}
+
+function useActionMenu() {
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const focusMenuOnOpen = useRef(false);
+
+  const closeMenu = useCallback(() => {
+    menuRef.current?.hidePopover();
+    triggerRef.current?.focus();
+  }, []);
+
+  const handleTriggerPointerDown = useCallback(() => {
+    focusMenuOnOpen.current = false;
+  }, []);
+
+  const handleTriggerKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLButtonElement>) => {
+      if (event.key === "Escape" && open) {
+        event.preventDefault();
+        event.stopPropagation();
+        closeMenu();
+        return;
+      }
+      if (["ArrowDown", "Enter", " "].includes(event.key)) {
+        focusMenuOnOpen.current = true;
+      }
+      if (event.key !== "ArrowDown") return;
+      event.preventDefault();
+      menuRef.current?.showPopover();
+    },
+    [closeMenu, open],
+  );
+
+  const handleMenuToggle = useCallback((event: SyntheticEvent<HTMLDivElement>) => {
+    const nextOpen = event.currentTarget.matches(":popover-open");
+    setOpen(nextOpen);
+    if (!nextOpen || !focusMenuOnOpen.current) return;
+    window.requestAnimationFrame(() => {
+      menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
+    });
+  }, []);
+
+  const handleMenuKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      event.stopPropagation();
+      handleActionMenuKeyDown(event, closeMenu);
+    },
+    [closeMenu],
+  );
+
+  return {
+    closeMenu,
+    handleMenuKeyDown,
+    handleMenuToggle,
+    handleTriggerKeyDown,
+    handleTriggerPointerDown,
+    menuRef,
+    open,
+    triggerRef,
+  };
 }
 
 function LinkifiedText({ text }: { text: string }) {
@@ -744,12 +809,12 @@ function ArticleActions({
   onRunSummaryPrompt,
   onToggleTranslation,
 }: ArticleActionsProps) {
-  const [summaryMenuOpen, setSummaryMenuOpen] = useState(false);
-  const summaryTriggerRef = useRef<HTMLButtonElement>(null);
-  const summaryMenuRef = useRef<HTMLDivElement>(null);
-  const focusSummaryMenuOnOpen = useRef(false);
+  const summaryMenu = useActionMenu();
+  const moreMenu = useActionMenu();
   const summaryMenuId = `article-${article.id}-summary-menu`;
   const summaryAnchorName = `--article-${article.id}-summary`;
+  const moreMenuId = `article-${article.id}-more-menu`;
+  const moreAnchorName = `--article-${article.id}-more`;
   const fullContentAvailable = Boolean(article.url) && !article.media;
   const cachedFullContent = article.extractionStatus === "complete" && Boolean(article.contentHtml);
   const fullContentLoading =
@@ -826,34 +891,18 @@ function ArticleActions({
         </button>
       ) : null}
       <button
-        ref={summaryTriggerRef}
+        ref={summaryMenu.triggerRef}
         className="summary-action"
         type="button"
         disabled={summaryState.loading}
         aria-haspopup="menu"
-        aria-expanded={summaryMenuOpen}
+        aria-expanded={summaryMenu.open}
         aria-pressed={summaryState.visible}
         aria-controls={summaryMenuId}
         popoverTarget={summaryMenuId}
         style={{ anchorName: summaryAnchorName }}
-        onPointerDown={() => {
-          focusSummaryMenuOnOpen.current = false;
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape" && summaryMenuOpen) {
-            event.preventDefault();
-            event.stopPropagation();
-            summaryMenuRef.current?.hidePopover();
-            summaryTriggerRef.current?.focus();
-            return;
-          }
-          if (["ArrowDown", "Enter", " "].includes(event.key)) {
-            focusSummaryMenuOnOpen.current = true;
-          }
-          if (event.key !== "ArrowDown") return;
-          event.preventDefault();
-          summaryMenuRef.current?.showPopover();
-        }}
+        onPointerDown={summaryMenu.handleTriggerPointerDown}
+        onKeyDown={summaryMenu.handleTriggerKeyDown}
         aria-label="Choose AI prompt"
         data-tooltip="Choose AI prompt"
       >
@@ -871,35 +920,21 @@ function ArticleActions({
         <ChevronDown className="summary-action-chevron" aria-hidden="true" size={10} />
       </button>
       <div
-        ref={summaryMenuRef}
+        ref={summaryMenu.menuRef}
         id={summaryMenuId}
         className="summary-prompt-menu context-action-menu"
         popover="auto"
         role="menu"
         aria-label="AI prompts"
         style={{ positionAnchor: summaryAnchorName }}
-        onToggle={(event) => {
-          const nextOpen = event.currentTarget.matches(":popover-open");
-          setSummaryMenuOpen(nextOpen);
-          if (!nextOpen || !focusSummaryMenuOnOpen.current) return;
-          window.requestAnimationFrame(() => {
-            summaryMenuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
-          });
-        }}
-        onKeyDown={(event) => {
-          event.stopPropagation();
-          handleActionMenuKeyDown(event, () => {
-            summaryMenuRef.current?.hidePopover();
-            summaryTriggerRef.current?.focus();
-          });
-        }}
+        onToggle={summaryMenu.handleMenuToggle}
+        onKeyDown={summaryMenu.handleMenuKeyDown}
       >
         <button
           type="button"
           role="menuitem"
           onClick={() => {
-            summaryMenuRef.current?.hidePopover();
-            summaryTriggerRef.current?.focus();
+            summaryMenu.closeMenu();
             onRunSummaryPrompt(article, null);
           }}
         >
@@ -914,8 +949,7 @@ function ArticleActions({
             type="button"
             role="menuitem"
             onClick={() => {
-              summaryMenuRef.current?.hidePopover();
-              summaryTriggerRef.current?.focus();
+              summaryMenu.closeMenu();
               onRunSummaryPrompt(article, prompt.id);
             }}
           >
@@ -957,7 +991,7 @@ function ArticleActions({
         )}
       </button>
       <button
-        className={article.isStarred ? "is-starred" : ""}
+        className={`star-state-action${article.isStarred ? " is-starred" : ""}`}
         type="button"
         aria-pressed={article.isStarred}
         onClick={() => onToggleStar(article)}
@@ -967,6 +1001,7 @@ function ArticleActions({
         <Star aria-hidden="true" size={16} fill={article.isStarred ? "currentColor" : "none"} />
       </button>
       <button
+        className="copy-action"
         type="button"
         onClick={() => onCopy(article)}
         aria-label="Copy article URL (C)"
@@ -975,6 +1010,7 @@ function ArticleActions({
         <Copy aria-hidden="true" size={16} />
       </button>
       <button
+        className="open-source-action"
         type="button"
         onClick={() => onOpenSource(article)}
         aria-label="Open article source (O)"
@@ -982,6 +1018,87 @@ function ArticleActions({
       >
         <ExternalLink aria-hidden="true" size={16} />
       </button>
+      <button
+        ref={moreMenu.triggerRef}
+        className="article-more-action"
+        type="button"
+        aria-label="More article actions"
+        aria-haspopup="menu"
+        aria-expanded={moreMenu.open}
+        aria-controls={moreMenuId}
+        popoverTarget={moreMenuId}
+        style={{ anchorName: moreAnchorName }}
+        onPointerDown={moreMenu.handleTriggerPointerDown}
+        onKeyDown={moreMenu.handleTriggerKeyDown}
+        data-tooltip="More article actions"
+      >
+        <Ellipsis aria-hidden="true" size={18} />
+      </button>
+      <div
+        ref={moreMenu.menuRef}
+        id={moreMenuId}
+        className="article-more-menu context-action-menu"
+        popover="auto"
+        role="menu"
+        aria-label="More article actions"
+        style={{ positionAnchor: moreAnchorName }}
+        onToggle={moreMenu.handleMenuToggle}
+        onKeyDown={moreMenu.handleMenuKeyDown}
+      >
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            moreMenu.closeMenu();
+            onToggleRead(article);
+          }}
+        >
+          {article.isRead ? (
+            <Mail aria-hidden="true" size={15} />
+          ) : (
+            <MailOpen aria-hidden="true" size={15} />
+          )}
+          <span>{article.isRead ? "Mark unread" : "Mark read"}</span>
+          <kbd>U</kbd>
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            moreMenu.closeMenu();
+            onToggleStar(article);
+          }}
+        >
+          <Star aria-hidden="true" size={15} fill={article.isStarred ? "currentColor" : "none"} />
+          <span>{article.isStarred ? "Remove star" : "Star article"}</span>
+          <kbd>S</kbd>
+        </button>
+        <hr className="context-menu-separator" />
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            moreMenu.closeMenu();
+            onCopy(article);
+          }}
+        >
+          <Copy aria-hidden="true" size={15} />
+          <span>Copy article URL</span>
+          <kbd>C</kbd>
+        </button>
+        <button
+          type="button"
+          role="menuitem"
+          onClick={() => {
+            moreMenu.closeMenu();
+            onOpenSource(article);
+          }}
+        >
+          <ExternalLink aria-hidden="true" size={15} />
+          <span>Open article source</span>
+          <kbd>O</kbd>
+        </button>
+      </div>
     </div>
   );
 }
@@ -1995,77 +2112,44 @@ function ArticleSourceMenu({
   article: Article;
   onFeedAction: (feedId: number, action: FeedManagementAction) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const focusMenuOnOpen = useRef(false);
+  const menu = useActionMenu();
   const menuId = `article-${article.id}-source-menu`;
   const anchorName = `--article-${article.id}-source`;
 
   return (
     <>
       <button
-        ref={triggerRef}
+        ref={menu.triggerRef}
         data-management-feed-id={article.feedId}
         className="article-source-trigger"
         type="button"
         aria-label={`${article.feedTitle} feed actions`}
         aria-haspopup="menu"
-        aria-expanded={open}
+        aria-expanded={menu.open}
         aria-controls={menuId}
         popoverTarget={menuId}
         style={{ anchorName }}
-        onPointerDown={() => {
-          focusMenuOnOpen.current = false;
-        }}
-        onKeyDown={(event) => {
-          if (event.key === "Escape" && open) {
-            event.preventDefault();
-            event.stopPropagation();
-            menuRef.current?.hidePopover();
-            triggerRef.current?.focus();
-            return;
-          }
-          if (["ArrowDown", "Enter", " "].includes(event.key)) {
-            focusMenuOnOpen.current = true;
-          }
-          if (event.key !== "ArrowDown") return;
-          event.preventDefault();
-          menuRef.current?.showPopover();
-        }}
+        onPointerDown={menu.handleTriggerPointerDown}
+        onKeyDown={menu.handleTriggerKeyDown}
       >
         <span>{article.feedTitle}</span>
         <ChevronDown aria-hidden="true" size={15} />
       </button>
       <div
-        ref={menuRef}
+        ref={menu.menuRef}
         id={menuId}
         className="article-source-menu context-action-menu"
         popover="auto"
         role="menu"
         aria-label={`${article.feedTitle} feed actions`}
         style={{ positionAnchor: anchorName }}
-        onToggle={(event) => {
-          const nextOpen = event.currentTarget.matches(":popover-open");
-          setOpen(nextOpen);
-          if (!nextOpen || !focusMenuOnOpen.current) return;
-          window.requestAnimationFrame(() => {
-            menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]')?.focus();
-          });
-        }}
-        onKeyDown={(event) => {
-          event.stopPropagation();
-          handleActionMenuKeyDown(event, () => {
-            menuRef.current?.hidePopover();
-            triggerRef.current?.focus();
-          });
-        }}
+        onToggle={menu.handleMenuToggle}
+        onKeyDown={menu.handleMenuKeyDown}
       >
         <FeedActionMenuItems
           sourceKind={article.feedSourceKind}
           onAction={(action) => {
-            menuRef.current?.hidePopover();
-            triggerRef.current?.focus();
+            menu.closeMenu();
             onFeedAction(article.feedId, action);
           }}
         />
