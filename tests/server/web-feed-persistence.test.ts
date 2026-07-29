@@ -295,7 +295,7 @@ describe("web feed persistence", () => {
     database.connection
       .prepare("UPDATE feeds SET last_attempt_at = ?, next_poll_at = ? WHERE id = ?")
       .run("2026-07-27T12:00:00.000Z", "2026-07-27T12:20:00.000Z", webFeed.id);
-    database.connection.prepare("DELETE FROM migrations WHERE version = 20").run();
+    database.connection.prepare("DELETE FROM migrations WHERE version >= 20").run();
     database.close();
 
     const migrated = new AppDatabase(path);

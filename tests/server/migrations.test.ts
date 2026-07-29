@@ -305,7 +305,7 @@ describe("database migrations", () => {
         sortDirection: "newest",
       });
       expect(database.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
-        20,
+        21,
       );
       expect(
         database.connection
@@ -345,7 +345,7 @@ describe("database migrations", () => {
         username: "reader",
       });
       expect(reopened.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
-        20,
+        21,
       );
       expect(
         reopened.connection.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),

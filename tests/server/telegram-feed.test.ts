@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  isTelegramPostUrl,
   parseAndNormalizeTelegramFeed,
+  parseTelegramPostMedia,
   telegramChannelUrls,
 } from "../../src/server/telegram-feed.js";
+import { isTelegramPostUrl } from "../../src/shared/telegram.js";
 
 describe("Telegram feed normalization", () => {
   it("recognizes public channel and post URLs without treating other paths as feeds", () => {
@@ -72,11 +73,42 @@ describe("Telegram feed normalization", () => {
       ],
     });
     expect(feed.articles).toHaveLength(2);
-    expect(feed.articles[0]?.feedContentHtml).toContain(
-      'src="https://cdn.example.test/second.jpg"',
-    );
+    expect(feed.articles[0]?.feedContentHtml).toContain("View this post on Telegram");
     expect(feed.articles[1]?.feedContentHtml).toContain("<b>First update</b><br>");
     expect(feed.articles[1]?.feedContentHtml).toContain('href="https://example.test/story"');
-    expect(feed.articles[1]?.feedContentHtml).toContain('src="https://t.me/images/first.jpg"');
+    expect(feed.articles[0]?.feedContentHtml).not.toContain("<img");
+    expect(feed.articles[1]?.feedContentHtml).not.toContain("<img");
+  });
+
+  it("extracts current image and video sources from a Telegram post embed", () => {
+    const media = parseTelegramPostMedia(
+      `<!doctype html><html><body>
+        <div class="tgme_widget_message" data-post="Example_Channel/42">
+          <a class="tgme_widget_message_photo_wrap"
+            style="background-image:url('/images/photo.jpg')"></a>
+          <a class="tgme_widget_message_video_player" data-ratio="0.5625">
+            <i class="tgme_widget_message_video_thumb"
+              style="background-image:url('https://cdn.example.test/poster.jpg')"></i>
+            <video src="https://cdn.example.test/video.mp4?token=current"></video>
+          </a>
+        </div>
+      </body></html>`,
+      "https://t.me/Example_Channel/42",
+    );
+
+    expect(media).toEqual([
+      {
+        kind: "image",
+        url: "https://t.me/images/photo.jpg",
+        posterUrl: null,
+        aspectRatio: null,
+      },
+      {
+        kind: "video",
+        url: "https://cdn.example.test/video.mp4?token=current",
+        posterUrl: "https://cdn.example.test/poster.jpg",
+        aspectRatio: 0.5625,
+      },
+    ]);
   });
 });

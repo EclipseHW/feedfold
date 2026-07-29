@@ -38,13 +38,16 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { extractHttpLinks } from "../shared/article-links";
+import { telegramPostIdentity } from "../shared/telegram";
 import type {
   AiCustomPrompt,
   Article,
   ArticleAiTranslation,
   ArticleState,
   ReadingMode,
+  TelegramArticleMedia,
 } from "../shared/types";
+import { api, appUrl, errorMessage } from "./api";
 import { articleContentView } from "./article-content";
 import { ArticleHtml } from "./article-html";
 import {
@@ -80,6 +83,10 @@ type ArticleNavigationHandler = () => boolean | Promise<boolean>;
 
 function prefersReducedMotion(): boolean {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function articleImageUrl(value: string): string {
+  return value.startsWith("/api/") ? appUrl(value) : value;
 }
 
 function surfaceTranslateX(element: HTMLElement): number {
@@ -647,7 +654,12 @@ export function ArticleList({
             </button>
             <div className="article-card-content">
               {article.imageUrl ? (
-                <img className="article-card-image" src={article.imageUrl} alt="" loading="lazy" />
+                <img
+                  className="article-card-image"
+                  src={articleImageUrl(article.imageUrl)}
+                  alt=""
+                  loading="lazy"
+                />
               ) : (
                 <span
                   className="article-card-image article-card-image-placeholder"
@@ -2233,7 +2245,93 @@ function ArticleBody({
           onToggleFullContent={onToggleFullContent}
         />
       )}
+      {telegramPostIdentity(article.url) ? <TelegramPostMedia article={article} /> : null}
     </>
+  );
+}
+
+type TelegramMediaViewState =
+  | { status: "loading" }
+  | { status: "ready"; media: TelegramArticleMedia }
+  | { status: "error"; message: string };
+
+function TelegramPostMedia({ article }: { article: Article }) {
+  const [state, setState] = useState<TelegramMediaViewState>({ status: "loading" });
+  const requestController = useRef<AbortController | null>(null);
+
+  const loadMedia = useCallback(() => {
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
+    setState({ status: "loading" });
+    void api
+      .telegramArticleMedia(article.id, controller.signal)
+      .then((media) => setState({ status: "ready", media }))
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setState({ status: "error", message: errorMessage(error) });
+        }
+      });
+  }, [article.id]);
+
+  useEffect(() => {
+    loadMedia();
+    return () => requestController.current?.abort();
+  }, [loadMedia]);
+
+  if (state.status === "loading") {
+    return (
+      <div className="telegram-media-state" role="status">
+        <LoaderCircle className="spin" aria-hidden="true" size={16} />
+        <span>Loading Telegram media</span>
+      </div>
+    );
+  }
+  if (state.status === "error") {
+    return (
+      <div className="telegram-media-state telegram-media-error" role="alert">
+        <AlertTriangle aria-hidden="true" size={16} />
+        <span>{state.message}</span>
+        <button className="secondary-button" type="button" onClick={loadMedia}>
+          Try again
+        </button>
+      </div>
+    );
+  }
+  if (state.media.items.length === 0) return null;
+
+  const multiple = state.media.items.length > 1;
+  return (
+    <section
+      className={`telegram-media-gallery${multiple ? " is-grouped" : ""}`}
+      aria-label="Telegram post media"
+    >
+      {state.media.items.map((item, index) => {
+        const label = `Telegram post ${item.kind} ${index + 1} of ${state.media.items.length}`;
+        const style = item.aspectRatio ? { aspectRatio: item.aspectRatio } : undefined;
+        return item.kind === "image" ? (
+          <img
+            key={item.sourceUrl}
+            src={appUrl(item.sourceUrl)}
+            alt={label}
+            loading="lazy"
+            decoding="async"
+          />
+        ) : (
+          // biome-ignore lint/a11y/useMediaCaption: Telegram embeds do not expose caption tracks.
+          <video
+            key={item.sourceUrl}
+            src={appUrl(item.sourceUrl)}
+            poster={item.posterUrl ? appUrl(item.posterUrl) : undefined}
+            aria-label={label}
+            style={style}
+            controls
+            playsInline
+            preload="metadata"
+          />
+        );
+      })}
+    </section>
   );
 }
 

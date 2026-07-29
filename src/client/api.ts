@@ -23,6 +23,7 @@ import type {
   RuleCondition,
   RuleConditionOperator,
   SessionUser,
+  TelegramArticleMedia,
   WebFeedAnalysis,
   WebFeedConfig,
 } from "../shared/types.js";
@@ -151,6 +152,9 @@ export const api = {
 
   article: (id: number, signal?: AbortSignal) =>
     request<Article>(`/api/articles/${id}`, { signal }),
+
+  telegramArticleMedia: (id: number, signal?: AbortSignal) =>
+    request<TelegramArticleMedia>(`/api/articles/${id}/telegram-media`, { signal }),
 
   loadFullContent: (id: number) =>
     request<Article>(`/api/articles/${id}/extract`, { method: "POST" }),

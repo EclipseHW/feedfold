@@ -1,3 +1,4 @@
+import { telegramPostIdentity } from "../../shared/telegram.js";
 import type {
   AiArticleSourceKind,
   AiProvider,
@@ -244,19 +245,26 @@ export const feedRecordColumns = `feeds.id, feeds.folder_id AS folderId, feeds.t
   web_feed_configs.last_match_count AS lastMatchCount`;
 
 export function mapArticle(row: Row): Article {
+  const id = Number(row.id);
+  const url = row.url === null ? null : String(row.url);
   return {
-    id: Number(row.id),
+    id,
     feedId: Number(row.feedId),
     feedTitle: String(row.feedTitle),
     feedSourceKind: row.feedSourceKind as FeedSourceKind,
     folderId: row.folderId === null ? null : Number(row.folderId),
     title: String(row.title),
-    url: row.url === null ? null : String(row.url),
+    url,
     author: row.author === null ? null : String(row.author),
     publishedAt: row.publishedAt === null ? null : String(row.publishedAt),
     discoveredAt: String(row.discoveredAt),
     summary: String(row.summary),
-    imageUrl: row.imageUrl === null ? null : String(row.imageUrl),
+    imageUrl:
+      row.imageUrl === null
+        ? null
+        : telegramPostIdentity(url)
+          ? `/api/articles/${id}/telegram-media-preview`
+          : String(row.imageUrl),
     media: parseArticleMedia(row.mediaJson),
     feedContentHtml: row.feedContentHtml === null ? null : String(row.feedContentHtml),
     contentHtml: row.contentHtml === null ? null : String(row.contentHtml),

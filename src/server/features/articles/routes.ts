@@ -1,5 +1,6 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
+import { telegramPostIdentity } from "../../../shared/telegram.js";
 import type {
   AiArticleSourceKind,
   ArticleQuery,
@@ -8,6 +9,7 @@ import type {
 } from "../../../shared/types.js";
 import { MARK_READ_AGE_DAYS } from "../../../shared/types.js";
 import type { ExtractionQueue } from "../../extraction.js";
+import type { TelegramMediaService } from "../../telegram-media.js";
 import type { AiService } from "../ai/service.js";
 import type { ExtractionService } from "../extraction/service.js";
 import { idParams, missing, type UserId } from "../routes.js";
@@ -28,15 +30,35 @@ export async function articleRoutes(
     extractions,
     extractionQueue,
     ai,
+    telegramMedia,
     userId,
   }: {
     articles: ArticleRepository;
     extractions: ExtractionService;
     extractionQueue: ExtractionQueue;
     ai: AiService;
+    telegramMedia: TelegramMediaService;
     userId: UserId;
   },
 ): Promise<void> {
+  const resolveTelegramMedia = async (
+    accountId: number,
+    articleId: number,
+    reply: FastifyReply,
+  ) => {
+    const article = articles.getArticle(accountId, articleId);
+    if (!article?.url || !telegramPostIdentity(article.url)) {
+      missing(reply, "Telegram media");
+      return null;
+    }
+    try {
+      return await telegramMedia.mediaForPost(article.url);
+    } catch {
+      reply.code(502).send({ error: "Telegram media is temporarily unavailable" });
+      return null;
+    }
+  };
+
   app.get("/api/articles", async (request) => {
     const query = z
       .object({
@@ -60,6 +82,53 @@ export async function articleRoutes(
     const { id } = idParams.parse(request.params);
     const article = articles.getArticle(userId(request), id);
     return article ?? missing(reply, "Article");
+  });
+
+  app.get("/api/articles/:id/telegram-media", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const items = await resolveTelegramMedia(userId(request), id, reply);
+    if (!items) return reply;
+    return {
+      items: items.map((item, index) => ({
+        kind: item.kind,
+        sourceUrl: `/api/articles/${id}/telegram-media/${index}/source`,
+        posterUrl:
+          item.kind === "video" && item.posterUrl
+            ? `/api/articles/${id}/telegram-media/${index}/poster`
+            : null,
+        aspectRatio: item.aspectRatio,
+      })),
+    };
+  });
+
+  app.get("/api/articles/:id/telegram-media-preview", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const items = await resolveTelegramMedia(userId(request), id, reply);
+    if (!items) return reply;
+    const first = items[0];
+    if (!first) return missing(reply, "Telegram media");
+    return reply.redirect(first.posterUrl ?? first.url);
+  });
+
+  const mediaItemParams = z.object({
+    id: z.coerce.number().int().positive(),
+    index: z.coerce.number().int().min(0).max(99),
+  });
+
+  app.get("/api/articles/:id/telegram-media/:index/source", async (request, reply) => {
+    const { id, index } = mediaItemParams.parse(request.params);
+    const items = await resolveTelegramMedia(userId(request), id, reply);
+    if (!items) return reply;
+    const item = items[index];
+    return item ? reply.redirect(item.url) : missing(reply, "Telegram media");
+  });
+
+  app.get("/api/articles/:id/telegram-media/:index/poster", async (request, reply) => {
+    const { id, index } = mediaItemParams.parse(request.params);
+    const items = await resolveTelegramMedia(userId(request), id, reply);
+    if (!items) return reply;
+    const posterUrl = items[index]?.posterUrl;
+    return posterUrl ? reply.redirect(posterUrl) : missing(reply, "Telegram media poster");
   });
 
   app.patch("/api/articles/:id/state", async (request, reply) => {

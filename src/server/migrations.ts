@@ -6,6 +6,7 @@ import {
 import { cleanArticleHtml, removeStoredSrcsetsWithFallback } from "./article-html.js";
 import { firstSafeImageUrl } from "./article-image.js";
 import { youtubeMediaFromUrl } from "./article-media.js";
+import { removeTelegramFeedImages } from "./telegram-feed.js";
 
 interface Migration {
   sql: string | ((webFeedPollIntervalMinutes: number) => string);
@@ -695,6 +696,23 @@ const migrations: Migration[] = [
       )
       WHERE source_kind = 'web';
     `,
+  },
+  {
+    sql: "",
+    after: (database) => {
+      const rows = database
+        .prepare(
+          `SELECT id, feed_content_html AS feedContentHtml
+           FROM articles
+           WHERE feed_content_html LIKE '%<img%'
+             AND (lower(url) LIKE 'https://t.me/%' OR lower(url) LIKE 'http://t.me/%')`,
+        )
+        .all() as Array<{ id: number; feedContentHtml: string }>;
+      const update = database.prepare("UPDATE articles SET feed_content_html = ? WHERE id = ?");
+      for (const row of rows) {
+        update.run(removeTelegramFeedImages(row.feedContentHtml), row.id);
+      }
+    },
   },
 ];
 
