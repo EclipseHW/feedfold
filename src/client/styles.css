@@ -2142,6 +2142,69 @@ kbd {
   display: none;
 }
 
+.telegram-media-state {
+  display: flex;
+  align-items: center;
+  width: fit-content;
+  max-width: 70ch;
+  min-height: 40px;
+  gap: 8px;
+  margin-top: 24px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.telegram-media-state.telegram-media-error {
+  width: 100%;
+  color: var(--warning);
+}
+
+.telegram-media-state .secondary-button {
+  min-height: 30px;
+  margin-inline-start: 4px;
+  padding-block: 4px;
+}
+
+.telegram-media-gallery {
+  display: grid;
+  width: 100%;
+  max-width: 820px;
+  margin-top: 24px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #000;
+}
+
+.telegram-media-gallery.is-grouped {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 3px;
+}
+
+.telegram-media-gallery img,
+.telegram-media-gallery video {
+  display: block;
+  width: 100%;
+  max-height: min(75vh, 760px);
+  background: #000;
+  object-fit: contain;
+}
+
+.telegram-media-gallery:not(.is-grouped) > video {
+  width: min(100%, 520px);
+  justify-self: center;
+}
+
+.telegram-media-gallery.is-grouped img,
+.telegram-media-gallery.is-grouped video {
+  height: 100%;
+  max-height: none;
+}
+
 @media (max-width: 760px), (hover: none) and (pointer: coarse) {
   .article-media-swipe-surface {
     position: absolute;
@@ -2158,6 +2221,10 @@ kbd {
 
   .article-media-swipe-surface:focus-visible {
     outline-offset: -3px;
+  }
+
+  .telegram-media-gallery.is-grouped {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 

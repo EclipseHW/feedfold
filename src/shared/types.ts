@@ -101,6 +101,17 @@ export interface ArticleMedia {
   } | null;
 }
 
+export interface TelegramArticleMediaItem {
+  kind: "image" | "video";
+  sourceUrl: string;
+  posterUrl: string | null;
+  aspectRatio: number | null;
+}
+
+export interface TelegramArticleMedia {
+  items: TelegramArticleMediaItem[];
+}
+
 export interface SessionUser {
   id: number;
   username: string;

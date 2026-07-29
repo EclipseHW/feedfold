@@ -1,7 +1,7 @@
 import { JSDOM } from "jsdom";
 import parseSrcset from "parse-srcset";
 import sanitizeHtml from "sanitize-html";
-import { isTelegramPostUrl } from "./telegram-feed.js";
+import { isTelegramPostUrl } from "../shared/telegram.js";
 
 const TABLE_SCROLL_CLASS = "article-table-scroll";
 const QUOTE_FIGURE_CLASS = "article-quote";
