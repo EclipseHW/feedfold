@@ -68,13 +68,15 @@ export default defineConfig({
   },
   server: {
     host: "0.0.0.0",
+    port: 45173,
+    strictPort: true,
     proxy: {
       "/echovale/api": {
-        target: "http://127.0.0.1:3000",
+        target: "http://127.0.0.1:43001",
         rewrite: (path) => path.replace(/^\/echovale/, ""),
       },
       "/echovale/health": {
-        target: "http://127.0.0.1:3000",
+        target: "http://127.0.0.1:43001",
         rewrite: (path) => path.replace(/^\/echovale/, ""),
       },
     },
