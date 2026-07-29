@@ -29,6 +29,7 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type TouchEvent as ReactTouchEvent,
   type SyntheticEvent,
   useCallback,
   useEffect,
@@ -54,6 +55,7 @@ import {
   type ArticleSwipeDirection,
   type ArticleSwipeIntent,
   articleSwipeDirection,
+  articleSwipeDownAction,
   articleSwipeIntent,
   articleSwipeOffset,
 } from "./article-swipe";
@@ -843,6 +845,15 @@ function ArticleActions({
         : cachedFullContent
           ? "Show full content"
           : "Load full content";
+  const FullContentIcon = fullContentLoading
+    ? LoaderCircle
+    : fullContentLoaded
+      ? Rss
+      : fullContentFailed
+        ? RefreshCw
+        : cachedFullContent
+          ? FileText
+          : Download;
   const translationLabel = translationState.loading
     ? `Translating to ${translationLanguage}`
     : translationState.visible
@@ -889,17 +900,11 @@ function ArticleActions({
           aria-label={`${fullContentLabel} (W)`}
           data-tooltip={`${fullContentLabel} (W)`}
         >
-          {fullContentLoading ? (
-            <LoaderCircle className="spin" aria-hidden="true" size={16} />
-          ) : fullContentLoaded ? (
-            <Rss aria-hidden="true" size={16} />
-          ) : fullContentFailed ? (
-            <RefreshCw aria-hidden="true" size={16} />
-          ) : cachedFullContent ? (
-            <FileText aria-hidden="true" size={16} />
-          ) : (
-            <Download aria-hidden="true" size={16} />
-          )}
+          <FullContentIcon
+            className={fullContentLoading ? "spin" : undefined}
+            aria-hidden="true"
+            size={16}
+          />
         </button>
       ) : null}
       <button
@@ -1057,6 +1062,28 @@ function ArticleActions({
         onToggle={moreMenu.handleMenuToggle}
         onKeyDown={moreMenu.handleMenuKeyDown}
       >
+        {fullContentAvailable ? (
+          <>
+            <button
+              type="button"
+              role="menuitem"
+              disabled={fullContentLoading}
+              onClick={() => {
+                moreMenu.closeMenu();
+                onToggleFullContent(article);
+              }}
+            >
+              <FullContentIcon
+                className={fullContentLoading ? "spin" : undefined}
+                aria-hidden="true"
+                size={15}
+              />
+              <span>{fullContentLabel}</span>
+              <kbd>W</kbd>
+            </button>
+            <hr className="context-menu-separator" />
+          </>
+        ) : null}
         <button
           type="button"
           role="menuitem"
@@ -1503,6 +1530,13 @@ interface SwipeGestureState {
   samples: PointerSample[];
 }
 
+interface FullContentPullGesture {
+  identifier: number;
+  articleId: number;
+  startX: number;
+  startY: number;
+}
+
 interface PendingArticleNavigation {
   readonly id: number;
   readonly direction: ArticleSwipeDirection;
@@ -1597,6 +1631,7 @@ export function ReaderPane({
   const outgoingSurfaceRef = useRef(outgoingSurface);
   const activeMotion = useRef<HorizontalSpringController | null>(null);
   const swipeStart = useRef<SwipeGestureState | null>(null);
+  const fullContentPullStart = useRef<FullContentPullGesture | null>(null);
   const suppressSwipeSurfaceClick = useRef(false);
   const pendingNavigation = useRef<PendingArticleNavigation | null>(null);
   const nextRequestId = useRef(0);
@@ -2017,6 +2052,70 @@ export function ReaderPane({
     restoreActiveSurface(0, start.reducedMotion);
   }, [restoreActiveSurface]);
 
+  const handleTouchStart = useCallback((event: ReactTouchEvent<HTMLElement>) => {
+    fullContentPullStart.current = null;
+    if (event.touches.length !== 1 || pendingNavigation.current) return;
+
+    const surface = activeLayerRef.current;
+    const snapshot = activeSurfaceRef.current;
+    const target = event.target instanceof Element ? event.target : null;
+    if (
+      !surface ||
+      surface.scrollTop > 1 ||
+      !snapshot ||
+      snapshot.fullContentVisible ||
+      !snapshot.article.url ||
+      snapshot.article.media ||
+      target?.closest(ARTICLE_SWIPE_TARGETS)
+    ) {
+      return;
+    }
+
+    const touch = event.touches[0];
+    fullContentPullStart.current = {
+      identifier: touch.identifier,
+      articleId: snapshot.article.id,
+      startX: touch.clientX,
+      startY: touch.clientY,
+    };
+  }, []);
+
+  const handleTouchEnd = useCallback(
+    (event: ReactTouchEvent<HTMLElement>) => {
+      const start = fullContentPullStart.current;
+      fullContentPullStart.current = null;
+      if (!start) return;
+
+      const touch = Array.from(event.changedTouches).find(
+        (candidate) => candidate.identifier === start.identifier,
+      );
+      const snapshot = activeSurfaceRef.current;
+      if (
+        !touch ||
+        !snapshot ||
+        snapshot.article.id !== start.articleId ||
+        snapshot.fullContentVisible ||
+        !snapshot.article.url ||
+        snapshot.article.media ||
+        !articleSwipeDownAction({
+          startX: start.startX,
+          startY: start.startY,
+          endX: touch.clientX,
+          endY: touch.clientY,
+        })
+      ) {
+        return;
+      }
+
+      onToggleFullContent(snapshot.article);
+    },
+    [onToggleFullContent],
+  );
+
+  const cancelFullContentPull = useCallback(() => {
+    fullContentPullStart.current = null;
+  }, []);
+
   if (!activeSurface) {
     return (
       <section className="reader-pane reader-placeholder">
@@ -2053,6 +2152,9 @@ export function ReaderPane({
       onPointerUp={finishPointerGesture}
       onPointerCancel={cancelPointerGesture}
       onLostPointerCapture={cancelPointerGesture}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={cancelFullContentPull}
       onClickCapture={handleClickCapture}
     >
       <div className="reader-action-bar">

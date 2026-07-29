@@ -15,6 +15,13 @@ interface ArticleSwipeGesture {
   horizontalVelocity: number;
 }
 
+interface ArticleSwipeDownGesture {
+  startX: number;
+  startY: number;
+  endX: number;
+  endY: number;
+}
+
 export function articleSwipeDirection({
   startX,
   startY,
@@ -52,6 +59,20 @@ export function articleSwipeIntent(
   if (horizontalMagnitude >= verticalMagnitude * HORIZONTAL_DOMINANCE) return "horizontal";
   if (verticalMagnitude >= horizontalMagnitude * HORIZONTAL_DOMINANCE) return "vertical";
   return "pending";
+}
+
+export function articleSwipeDownAction({
+  startX,
+  startY,
+  endX,
+  endY,
+}: ArticleSwipeDownGesture): boolean {
+  const horizontalDistance = endX - startX;
+  const verticalDistance = endY - startY;
+  return (
+    verticalDistance >= MINIMUM_SWIPE_DISTANCE &&
+    verticalDistance >= Math.abs(horizontalDistance) * HORIZONTAL_DOMINANCE
+  );
 }
 
 export function articleSwipeOffset(
