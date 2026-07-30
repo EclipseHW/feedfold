@@ -747,6 +747,14 @@ const migrations: Migration[] = [
       DELETE FROM article_ai_summaries;
     `,
   },
+  {
+    sql: `
+      UPDATE ai_feature_settings
+      SET model = 'gemini-3.6-flash', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE provider = 'gemini'
+        AND model IN ('gemini-3.1-flash-lite', 'gemini-3.5-flash-lite');
+    `,
+  },
 ];
 
 export function migrateDatabase(
