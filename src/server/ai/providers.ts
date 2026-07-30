@@ -233,8 +233,8 @@ function geminiAdapter(baseUrl: string): AiProviderAdapter {
   return {
     id: "gemini",
     label,
-    defaultModel: "gemini-3.5-flash-lite",
-    models: [{ id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite" }],
+    defaultModel: "gemini-3.6-flash",
+    models: [{ id: "gemini-3.6-flash", label: "Gemini 3.6 Flash" }],
     async generateText(request): Promise<AiGenerationResult> {
       const response = await postJson(
         label,

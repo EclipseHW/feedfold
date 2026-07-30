@@ -60,6 +60,14 @@ Return only the summary in plain text.`,
         provider: "gemini",
         model: "gemini-3.1-flash-lite",
       });
+      database.ai.setAiFeatureSetting(feedReader.id, "article_summary", {
+        provider: "gemini",
+        model: "gemini-3.5-flash-lite",
+      });
+      database.ai.setAiFeatureSetting(partner.id, "article_summary", {
+        provider: "gemini",
+        model: "gemini-custom-model",
+      });
 
       const feed = database.feeds.createFeed(reader.id, {
         title: "AI news",
@@ -121,7 +129,15 @@ Return only the summary in plain text.`,
       ]);
       expect(database.ai.getAiFeatureSetting(reader.id, "article_summary")).toEqual({
         provider: "gemini",
-        model: "gemini-3.5-flash-lite",
+        model: "gemini-3.6-flash",
+      });
+      expect(database.ai.getAiFeatureSetting(feedReader.id, "article_summary")).toEqual({
+        provider: "gemini",
+        model: "gemini-3.6-flash",
+      });
+      expect(database.ai.getAiFeatureSetting(partner.id, "article_summary")).toEqual({
+        provider: "gemini",
+        model: "gemini-custom-model",
       });
       expect(database.articles.getArticle(reader.id, article.id)?.aiSummary).toBeNull();
     } finally {
@@ -414,7 +430,7 @@ Return only the summary in plain text.`,
         sortDirection: "newest",
       });
       expect(database.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
-        23,
+        24,
       );
       expect(
         database.connection
@@ -454,7 +470,7 @@ Return only the summary in plain text.`,
         username: "reader",
       });
       expect(reopened.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
-        23,
+        24,
       );
       expect(
         reopened.connection.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),

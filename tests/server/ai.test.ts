@@ -176,6 +176,10 @@ describe("AI article summaries", () => {
     expect(readerSettings.providers.find((provider) => provider.id === "openai")).toMatchObject({
       configured: true,
     });
+    expect(readerSettings.providers.find((provider) => provider.id === "gemini")).toMatchObject({
+      defaultModel: "gemini-3.6-flash",
+      models: [{ id: "gemini-3.6-flash", label: "Gemini 3.6 Flash" }],
+    });
     const partnerSettings = service.getSettings(partnerId);
     expect(partnerSettings).toMatchObject({
       features: { articleSummary: null },
