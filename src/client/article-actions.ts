@@ -361,6 +361,7 @@ export function useArticleActions({
           loading: false,
           error: null,
           configurationMissing: true,
+          promptId,
         });
         return;
       }
@@ -371,6 +372,7 @@ export function useArticleActions({
         loading: true,
         error: null,
         configurationMissing: false,
+        promptId,
       });
       try {
         const summary = await api.summarizeArticle(article.id, promptId, regenerate);
@@ -400,6 +402,7 @@ export function useArticleActions({
           visible: true,
           error: null,
           configurationMissing: false,
+          promptId: null,
         });
         return;
       }
@@ -417,6 +420,7 @@ export function useArticleActions({
           visible: true,
           error: null,
           configurationMissing: false,
+          promptId,
         });
         return;
       }
@@ -426,9 +430,12 @@ export function useArticleActions({
   );
 
   const regenerateArticleSummary = useCallback(
-    (article: Article) =>
-      void generateArticleSummary(article, article.aiSummary?.promptId ?? null, true),
-    [generateArticleSummary],
+    (article: Article) => {
+      const state = articleSummaryStates.get(article.id);
+      const promptId = state ? state.promptId : (article.aiSummary?.promptId ?? null);
+      void generateArticleSummary(article, promptId, true);
+    },
+    [articleSummaryStates, generateArticleSummary],
   );
 
   const generateArticleTranslation = useCallback(

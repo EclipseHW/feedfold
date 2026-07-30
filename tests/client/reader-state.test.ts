@@ -112,6 +112,7 @@ function summarizedArticle(id: number, promptId: string | null): Article {
       sourceKind: "feed",
       generatedAt: "2026-07-28T12:00:00.000Z",
       usage: { inputTokens: null, outputTokens: null },
+      grounding: null,
     },
   };
 }

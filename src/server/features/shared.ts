@@ -291,6 +291,7 @@ export function mapArticleAiSummary(row: Row): ArticleAiSummary | null {
       inputTokens: row.aiSummaryInputTokens === null ? null : Number(row.aiSummaryInputTokens),
       outputTokens: row.aiSummaryOutputTokens === null ? null : Number(row.aiSummaryOutputTokens),
     },
+    grounding: null,
   };
 }
 

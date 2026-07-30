@@ -62,6 +62,23 @@ export interface AiCustomPrompt {
   prompt: string;
 }
 
+export interface AiGroundingSource {
+  uri: string;
+  title: string;
+}
+
+export interface AiGroundingSupport {
+  startIndex: number;
+  endIndex: number;
+  sourceIndices: number[];
+}
+
+export interface AiGrounding {
+  sources: AiGroundingSource[];
+  supports: AiGroundingSupport[];
+  searchSuggestionsHtml: string;
+}
+
 export interface ArticleAiSummary {
   text: string;
   promptId: string | null;
@@ -70,6 +87,7 @@ export interface ArticleAiSummary {
   sourceKind: AiArticleSourceKind;
   generatedAt: string;
   usage: AiUsage;
+  grounding: AiGrounding | null;
 }
 
 export interface ArticleAiTranslation {

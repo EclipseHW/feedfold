@@ -1,4 +1,4 @@
-import type { AiProvider, AiUsage } from "../../shared/types.js";
+import type { AiGrounding, AiProvider, AiUsage } from "../../shared/types.js";
 import { AiError } from "./errors.js";
 import type { AiGenerationResult, AiProviderAdapter } from "./types.js";
 
@@ -126,13 +126,115 @@ function requireText(provider: string, values: string[], refused = false): strin
   );
 }
 
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function groundedSegmentRange(
+  segment: Record<string, unknown>,
+  text: string,
+): { startIndex: number; endIndex: number } | null {
+  if (
+    typeof segment.startIndex !== "number" ||
+    typeof segment.endIndex !== "number" ||
+    !Number.isInteger(segment.startIndex) ||
+    !Number.isInteger(segment.endIndex) ||
+    segment.startIndex < 0 ||
+    segment.endIndex <= segment.startIndex
+  ) {
+    return null;
+  }
+  let startIndex = segment.startIndex;
+  let endIndex = segment.endIndex;
+  if (
+    typeof segment.text === "string" &&
+    segment.text.length > 0 &&
+    text.slice(startIndex, endIndex) !== segment.text
+  ) {
+    let nearestIndex = -1;
+    for (
+      let matchIndex = text.indexOf(segment.text);
+      matchIndex >= 0;
+      matchIndex = text.indexOf(segment.text, matchIndex + 1)
+    ) {
+      if (
+        nearestIndex < 0 ||
+        Math.abs(matchIndex - startIndex) < Math.abs(nearestIndex - startIndex)
+      ) {
+        nearestIndex = matchIndex;
+      }
+    }
+    if (nearestIndex >= 0) {
+      startIndex = nearestIndex;
+      endIndex = startIndex + segment.text.length;
+    }
+  }
+  return endIndex <= text.length ? { startIndex, endIndex } : null;
+}
+
+function geminiGrounding(value: unknown, text: string): AiGrounding | null {
+  const metadata = record(value);
+  if (!metadata) return null;
+  const queries = Array.isArray(metadata.webSearchQueries) ? metadata.webSearchQueries : [];
+  const searchEntryPoint = record(metadata.searchEntryPoint);
+  const searchSuggestionsHtml = searchEntryPoint?.renderedContent;
+  if (queries.length === 0 && typeof searchSuggestionsHtml !== "string") return null;
+  if (typeof searchSuggestionsHtml !== "string" || !searchSuggestionsHtml.trim()) {
+    throw new AiError(
+      "AI_PROVIDER_FAILED",
+      502,
+      "Google Gemini returned a grounded response without its required Search Suggestions.",
+    );
+  }
+
+  const sources = [] as AiGrounding["sources"];
+  const sourceIndices = new Map<number, number>();
+  const chunks = Array.isArray(metadata.groundingChunks) ? metadata.groundingChunks : [];
+  for (const [chunkIndex, chunkValue] of chunks.entries()) {
+    const web = record(record(chunkValue)?.web);
+    if (typeof web?.uri !== "string" || typeof web.title !== "string") continue;
+    try {
+      const uri = new URL(web.uri);
+      if (uri.protocol !== "http:" && uri.protocol !== "https:") continue;
+      sourceIndices.set(chunkIndex, sources.length);
+      sources.push({ uri: web.uri, title: web.title });
+    } catch {}
+  }
+
+  const supports = [] as AiGrounding["supports"];
+  const groundingSupports = Array.isArray(metadata.groundingSupports)
+    ? metadata.groundingSupports
+    : [];
+  for (const supportValue of groundingSupports) {
+    const support = record(supportValue);
+    const segment = record(support?.segment);
+    if (!segment) continue;
+    const range = groundedSegmentRange(segment, text);
+    if (!range) continue;
+    const indices = Array.isArray(support?.groundingChunkIndices)
+      ? support.groundingChunkIndices
+          .map((index) => (typeof index === "number" ? sourceIndices.get(index) : undefined))
+          .filter((index): index is number => index !== undefined)
+      : [];
+    if (indices.length === 0) continue;
+    supports.push({
+      ...range,
+      sourceIndices: [...new Set(indices)],
+    });
+  }
+
+  return { sources, supports, searchSuggestionsHtml };
+}
+
 function geminiAdapter(baseUrl: string): AiProviderAdapter {
   const label = "Google Gemini";
   return {
     id: "gemini",
     label,
-    defaultModel: "gemini-3.1-flash-lite",
-    models: [{ id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite" }],
+    defaultModel: "gemini-3.5-flash-lite",
+    models: [{ id: "gemini-3.5-flash-lite", label: "Gemini 3.5 Flash-Lite" }],
     async generateText(request): Promise<AiGenerationResult> {
       const response = await postJson(
         label,
@@ -144,8 +246,9 @@ function geminiAdapter(baseUrl: string): AiProviderAdapter {
           contents: [{ role: "user", parts: [{ text: request.input }] }],
           generationConfig: {
             maxOutputTokens: request.maxOutputTokens,
-            thinkingConfig: { thinkingLevel: "minimal" },
+            thinkingConfig: { thinkingLevel: request.webSearch ? "medium" : "minimal" },
           },
+          ...(request.webSearch ? { tools: [{ google_search: {} }] } : {}),
         },
         request.signal,
       );
@@ -176,15 +279,17 @@ function geminiAdapter(baseUrl: string): AiProviderAdapter {
         const text = (part as Record<string, unknown>).text;
         return typeof text === "string" ? [text] : [];
       });
+      const text = requireText(label, values);
       const usage = response.usageMetadata as Record<string, unknown> | undefined;
       return {
-        text: requireText(label, values),
+        text,
         usage: usage
           ? {
               inputTokens: tokenCount(usage.promptTokenCount),
               outputTokens: tokenCount(usage.candidatesTokenCount),
             }
           : EMPTY_USAGE,
+        grounding: request.webSearch ? geminiGrounding(first?.groundingMetadata, text) : null,
       };
     },
   };
@@ -249,6 +354,7 @@ function openAiAdapter(baseUrl: string): AiProviderAdapter {
               outputTokens: tokenCount(usage.output_tokens),
             }
           : EMPTY_USAGE,
+        grounding: null,
       };
     },
   };
@@ -302,6 +408,7 @@ function anthropicAdapter(baseUrl: string): AiProviderAdapter {
               outputTokens: tokenCount(usage.output_tokens),
             }
           : EMPTY_USAGE,
+        grounding: null,
       };
     },
   };
