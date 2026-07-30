@@ -48,6 +48,7 @@ import type {
   ReadingMode,
   TelegramArticleMedia,
 } from "../shared/types";
+import { AiMarkdown } from "./ai-markdown";
 import { api, appUrl, errorMessage } from "./api";
 import { articleContentView } from "./article-content";
 import { ArticleHtml } from "./article-html";
@@ -1142,21 +1143,6 @@ function ArticleActions({
   );
 }
 
-function summaryContent(text: string): { paragraphs: string[]; bullets: string[] } {
-  const paragraphs: string[] = [];
-  const bullets: string[] = [];
-  for (const line of text.split(/\n+/)) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    if (trimmed.startsWith("•")) {
-      bullets.push(trimmed.slice(1).trim());
-    } else {
-      paragraphs.push(trimmed);
-    }
-  }
-  return { paragraphs, bullets };
-}
-
 function ArticleSummaryPanel({
   article,
   state,
@@ -1172,7 +1158,6 @@ function ArticleSummaryPanel({
 }) {
   if (!state.visible) return null;
   const summary = article.aiSummary;
-  const content = summary ? summaryContent(summary.text) : null;
   const titleId = `article-${article.id}-ai-summary-title`;
   const customPromptName = summary?.promptId
     ? customPrompts.find((prompt) => prompt.id === summary.promptId)?.name
@@ -1227,18 +1212,7 @@ function ArticleSummaryPanel({
         </div>
       ) : summary ? (
         <div className="article-summary-text">
-          {content?.paragraphs.map((paragraph, index) => (
-            // biome-ignore lint/suspicious/noArrayIndexKey: Provider output can repeat an identical sentence.
-            <p key={`${index}-${paragraph}`}>{paragraph}</p>
-          ))}
-          {content && content.bullets.length > 0 ? (
-            <ul>
-              {content.bullets.map((bullet, index) => (
-                // biome-ignore lint/suspicious/noArrayIndexKey: Provider output can repeat an identical key point.
-                <li key={`${index}-${bullet}`}>{bullet}</li>
-              ))}
-            </ul>
-          ) : null}
+          <AiMarkdown text={summary.text} />
         </div>
       ) : !state.error ? (
         <div className="article-summary-message">
