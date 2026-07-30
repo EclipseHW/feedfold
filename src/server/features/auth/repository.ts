@@ -1,4 +1,8 @@
 import type Sqlite from "better-sqlite3";
+import {
+  DEFAULT_ARTICLE_SUMMARY_PROMPT,
+  DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+} from "../../../shared/ai-prompts.js";
 import type { SessionUser } from "../../../shared/types.js";
 
 const LEGACY_OWNER = "__legacy_owner__";
@@ -57,10 +61,15 @@ export class AuthRepository {
           .prepare(
             `INSERT INTO settings (
                user_id, poll_interval_minutes, single_key_shortcuts, mark_read_on_scroll,
-               translation_language
-             ) VALUES (?, ?, 1, 1, 'English')`,
+               translation_language, summary_prompt, translation_prompt
+             ) VALUES (?, ?, 1, 1, 'English', ?, ?)`,
           )
-          .run(userId, defaultPollIntervalMinutes);
+          .run(
+            userId,
+            defaultPollIntervalMinutes,
+            DEFAULT_ARTICLE_SUMMARY_PROMPT,
+            DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+          );
         user = { id: userId, username };
       }
       this.insertSession(user.id, session);
