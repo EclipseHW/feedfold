@@ -1,4 +1,4 @@
-import type { AiModelOption, AiProvider, AiUsage } from "../../shared/types.js";
+import type { AiGrounding, AiModelOption, AiProvider, AiUsage } from "../../shared/types.js";
 
 export interface AiGenerationRequest {
   apiKey: string;
@@ -6,12 +6,14 @@ export interface AiGenerationRequest {
   system: string;
   input: string;
   maxOutputTokens: number;
+  webSearch: boolean;
   signal: AbortSignal;
 }
 
 export interface AiGenerationResult {
   text: string;
   usage: AiUsage;
+  grounding: AiGrounding | null;
 }
 
 export interface AiProviderAdapter {

@@ -2193,6 +2193,10 @@ kbd {
   color: var(--muted);
 }
 
+.article-summary-search-suggestions {
+  margin-top: 1.25rem;
+}
+
 .article-summary-loading > span {
   display: block;
   margin-bottom: 10px;

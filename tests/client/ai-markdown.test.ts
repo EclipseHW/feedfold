@@ -3,9 +3,10 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AiMarkdown } from "../../src/client/ai-markdown.js";
+import type { AiGrounding } from "../../src/shared/types.js";
 
-function renderMarkdown(text: string): DocumentFragment {
-  return JSDOM.fragment(renderToStaticMarkup(createElement(AiMarkdown, { text })));
+function renderMarkdown(text: string, grounding?: AiGrounding): DocumentFragment {
+  return JSDOM.fragment(renderToStaticMarkup(createElement(AiMarkdown, { text, grounding })));
 }
 
 describe("AI Markdown", () => {
@@ -55,5 +56,27 @@ Closing note.`);
     expect(links[0]?.getAttribute("target")).toBe("_blank");
     expect(fragment.querySelector("img")).toBeNull();
     expect(fragment.querySelector("strong")).toBeNull();
+  });
+
+  it("links grounded claims to their sources and displays Google Search Suggestions", () => {
+    const text = "The product launched in July 2026.";
+    const fragment = renderMarkdown(text, {
+      sources: [
+        {
+          uri: "https://search.example.test/release",
+          title: "Release announcement",
+        },
+      ],
+      supports: [{ startIndex: 0, endIndex: text.length, sourceIndices: [0] }],
+      searchSuggestionsHtml: '<div class="google-search">Search suggestions</div>',
+    });
+    const citation = fragment.querySelector("p a");
+    const suggestions = fragment.querySelector(".article-summary-search-suggestions");
+
+    expect(citation?.textContent).toContain("1");
+    expect(citation?.getAttribute("href")).toBe("https://search.example.test/release");
+    expect(citation?.getAttribute("title")).toBe("Release announcement");
+    expect(suggestions?.querySelector(".google-search")?.textContent).toBe("Search suggestions");
+    expect(suggestions?.getAttribute("aria-label")).toBe("Google Search suggestions");
   });
 });

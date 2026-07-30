@@ -758,6 +758,7 @@ export interface ArticleSummaryViewState {
   loading: boolean;
   error: string | null;
   configurationMissing: boolean;
+  promptId: string | null;
 }
 
 export const EMPTY_ARTICLE_SUMMARY_STATE: ArticleSummaryViewState = {
@@ -765,6 +766,7 @@ export const EMPTY_ARTICLE_SUMMARY_STATE: ArticleSummaryViewState = {
   loading: false,
   error: null,
   configurationMissing: false,
+  promptId: null,
 };
 
 export interface ArticleTranslationViewState {
@@ -1159,8 +1161,9 @@ function ArticleSummaryPanel({
   if (!state.visible) return null;
   const summary = article.aiSummary;
   const titleId = `article-${article.id}-ai-summary-title`;
-  const customPromptName = summary?.promptId
-    ? customPrompts.find((prompt) => prompt.id === summary.promptId)?.name
+  const displayedPromptId = summary ? summary.promptId : state.promptId;
+  const customPromptName = displayedPromptId
+    ? customPrompts.find((prompt) => prompt.id === displayedPromptId)?.name
     : null;
 
   return (
@@ -1212,7 +1215,7 @@ function ArticleSummaryPanel({
         </div>
       ) : summary ? (
         <div className="article-summary-text">
-          <AiMarkdown text={summary.text} />
+          <AiMarkdown text={summary.text} grounding={summary.grounding} />
         </div>
       ) : !state.error ? (
         <div className="article-summary-message">

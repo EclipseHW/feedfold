@@ -1,6 +1,7 @@
 import type { JSX } from "react";
 import Markdown, { type Components, type ExtraProps, type UrlTransform } from "react-markdown";
 import remarkGfm from "remark-gfm";
+import type { AiGrounding } from "../shared/types.js";
 
 const allowedElements = [
   "a",
@@ -84,16 +85,64 @@ function normalizeAiMarkdown(text: string): string {
   return text.replace(/^([ \t]{0,3})•(?=[ \t]|$)/gmu, "$1-");
 }
 
-export function AiMarkdown({ text }: { text: string }) {
+function markdownLinkTitle(title: string): string {
+  return title.replaceAll("\\", "\\\\").replaceAll('"', '\\"').replaceAll(/\s+/gu, " ");
+}
+
+function addGroundingCitations(text: string, grounding: AiGrounding): string {
+  const citationsByEndIndex = new Map<number, Set<number>>();
+  for (const support of grounding.supports) {
+    if (support.endIndex > text.length) continue;
+    const citations = citationsByEndIndex.get(support.endIndex) ?? new Set<number>();
+    for (const sourceIndex of support.sourceIndices) {
+      if (grounding.sources[sourceIndex]) citations.add(sourceIndex);
+    }
+    if (citations.size > 0) citationsByEndIndex.set(support.endIndex, citations);
+  }
+
+  let citedText = text;
+  const insertions = [...citationsByEndIndex].sort(([left], [right]) => right - left);
+  for (const [endIndex, sourceIndices] of insertions) {
+    const citations = [...sourceIndices]
+      .sort((left, right) => left - right)
+      .map((sourceIndex) => {
+        const source = grounding.sources[sourceIndex];
+        if (!source) return "";
+        return `[${sourceIndex + 1}](${source.uri} "${markdownLinkTitle(source.title)}")`;
+      })
+      .join("");
+    citedText = `${citedText.slice(0, endIndex)} ${citations}${citedText.slice(endIndex)}`;
+  }
+  return citedText;
+}
+
+export function AiMarkdown({
+  text,
+  grounding = null,
+}: {
+  text: string;
+  grounding?: AiGrounding | null;
+}) {
+  const markdown = grounding ? addGroundingCitations(text, grounding) : text;
   return (
-    <Markdown
-      allowedElements={allowedElements}
-      components={components}
-      remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
-      skipHtml
-      urlTransform={safeUrl}
-    >
-      {normalizeAiMarkdown(text)}
-    </Markdown>
+    <>
+      <Markdown
+        allowedElements={allowedElements}
+        components={components}
+        remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
+        skipHtml
+        urlTransform={safeUrl}
+      >
+        {normalizeAiMarkdown(markdown)}
+      </Markdown>
+      {grounding ? (
+        <section
+          className="article-summary-search-suggestions"
+          aria-label="Google Search suggestions"
+          // biome-ignore lint/security/noDangerouslySetInnerHtml: Google requires its provider-generated Search Suggestions HTML to be displayed unchanged.
+          dangerouslySetInnerHTML={{ __html: grounding.searchSuggestionsHtml }}
+        />
+      ) : null}
+    </>
   );
 }

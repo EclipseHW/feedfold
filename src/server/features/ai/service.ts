@@ -13,8 +13,10 @@ import type {
   ArticleAiTranslation,
 } from "../../../shared/types.js";
 import {
+  ARTICLE_GROUNDED_MAX_OUTPUT_TOKENS,
   ARTICLE_SUMMARY_MAX_OUTPUT_TOKENS,
   ARTICLE_SUMMARY_PROMPT_VERSION,
+  articleSummaryNeedsWebSearch,
   articleSummarySystemPrompt,
   prepareArticleSummary,
 } from "../../ai/article-summary.js";
@@ -50,6 +52,7 @@ interface FeatureGenerationRequest {
   system: string;
   input: string;
   maxOutputTokens: number;
+  webSearch: boolean;
 }
 
 interface FeatureGenerationResult extends AiGenerationResult {
@@ -66,6 +69,7 @@ function publicSummary(summary: StoredArticleAiSummary): ArticleAiSummary {
     sourceKind: summary.sourceKind,
     generatedAt: summary.generatedAt,
     usage: summary.usage,
+    grounding: summary.grounding,
   };
 }
 
@@ -266,7 +270,12 @@ export class AiService {
   ): Promise<ArticleAiSummary | null> {
     const article = this.database.ai.getArticleForAi(userId, articleId);
     if (!article) return null;
+    const setting = this.validFeatureSetting(
+      this.database.ai.getAiFeatureSetting(userId, "article_summary"),
+    );
+    const useWebSearch = setting?.provider === "gemini" && articleSummaryNeedsWebSearch(prompt);
     if (
+      !useWebSearch &&
       !regenerate &&
       article.currentSummary?.promptVersion === version &&
       article.currentSummary.promptId === promptId
@@ -275,10 +284,25 @@ export class AiService {
     }
     const prepared = prepareArticleSummary(article);
     const generated = await this.generateText(userId, "article_summary", {
-      system: articleSummarySystemPrompt(prompt, this.currentDate()),
+      system: articleSummarySystemPrompt(prompt, this.currentDate(), useWebSearch),
       input: prepared.input,
-      maxOutputTokens: ARTICLE_SUMMARY_MAX_OUTPUT_TOKENS,
+      maxOutputTokens: useWebSearch
+        ? ARTICLE_GROUNDED_MAX_OUTPUT_TOKENS
+        : ARTICLE_SUMMARY_MAX_OUTPUT_TOKENS,
+      webSearch: useWebSearch,
     });
+    if (useWebSearch) {
+      return {
+        text: generated.text,
+        promptId,
+        provider: generated.provider,
+        model: generated.model,
+        sourceKind: prepared.sourceKind,
+        generatedAt: this.currentDate().toISOString(),
+        usage: generated.usage,
+        grounding: generated.grounding,
+      };
+    }
     const saved = this.database.ai.saveArticleAiSummary(userId, articleId, article.revision, {
       promptVersion: version,
       promptId,
@@ -322,6 +346,7 @@ export class AiService {
       system: prompt,
       input: prepared.input,
       maxOutputTokens: ARTICLE_TRANSLATION_MAX_OUTPUT_TOKENS,
+      webSearch: false,
     });
     const html = renderArticleTranslation(prepared, generated.text);
     const saved = this.database.ai.saveArticleAiTranslation(userId, articleId, article.revision, {
