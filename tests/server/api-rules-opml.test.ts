@@ -12,6 +12,7 @@ import { FeedRefreshService } from "../../src/server/refresh.js";
 import {
   DEFAULT_ARTICLE_SUMMARY_PROMPT,
   DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+  DEFAULT_CUSTOM_PROMPTS,
 } from "../../src/shared/ai-prompts.js";
 import type { Article, BootstrapData, ImportResult, Rule } from "../../src/shared/types.js";
 
@@ -422,7 +423,7 @@ describe("live API, OPML, and filtering rules", () => {
       translationLanguage: "English",
       summaryPrompt: DEFAULT_ARTICLE_SUMMARY_PROMPT,
       translationPrompt: DEFAULT_ARTICLE_TRANSLATION_PROMPT,
-      customPrompts: [],
+      customPrompts: DEFAULT_CUSTOM_PROMPTS,
     });
 
     const rejectedLegacyRule = await app.inject({

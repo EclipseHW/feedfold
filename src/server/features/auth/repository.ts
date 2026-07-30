@@ -2,6 +2,7 @@ import type Sqlite from "better-sqlite3";
 import {
   DEFAULT_ARTICLE_SUMMARY_PROMPT,
   DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+  DEFAULT_CUSTOM_PROMPTS,
 } from "../../../shared/ai-prompts.js";
 import type { SessionUser } from "../../../shared/types.js";
 
@@ -61,14 +62,15 @@ export class AuthRepository {
           .prepare(
             `INSERT INTO settings (
                user_id, poll_interval_minutes, single_key_shortcuts, mark_read_on_scroll,
-               translation_language, summary_prompt, translation_prompt
-             ) VALUES (?, ?, 1, 1, 'English', ?, ?)`,
+               translation_language, summary_prompt, translation_prompt, custom_prompts_json
+             ) VALUES (?, ?, 1, 1, 'English', ?, ?, ?)`,
           )
           .run(
             userId,
             defaultPollIntervalMinutes,
             DEFAULT_ARTICLE_SUMMARY_PROMPT,
             DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+            JSON.stringify(DEFAULT_CUSTOM_PROMPTS),
           );
         user = { id: userId, username };
       }

@@ -76,7 +76,7 @@ export interface AiGroundingSupport {
 export interface AiGrounding {
   sources: AiGroundingSource[];
   supports: AiGroundingSupport[];
-  searchSuggestionsHtml: string;
+  searchSuggestionsHtml: string | null;
 }
 
 export interface ArticleAiSummary {

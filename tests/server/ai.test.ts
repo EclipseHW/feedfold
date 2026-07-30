@@ -16,6 +16,7 @@ import { createAiProviders } from "../../src/server/ai/providers.js";
 import { AppDatabase, type ParsedFeed } from "../../src/server/database.js";
 import { AiService } from "../../src/server/features/ai/service.js";
 import { AuthService } from "../../src/server/features/auth/service.js";
+import { DEFAULT_FACTCHECK_PROMPT } from "../../src/shared/ai-prompts.js";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 const CREDENTIAL_KEY = "11".repeat(32);
@@ -93,6 +94,35 @@ async function liveOpenAiProvider(): Promise<{
   requests: Array<Record<string, unknown>>;
 }> {
   const { baseUrl, requests } = await liveProviderEndpoint((body) => {
+    if (Array.isArray(body.tools)) {
+      const text = "The product was released in July 2026.";
+      return {
+        status: "completed",
+        output: [
+          { type: "web_search_call", status: "completed" },
+          {
+            type: "message",
+            role: "assistant",
+            content: [
+              {
+                type: "output_text",
+                text,
+                annotations: [
+                  {
+                    type: "url_citation",
+                    start_index: 0,
+                    end_index: text.length,
+                    url: "https://search.example.test/release",
+                    title: "Release announcement",
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        usage: { input_tokens: 40, output_tokens: 10 },
+      };
+    }
     const input = String(body.input);
     const language = input.includes("Target language: French") ? "Français" : "Polski";
     const ids = [...input.matchAll(/data-translation-id="(\d+)"/gu)].map((match) => match[1]);
@@ -112,6 +142,62 @@ async function liveOpenAiProvider(): Promise<{
     };
   });
   return { providers: createAiProviders({ openai: baseUrl }), requests };
+}
+
+async function liveAnthropicProvider(): Promise<{
+  providers: ReturnType<typeof createAiProviders>;
+  requests: Array<Record<string, unknown>>;
+}> {
+  const text = "The product was released in July 2026.";
+  const { baseUrl, requests } = await liveProviderEndpoint((body) => {
+    const messages = Array.isArray(body.messages) ? body.messages : [];
+    if (messages.length === 1) {
+      return {
+        stop_reason: "pause_turn",
+        content: [
+          {
+            type: "server_tool_use",
+            id: "srvtoolu_test",
+            name: "web_search",
+            input: { query: "product July 2026 release" },
+          },
+          {
+            type: "web_search_tool_result",
+            tool_use_id: "srvtoolu_test",
+            content: [
+              {
+                type: "web_search_result",
+                url: "https://search.example.test/release",
+                title: "Release announcement",
+                encrypted_content: "encrypted-result",
+              },
+            ],
+          },
+        ],
+        usage: { input_tokens: 20, output_tokens: 1 },
+      };
+    }
+    return {
+      stop_reason: "end_turn",
+      content: [
+        {
+          type: "text",
+          text,
+          citations: [
+            {
+              type: "web_search_result_location",
+              url: "https://search.example.test/release",
+              title: "Release announcement",
+              encrypted_index: "encrypted-index",
+              cited_text: "The product was released in July 2026.",
+            },
+          ],
+        },
+      ],
+      usage: { input_tokens: 35, output_tokens: 9 },
+    };
+  });
+  return { providers: createAiProviders({ anthropic: baseUrl }), requests };
 }
 
 async function liveGeminiProvider(): Promise<{
@@ -383,6 +469,96 @@ describe("AI article summaries", () => {
     );
   });
 
+  it("uses native OpenAI web search for fact-checks", async () => {
+    const { database, readerId } = databaseWithUsers();
+    const { articleId } = addArticle(database, readerId);
+    const cipher = CredentialCipher.fromHex(CREDENTIAL_KEY);
+    if (!cipher) throw new Error("Credential cipher was not created");
+    const { providers, requests } = await liveOpenAiProvider();
+    const service = new AiService(database, {
+      credentialCipher: cipher,
+      currentDate: () => new Date("2026-07-30T12:00:00.000Z"),
+      providers,
+    });
+    service.setApiKey(readerId, "openai", "live-provider-test-key");
+    service.setFeatureSetting(readerId, "article_summary", "openai", "grounded-model");
+
+    const result = await service.summarizeArticle(readerId, articleId, DEFAULT_FACTCHECK_PROMPT.id);
+
+    expect(result).toMatchObject({
+      provider: "openai",
+      promptId: DEFAULT_FACTCHECK_PROMPT.id,
+      usage: { inputTokens: 40, outputTokens: 10 },
+      grounding: {
+        sources: [
+          {
+            uri: "https://search.example.test/release",
+            title: "Release announcement",
+          },
+        ],
+        supports: [{ startIndex: 0, endIndex: 38, sourceIndices: [0] }],
+        searchSuggestionsHtml: null,
+      },
+    });
+    expect(requests[0]).toMatchObject({
+      max_output_tokens: 4_096,
+      max_tool_calls: 5,
+      reasoning: { effort: "low" },
+      tool_choice: "required",
+      tools: [{ type: "web_search", search_context_size: "medium" }],
+    });
+    expect(String(requests[0]?.instructions)).toContain("Web search is available.");
+    expect(String(requests[0]?.instructions)).not.toContain("Google Search is available.");
+    expect(database.articles.getArticle(readerId, articleId)?.aiSummary).toBeNull();
+  });
+
+  it("uses native Anthropic web search and continues paused fact-checks", async () => {
+    const { database, readerId } = databaseWithUsers();
+    const { articleId } = addArticle(database, readerId);
+    const cipher = CredentialCipher.fromHex(CREDENTIAL_KEY);
+    if (!cipher) throw new Error("Credential cipher was not created");
+    const { providers, requests } = await liveAnthropicProvider();
+    const service = new AiService(database, { credentialCipher: cipher, providers });
+    service.setApiKey(readerId, "anthropic", "live-provider-test-key");
+    service.setFeatureSetting(readerId, "article_summary", "anthropic", "grounded-model");
+
+    const result = await service.summarizeArticle(readerId, articleId, DEFAULT_FACTCHECK_PROMPT.id);
+
+    expect(result).toMatchObject({
+      provider: "anthropic",
+      promptId: DEFAULT_FACTCHECK_PROMPT.id,
+      usage: { inputTokens: 55, outputTokens: 10 },
+      grounding: {
+        sources: [
+          {
+            uri: "https://search.example.test/release",
+            title: "Release announcement",
+          },
+        ],
+        supports: [{ startIndex: 0, endIndex: 38, sourceIndices: [0] }],
+        searchSuggestionsHtml: null,
+      },
+    });
+    expect(requests).toHaveLength(2);
+    expect(requests[0]).toMatchObject({
+      max_tokens: 4_096,
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
+    });
+    expect(requests[1]).toMatchObject({
+      messages: [
+        { role: "user" },
+        {
+          role: "assistant",
+          content: expect.arrayContaining([
+            expect.objectContaining({ type: "web_search_tool_result" }),
+          ]),
+        },
+      ],
+      tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
+    });
+    expect(database.articles.getArticle(readerId, articleId)?.aiSummary).toBeNull();
+  });
+
   it("wraps account prompts in the shared harness and regenerates after prompt changes", async () => {
     const { database, readerId } = databaseWithUsers();
     const { articleId } = addArticle(database, readerId);
@@ -548,6 +724,10 @@ describe("AI article summaries", () => {
       statusCode: 422,
     });
     service.setFeatureSetting(readerId, "article_summary", "anthropic");
+    expect(database.ai.getAiFeatureSetting(readerId, "article_summary")).toEqual({
+      provider: "anthropic",
+      model: "claude-haiku-4-5",
+    });
     await expect(service.summarizeArticle(readerId, articleId, null)).rejects.toMatchObject({
       code: "AI_KEY_MISSING",
       statusCode: 422,
