@@ -34,7 +34,7 @@ ${
   webSearch
     ? `
 Web verification:
-- Google Search is available. For up to five material factual claims, search separately and cite independent sources—not the article being checked—before assigning a verdict.
+- Web search is available. For up to five material factual claims, search separately and cite independent sources—not the article being checked—before assigning a verdict.
 `
     : ""
 }

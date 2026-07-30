@@ -132,6 +132,36 @@ function record(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function addGroundingSource(
+  sources: AiGrounding["sources"],
+  sourceIndices: Map<string, number>,
+  uriValue: unknown,
+  titleValue: unknown,
+): number | null {
+  if (typeof uriValue !== "string" || typeof titleValue !== "string") return null;
+  try {
+    const uri = new URL(uriValue);
+    if (uri.protocol !== "http:" && uri.protocol !== "https:") return null;
+  } catch {
+    return null;
+  }
+  const existing = sourceIndices.get(uriValue);
+  if (existing !== undefined) return existing;
+  const index = sources.length;
+  sources.push({ uri: uriValue, title: titleValue });
+  sourceIndices.set(uriValue, index);
+  return index;
+}
+
+function citationGrounding(
+  sources: AiGrounding["sources"],
+  supports: AiGrounding["supports"],
+): AiGrounding | null {
+  return sources.length > 0 && supports.length > 0
+    ? { sources, supports, searchSuggestionsHtml: null }
+    : null;
+}
+
 function groundedSegmentRange(
   segment: Record<string, unknown>,
   text: string,
@@ -312,9 +342,16 @@ function openAiAdapter(baseUrl: string): AiProviderAdapter {
           instructions: request.system,
           input: request.input,
           max_output_tokens: request.maxOutputTokens,
-          reasoning: { effort: "none" },
+          reasoning: { effort: request.webSearch ? "low" : "none" },
           text: { verbosity: "low" },
           store: false,
+          ...(request.webSearch
+            ? {
+                tools: [{ type: "web_search", search_context_size: "medium" }],
+                tool_choice: "required",
+                max_tool_calls: 5,
+              }
+            : {}),
         },
         request.signal,
       );
@@ -332,6 +369,10 @@ function openAiAdapter(baseUrl: string): AiProviderAdapter {
       const output = Array.isArray(response.output) ? response.output : [];
       let refused = false;
       const values: string[] = [];
+      let textLength = 0;
+      const sources: AiGrounding["sources"] = [];
+      const sourceIndices = new Map<string, number>();
+      const supports: AiGrounding["supports"] = [];
       for (const item of output) {
         if (!item || typeof item !== "object") continue;
         const content = (item as Record<string, unknown>).content;
@@ -342,6 +383,35 @@ function openAiAdapter(baseUrl: string): AiProviderAdapter {
           if (block.type === "refusal") refused = true;
           if (block.type === "output_text" && typeof block.text === "string") {
             values.push(block.text);
+            const annotations = Array.isArray(block.annotations) ? block.annotations : [];
+            for (const annotationValue of annotations) {
+              const annotation = record(annotationValue);
+              if (annotation?.type !== "url_citation") continue;
+              const sourceIndex = addGroundingSource(
+                sources,
+                sourceIndices,
+                annotation.url,
+                annotation.title,
+              );
+              if (
+                sourceIndex === null ||
+                typeof annotation.start_index !== "number" ||
+                typeof annotation.end_index !== "number" ||
+                !Number.isInteger(annotation.start_index) ||
+                !Number.isInteger(annotation.end_index) ||
+                annotation.start_index < 0 ||
+                annotation.end_index <= annotation.start_index ||
+                annotation.end_index > block.text.length
+              ) {
+                continue;
+              }
+              supports.push({
+                startIndex: textLength + annotation.start_index,
+                endIndex: textLength + annotation.end_index,
+                sourceIndices: [sourceIndex],
+              });
+            }
+            textLength += block.text.length;
           }
         }
       }
@@ -354,7 +424,7 @@ function openAiAdapter(baseUrl: string): AiProviderAdapter {
               outputTokens: tokenCount(usage.output_tokens),
             }
           : EMPTY_USAGE,
-        grounding: null,
+        grounding: request.webSearch ? citationGrounding(sources, supports) : null,
       };
     },
   };
@@ -365,24 +435,41 @@ function anthropicAdapter(baseUrl: string): AiProviderAdapter {
   return {
     id: "anthropic",
     label,
-    defaultModel: "claude-haiku-4-5-20251001",
-    models: [{ id: "claude-haiku-4-5-20251001", label: "Claude Haiku 4.5" }],
+    defaultModel: "claude-haiku-4-5",
+    models: [{ id: "claude-haiku-4-5", label: "Claude Haiku 4.5" }],
     async generateText(request): Promise<AiGenerationResult> {
-      const response = await postJson(
-        label,
-        endpoint(baseUrl, "/messages"),
-        {
-          "x-api-key": request.apiKey,
-          "anthropic-version": "2023-06-01",
-        },
-        {
-          model: request.model,
-          max_tokens: request.maxOutputTokens,
-          system: request.system,
-          messages: [{ role: "user", content: request.input }],
-        },
-        request.signal,
-      );
+      const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [
+        { role: "user", content: request.input },
+      ];
+      const responses: Array<Record<string, unknown>> = [];
+      let response: Record<string, unknown>;
+      do {
+        response = await postJson(
+          label,
+          endpoint(baseUrl, "/messages"),
+          {
+            "x-api-key": request.apiKey,
+            "anthropic-version": "2023-06-01",
+          },
+          {
+            model: request.model,
+            max_tokens: request.maxOutputTokens,
+            system: request.system,
+            messages,
+            ...(request.webSearch
+              ? {
+                  tools: [{ type: "web_search_20250305", name: "web_search", max_uses: 5 }],
+                }
+              : {}),
+          },
+          request.signal,
+        );
+        responses.push(response);
+        if (response.stop_reason === "pause_turn") {
+          const pausedContent = Array.isArray(response.content) ? response.content : [];
+          messages.push({ role: "assistant", content: pausedContent });
+        }
+      } while (response.stop_reason === "pause_turn");
       if (response.stop_reason === "refusal") {
         throw new AiError("AI_RESPONSE_REFUSED", 422, `${label} could not process this article.`);
       }
@@ -394,21 +481,51 @@ function anthropicAdapter(baseUrl: string): AiProviderAdapter {
         );
       }
       const content = Array.isArray(response.content) ? response.content : [];
-      const values = content.flatMap((part) => {
-        if (!part || typeof part !== "object") return [];
-        const block = part as Record<string, unknown>;
-        return block.type === "text" && typeof block.text === "string" ? [block.text] : [];
-      });
-      const usage = response.usage as Record<string, unknown> | undefined;
+      const values: string[] = [];
+      let textLength = 0;
+      const sources: AiGrounding["sources"] = [];
+      const sourceIndices = new Map<string, number>();
+      const supports: AiGrounding["supports"] = [];
+      for (const part of content) {
+        const block = record(part);
+        if (block?.type !== "text" || typeof block.text !== "string") continue;
+        values.push(block.text);
+        const citedSources = new Set<number>();
+        const citations = Array.isArray(block.citations) ? block.citations : [];
+        for (const citationValue of citations) {
+          const citation = record(citationValue);
+          if (citation?.type !== "web_search_result_location") continue;
+          const sourceIndex = addGroundingSource(
+            sources,
+            sourceIndices,
+            citation.url,
+            citation.title,
+          );
+          if (sourceIndex !== null) citedSources.add(sourceIndex);
+        }
+        if (block.text.length > 0 && citedSources.size > 0) {
+          supports.push({
+            startIndex: textLength,
+            endIndex: textLength + block.text.length,
+            sourceIndices: [...citedSources],
+          });
+        }
+        textLength += block.text.length;
+      }
+      const usageValues = responses.map((item) => record(item.usage));
+      const totalTokens = (key: string): number | null => {
+        const values = usageValues.map((usage) => tokenCount(usage?.[key]));
+        return values.every((value) => value === null)
+          ? null
+          : values.reduce<number>((total, value) => total + (value ?? 0), 0);
+      };
       return {
         text: requireText(label, values),
-        usage: usage
-          ? {
-              inputTokens: tokenCount(usage.input_tokens),
-              outputTokens: tokenCount(usage.output_tokens),
-            }
-          : EMPTY_USAGE,
-        grounding: null,
+        usage: {
+          inputTokens: totalTokens("input_tokens"),
+          outputTokens: totalTokens("output_tokens"),
+        },
+        grounding: request.webSearch ? citationGrounding(sources, supports) : null,
       };
     },
   };

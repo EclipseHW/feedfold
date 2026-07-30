@@ -79,4 +79,23 @@ Closing note.`);
     expect(suggestions?.querySelector(".google-search")?.textContent).toBe("Search suggestions");
     expect(suggestions?.getAttribute("aria-label")).toBe("Google Search suggestions");
   });
+
+  it("renders grounded citations without Google-specific attribution", () => {
+    const text = "The product launched in July 2026.";
+    const fragment = renderMarkdown(text, {
+      sources: [
+        {
+          uri: "https://source.example.test/release",
+          title: "Release announcement",
+        },
+      ],
+      supports: [{ startIndex: 0, endIndex: text.length, sourceIndices: [0] }],
+      searchSuggestionsHtml: null,
+    });
+
+    expect(fragment.querySelector("p a")?.getAttribute("href")).toBe(
+      "https://source.example.test/release",
+    );
+    expect(fragment.querySelector(".article-summary-search-suggestions")).toBeNull();
+  });
 });

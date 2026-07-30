@@ -2,6 +2,7 @@ import type Sqlite from "better-sqlite3";
 import {
   DEFAULT_ARTICLE_SUMMARY_PROMPT,
   DEFAULT_ARTICLE_TRANSLATION_PROMPT,
+  DEFAULT_FACTCHECK_PROMPT,
 } from "../shared/ai-prompts.js";
 import { cleanArticleHtml, removeStoredSrcsetsWithFallback } from "./article-html.js";
 import { firstSafeImageUrl } from "./article-image.js";
@@ -753,6 +754,33 @@ const migrations: Migration[] = [
       SET model = 'gemini-3.6-flash', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
       WHERE provider = 'gemini'
         AND model IN ('gemini-3.1-flash-lite', 'gemini-3.5-flash-lite');
+    `,
+  },
+  {
+    sql: `
+      UPDATE settings
+      SET custom_prompts_json = json_insert(
+        custom_prompts_json,
+        '$[#]',
+        json(${sqlString(JSON.stringify(DEFAULT_FACTCHECK_PROMPT))})
+      )
+      WHERE NOT EXISTS (
+        SELECT 1
+        FROM json_each(settings.custom_prompts_json) AS prompt
+        WHERE json_extract(prompt.value, '$.id') = ${sqlString(DEFAULT_FACTCHECK_PROMPT.id)}
+           OR replace(
+                replace(lower(trim(json_extract(prompt.value, '$.name'))), '-', ''),
+                ' ',
+                ''
+              ) = 'factcheck'
+      );
+    `,
+  },
+  {
+    sql: `
+      UPDATE ai_feature_settings
+      SET model = 'claude-haiku-4-5', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+      WHERE provider = 'anthropic' AND model = 'claude-haiku-4-5-20251001';
     `,
   },
 ];

@@ -273,7 +273,7 @@ export class AiService {
     const setting = this.validFeatureSetting(
       this.database.ai.getAiFeatureSetting(userId, "article_summary"),
     );
-    const useWebSearch = setting?.provider === "gemini" && articleSummaryNeedsWebSearch(prompt);
+    const useWebSearch = setting !== null && articleSummaryNeedsWebSearch(prompt);
     if (
       !useWebSearch &&
       !regenerate &&

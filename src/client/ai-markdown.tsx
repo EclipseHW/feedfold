@@ -135,7 +135,7 @@ export function AiMarkdown({
       >
         {normalizeAiMarkdown(markdown)}
       </Markdown>
-      {grounding ? (
+      {grounding?.searchSuggestionsHtml ? (
         <section
           className="article-summary-search-suggestions"
           aria-label="Google Search suggestions"

@@ -1,4 +1,16 @@
+import type { AiCustomPrompt } from "./types.js";
+
 export const AI_PROMPT_MAX_LENGTH = 10_000;
+
+export const DEFAULT_FACTCHECK_PROMPT = {
+  id: "61f0b5fe-7f8a-4ed7-a062-2ab5410fe9e1",
+  name: "Factcheck",
+  prompt: `Fact-check the article.
+Identify and verify up to five material factual claims using independent sources. For each claim, give a clear verdict and concise evidence with citations.
+Distinguish reported facts from the author's opinions, analysis, predictions, and hypotheses. End with a brief overall assessment.`,
+} satisfies AiCustomPrompt;
+
+export const DEFAULT_CUSTOM_PROMPTS: AiCustomPrompt[] = [DEFAULT_FACTCHECK_PROMPT];
 
 export const DEFAULT_ARTICLE_SUMMARY_PROMPT = `Summarize the article for a personal feed reader.
 Write a concise, self-contained overview in 2–3 sentences, followed by a blank line and a Markdown list of 3–5 key points.
