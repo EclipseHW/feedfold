@@ -15,6 +15,7 @@ import type {
 import {
   ARTICLE_SUMMARY_MAX_OUTPUT_TOKENS,
   ARTICLE_SUMMARY_PROMPT_VERSION,
+  articleSummarySystemPrompt,
   prepareArticleSummary,
 } from "../../ai/article-summary.js";
 import {
@@ -40,6 +41,7 @@ function promptVersion(prompt: string, defaultPrompt: string, defaultVersion: nu
 
 export interface AiServiceOptions {
   credentialCipher: CredentialCipher | null;
+  currentDate?: () => Date;
   providers?: ReadonlyMap<AiProvider, AiProviderAdapter>;
   requestTimeoutMs?: number;
 }
@@ -81,6 +83,7 @@ function publicTranslation(translation: StoredArticleAiTranslation): ArticleAiTr
 
 export class AiService {
   private readonly providers: ReadonlyMap<AiProvider, AiProviderAdapter>;
+  private readonly currentDate: () => Date;
   private readonly requestTimeoutMs: number;
   private readonly summariesInFlight = new Map<string, Promise<ArticleAiSummary | null>>();
   private readonly translationsInFlight = new Map<string, Promise<ArticleAiTranslation | null>>();
@@ -90,6 +93,7 @@ export class AiService {
     private readonly options: AiServiceOptions,
   ) {
     this.providers = options.providers ?? createAiProviders();
+    this.currentDate = options.currentDate ?? (() => new Date());
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
   }
 
@@ -271,7 +275,7 @@ export class AiService {
     }
     const prepared = prepareArticleSummary(article);
     const generated = await this.generateText(userId, "article_summary", {
-      system: prompt,
+      system: articleSummarySystemPrompt(prompt, this.currentDate()),
       input: prepared.input,
       maxOutputTokens: ARTICLE_SUMMARY_MAX_OUTPUT_TOKENS,
     });
