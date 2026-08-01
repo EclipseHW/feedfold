@@ -13,7 +13,7 @@
   align-items: center;
   gap: 8px;
   padding: 10px 16px;
-  font-size: 11px;
+  font-size: var(--type-supporting);
 }
 
 .ai-settings-warning {
@@ -25,7 +25,7 @@
 .ai-settings-warning code {
   color: inherit;
   font-size: 0.95em;
-  font-weight: 650;
+  font-weight: var(--weight-semibold);
 }
 
 .ai-settings-error {
@@ -130,14 +130,14 @@
 .ai-prompt-field > span {
   display: block;
   color: var(--text);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--type-supporting);
+  font-weight: var(--weight-semibold);
 }
 
 .ai-prompt-field p {
   margin: 2px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--type-label);
 }
 
 .ai-prompt-field textarea {
@@ -150,9 +150,9 @@
   border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--text);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.5;
+  font-family: var(--font-code);
+  font-size: var(--type-label);
+  line-height: var(--leading-ui);
 }
 
 .custom-prompts-setting {
@@ -172,7 +172,7 @@
 .custom-prompt-list strong {
   display: block;
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--type-supporting);
 }
 
 .custom-prompts-heading p,
@@ -180,7 +180,7 @@
 .custom-prompts-empty {
   margin: 2px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--type-label);
 }
 
 .custom-prompt-list {
@@ -211,7 +211,7 @@
   display: -webkit-box;
   max-width: 72ch;
   overflow: hidden;
-  line-height: 1.45;
+  line-height: var(--leading-ui);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
 }
@@ -241,14 +241,14 @@
 .custom-prompt-dialog-body label > span {
   display: block;
   color: var(--text);
-  font-size: 13px;
-  font-weight: 650;
+  font-size: var(--type-supporting);
+  font-weight: var(--weight-semibold);
 }
 
 .custom-prompt-dialog-body label > p {
   margin: 2px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--type-label);
 }
 
 .custom-prompt-dialog-body input,
@@ -269,9 +269,9 @@
 .custom-prompt-dialog-body textarea {
   min-height: 220px;
   resize: vertical;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 12px;
-  line-height: 1.5;
+  font-family: var(--font-code);
+  font-size: var(--type-label);
+  line-height: var(--leading-ui);
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -300,12 +300,12 @@
 .setting-row strong {
   display: block;
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--type-supporting);
 }
 .setting-row p {
   margin: 2px 0 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--type-label);
 }
 .setting-row > select {
   width: auto;
@@ -347,7 +347,7 @@
 .font-stepper output {
   min-width: 54px;
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--type-label);
   font-variant-numeric: tabular-nums;
   text-align: center;
 }
@@ -381,5 +381,5 @@
   align-items: center;
   gap: 6px;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--type-supporting);
 }

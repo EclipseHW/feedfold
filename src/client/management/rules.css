@@ -25,14 +25,14 @@
 .rule-form-section-heading h3 {
   margin: 0;
   color: var(--text);
-  font-size: 13px;
+  font-size: var(--type-ui-title);
 }
 
 .rule-form-section-heading p {
-  max-width: 70ch;
+  max-width: 68ch;
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--type-supporting);
 }
 
 .rule-basics-grid {
@@ -62,8 +62,8 @@
   border-radius: var(--radius-md) var(--radius-md) 0 0;
   background: var(--surface-raised);
   color: var(--muted);
-  font-size: 10px;
-  font-weight: 650;
+  font-size: var(--type-label);
+  font-weight: var(--weight-semibold);
 }
 
 .rule-condition-list {
@@ -87,8 +87,8 @@
 .rule-condition-connector {
   padding-left: 3px;
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 650;
+  font-size: var(--type-supporting);
+  font-weight: var(--weight-semibold);
 }
 
 .rule-condition-operator select,
@@ -110,8 +110,8 @@
 
 .rule-condition-comparator {
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--type-supporting);
+  font-weight: var(--weight-semibold);
   text-align: center;
 }
 
@@ -136,7 +136,7 @@
 
 .rule-condition-actions small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--type-label);
 }
 
 .rule-action-options {
@@ -193,14 +193,14 @@
 
 .rule-action-option strong {
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--type-supporting);
 }
 
 .rule-action-option small {
   margin-top: 2px;
   color: var(--muted);
-  font-size: 10px;
-  line-height: 1.4;
+  font-size: var(--type-label);
+  line-height: var(--leading-compact);
 }
 
 .rule-enabled-field {
@@ -236,8 +236,8 @@
   gap: 5px;
   padding: 3px 7px;
   border-radius: 999px;
-  font-size: 11px;
-  font-weight: 650;
+  font-size: var(--type-label);
+  font-weight: var(--weight-semibold);
 }
 
 .rules-count,
@@ -289,8 +289,8 @@
   border-radius: 999px;
   background: var(--surface-active);
   color: var(--text-secondary);
-  font-size: 10px;
-  font-weight: 650;
+  font-size: var(--type-kbd);
+  font-weight: var(--weight-semibold);
 }
 
 .rule-loading {

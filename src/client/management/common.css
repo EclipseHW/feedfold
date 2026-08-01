@@ -23,14 +23,15 @@
 
 .page-header h1 {
   margin: 0 0 2px;
-  font-size: 20px;
+  font-size: var(--type-page-title);
+  line-height: var(--leading-heading);
   letter-spacing: -0.02em;
 }
 
 .page-header p {
   margin: 0;
   color: var(--muted);
-  font-size: 13px;
+  font-size: var(--type-body);
 }
 
 .page-header-actions {
@@ -65,15 +66,16 @@
 .section-title-row h2,
 .settings-heading h2 {
   margin: 0 0 2px;
-  font-size: 16px;
-  letter-spacing: -0.01em;
+  font-size: var(--type-section-title);
+  line-height: var(--leading-heading);
+  letter-spacing: var(--tracking-heading);
 }
 
 .section-title-row p,
 .settings-heading p {
   margin: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--type-supporting);
 }
 
 .table-scroll {
@@ -94,8 +96,8 @@
   border-bottom: 1px solid var(--border);
   background: var(--surface-raised);
   color: var(--muted);
-  font-size: 11px;
-  font-weight: 650;
+  font-size: var(--type-label);
+  font-weight: var(--weight-semibold);
   white-space: nowrap;
 }
 
@@ -103,7 +105,7 @@
   padding: 11px 12px;
   border-bottom: 1px solid var(--border);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--type-supporting);
   vertical-align: middle;
 }
 
@@ -121,7 +123,7 @@
 
 .date-cell small {
   color: var(--muted);
-  font-size: 10px;
+  font-size: var(--type-label);
 }
 .numeric-cell {
   font-variant-numeric: tabular-nums;
@@ -197,7 +199,7 @@
 .section-empty h3 {
   margin: 0 0 4px;
   color: var(--text);
-  font-size: 14px;
+  font-size: var(--type-ui-title);
 }
 .section-empty p {
   max-width: 52ch;
@@ -253,12 +255,12 @@
 
 .inline-editor-heading h2 {
   margin: 0 0 3px;
-  font-size: 16px;
+  font-size: var(--type-section-title);
 }
 .inline-editor-heading p {
   margin: 0;
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--type-supporting);
 }
 
 .form-grid {
@@ -280,18 +282,18 @@
   flex-direction: column;
   gap: 5px;
   color: var(--text-secondary);
-  font-size: 12px;
-  font-weight: 600;
+  font-size: var(--type-supporting);
+  font-weight: var(--weight-semibold);
 }
 
 .field span small {
   color: var(--muted);
-  font-weight: 450;
+  font-weight: var(--weight-regular);
 }
 .field > small {
   color: var(--muted);
-  font-size: 10px;
-  font-weight: 450;
+  font-size: var(--type-label);
+  font-weight: var(--weight-regular);
 }
 
 .field input,
@@ -318,7 +320,7 @@
   gap: 9px;
   padding-top: 20px;
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--type-supporting);
 }
 
 .checkbox-field input {

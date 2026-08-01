@@ -13,11 +13,11 @@
 }
 .shortcut-reference dd {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--type-supporting);
 }
 .shortcut-groups h3 {
   margin: 0 0 7px;
-  font-size: 13px;
+  font-size: var(--type-ui-title);
 }
 .shortcut-reference.is-compact {
   margin: 0 16px 16px;
@@ -95,7 +95,8 @@
 }
 .dialog-heading h2 {
   margin: 0;
-  font-size: 17px;
+  font-size: var(--type-dialog-title);
+  line-height: var(--leading-heading);
 }
 
 .shortcut-dialog > .shortcut-reference {
@@ -111,7 +112,7 @@
   border-radius: var(--radius-sm);
   background: var(--warning-surface);
   color: var(--warning);
-  font-size: 12px;
+  font-size: var(--type-supporting);
 }
 .dialog-footer {
   display: flex;
@@ -124,5 +125,5 @@
 .dialog-footer p {
   margin: 0;
   color: var(--muted);
-  font-size: 11px;
+  font-size: var(--type-label);
 }
