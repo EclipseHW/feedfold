@@ -10,8 +10,8 @@ export function PwaUpdate() {
   if (!needRefresh) return null;
 
   return (
-    <aside className="pwa-update" aria-live="polite" aria-label="Echovale update available">
-      <span>A new version of Echovale is ready.</span>
+    <aside className="pwa-update" aria-live="polite" aria-label="echovale update available">
+      <span>A new version of echovale is ready.</span>
       <div className="pwa-update-actions">
         <button
           className="secondary-button"

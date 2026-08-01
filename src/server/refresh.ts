@@ -6,7 +6,7 @@ import { parseAndNormalizeFeed, parseAndNormalizeWordPressPosts } from "./feed-p
 import { parseAndNormalizeTelegramFeed, telegramChannelUrls } from "./telegram-feed.js";
 import { WebFeedError, type WebFeedService } from "./web-feed.js";
 
-const USER_AGENT = "Echovale/0.1 (+self-hosted feed reader)";
+const USER_AGENT = "echovale/0.1 (+self-hosted feed reader)";
 
 class FeedHttpError extends Error {
   constructor(

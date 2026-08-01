@@ -1,14 +1,14 @@
-# Echovale
+# echovale
 
-Echovale is a quiet, keyboard-first feed reader designed to be self-hosted.
+echovale is a quiet, keyboard-first feed reader designed to be self-hosted.
 
 ## Screenshots
 
 | Reader | Subscription health |
 | :---: | :---: |
-| [![Echovale magazine view populated with public demo feeds](docs/screenshots/reader-desktop.jpg)](docs/screenshots/reader-desktop.jpg) | [![Healthy YouTube, Telegram, Nitter, and RSS subscriptions in Echovale](docs/screenshots/feed-sources-desktop.jpg)](docs/screenshots/feed-sources-desktop.jpg) |
+| [![echovale magazine view populated with public demo feeds](docs/screenshots/reader-desktop.jpg)](docs/screenshots/reader-desktop.jpg) | [![Healthy YouTube, Telegram, Nitter, and RSS subscriptions in echovale](docs/screenshots/feed-sources-desktop.jpg)](docs/screenshots/feed-sources-desktop.jpg) |
 | **YouTube article** | **Nitter / X article** |
-| [![A 3Blue1Brown YouTube video open in Echovale](docs/screenshots/article-youtube.jpg)](docs/screenshots/article-youtube.jpg) | [![An Andrej Karpathy post from Nitter open in Echovale](docs/screenshots/article-nitter.jpg)](docs/screenshots/article-nitter.jpg) |
+| [![A 3Blue1Brown YouTube video open in echovale](docs/screenshots/article-youtube.jpg)](docs/screenshots/article-youtube.jpg) | [![An Andrej Karpathy post from Nitter open in echovale](docs/screenshots/article-nitter.jpg)](docs/screenshots/article-nitter.jpg) |
 
 ## Features
 
@@ -31,7 +31,7 @@ Requirements:
 
 - Docker Engine with Docker Compose v2.
 
-Build and start Echovale:
+Build and start echovale:
 
 ```sh
 docker compose up -d --build
@@ -69,7 +69,7 @@ Never add `--volumes` to that command unless the SQLite database should be perma
 
 ## Network exposure and HTTPS
 
-Echovale has password authentication, but registration remains available to anyone who can reach the sign-in screen. Compose binds the service to host loopback by default. For access from another device, place Echovale behind a trusted private network or a reverse proxy with HTTPS and its own access controls.
+echovale has password authentication, but registration remains available to anyone who can reach the sign-in screen. Compose binds the service to host loopback by default. For access from another device, place echovale behind a trusted private network or a reverse proxy with HTTPS and its own access controls.
 
 For example, a host connected to Tailscale can publish the loopback service to its tailnet:
 
@@ -91,7 +91,7 @@ Disable the proxy with:
 sudo tailscale serve --https=443 off
 ```
 
-Do not expose Echovale through Tailscale Funnel or an unrestricted public proxy unless open registration is intentional.
+Do not expose echovale through Tailscale Funnel or an unrestricted public proxy unless open registration is intentional.
 
 ## Configuration
 
@@ -100,7 +100,7 @@ Compose accepts these values from a project-level `.env` file or the shell:
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `ECHOVALE_BIND_ADDRESS` | `127.0.0.1` | Host address that publishes the container port. Keep loopback when using a local reverse proxy. |
-| `ECHOVALE_PORT` | `3000` | Host port forwarded to Echovale. |
+| `ECHOVALE_PORT` | `3000` | Host port forwarded to echovale. |
 | `POLL_INTERVAL_MINUTES` | `20` | Initial published-feed polling interval for a new database. |
 | `FEED_FETCH_TIMEOUT_MS` | `15000` | Feed request timeout in milliseconds. |
 | `WEB_FEED_LOAD_TIMEOUT_MS` | `30000` | Maximum normal page-load time for JavaScript-rendered web feeds, in milliseconds. |
@@ -120,11 +120,11 @@ Background polling runs in the server and continues when no browser is open. Pub
 
 ## Web feeds
 
-Add a website through the existing **Add feed** flow. Echovale still looks for a published RSS, Atom, or JSON feed first. When none is available, choose **Create web feed** to load the page, inspect suggested groups of repeated items, select the right group on the page or from the suggestions, and review the resulting entries before saving.
+Add a website through the existing **Add feed** flow. echovale still looks for a published RSS, Atom, or JSON feed first. When none is available, choose **Create web feed** to load the page, inspect suggested groups of repeated items, select the right group on the page or from the suggestions, and review the resulting entries before saving.
 
 Web feeds reload the configured page in Chromium during scheduled and manual refreshes. Existing links are updated in place, new links are added once, and items that disappear remain in history. A missing publication date uses the time the item was first discovered. If a saved selection stops matching after the website changes, the feed keeps its history and shows a direct **Repair selection** action.
 
-Web feeds cover repeated items visible after a normal load of one publicly accessible page. Echovale does not sign in to websites, bypass paywalls, CAPTCHAs, or bot protection, crawl pagination or an entire site, monitor arbitrary text or prices, or compare screenshots. Temporary loading failures and JavaScript timeouts are reported separately from a page whose saved selection needs repair. Some websites cannot be converted and are rejected before a feed is created.
+Web feeds cover repeated items visible after a normal load of one publicly accessible page. echovale does not sign in to websites, bypass paywalls, CAPTCHAs, or bot protection, crawl pagination or an entire site, monitor arbitrary text or prices, or compare screenshots. Temporary loading failures and JavaScript timeouts are reported separately from a page whose saved selection needs repair. Some websites cannot be converted and are rejected before a feed is created.
 
 The Compose deployment runs Chromium as the non-root application user with its Linux sandbox enabled. It uses the version-pinned [Playwright seccomp profile](https://github.com/microsoft/playwright/blob/v1.62.0/utils/docker/seccomp_profile.json) and restores only the `SYS_CHROOT` capability required by that sandbox.
 

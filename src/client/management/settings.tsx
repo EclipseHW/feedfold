@@ -950,7 +950,7 @@ export function SettingsPage({
           <label htmlFor="poll-interval">
             <strong>Published feed interval</strong>
             <p>
-              How often Echovale checks RSS, Atom, and JSON feeds. Web feeds refresh every 3 hours.
+              How often echovale checks RSS, Atom, and JSON feeds. Web feeds refresh every 3 hours.
             </p>
           </label>
           <select
