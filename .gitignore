@@ -10,5 +10,6 @@ backups/
 .env
 .agents/
 !.codex/
+.codex/runtime/
 .impeccable/
 AGENTS*.md
