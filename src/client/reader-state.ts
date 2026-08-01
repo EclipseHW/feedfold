@@ -63,6 +63,16 @@ export function fullContentIdsAfterReload(
   );
 }
 
+export function shouldAutoMarkRoutedArticleRead(
+  article: Article,
+  routedArticleId: number | null,
+  manuallyUnreadArticleIds: ReadonlySet<number>,
+): boolean {
+  return (
+    article.id === routedArticleId && !article.isRead && !manuallyUnreadArticleIds.has(article.id)
+  );
+}
+
 export function filterRuleName(text: string): string {
   const label =
     text.length > FILTER_RULE_NAME_TEXT_LIMIT
