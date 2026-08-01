@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "concurrently -k -n server,client -c green,cyan \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:server": "PORT=43001 tsx watch --env-file-if-exists=.env src/server/index.ts",
+    "dev:server": "PORT=${PORT:-43001} tsx watch --env-file-if-exists=.env src/server/index.ts",
     "dev:client": "node scripts/wait-for-server.mjs && vite",
     "build": "npm run build:client && npm run build:server",
     "build:client": "vite build",

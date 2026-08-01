@@ -3,7 +3,10 @@ version = 1
 name = "Echovale"
 
 [setup]
-script = "npm ci"
+script = '''
+npm ci
+node .codex/scripts/dev-server.mjs start --open
+'''
 
 [setup.darwin]
 script = '''
@@ -18,19 +21,18 @@ fi
 if [ -x ./node_modules/.bin/playwright ]; then
   ./node_modules/.bin/playwright install chromium
 fi
+node .codex/scripts/dev-server.mjs start --open
 '''
 
+[cleanup]
+script = "node .codex/scripts/dev-server.mjs stop"
+
 [[actions]]
-name = "Dev"
+name = "Restart dev server"
 icon = "run"
-platform = "darwin"
-command = '''
-COMMON_GIT_DIR="$(git rev-parse --path-format=absolute --git-common-dir)"
-SHARED_ROOT="$(dirname "$COMMON_GIT_DIR")"
-set -a
-if [ -f "$SHARED_ROOT/.env" ]; then
-  . "$SHARED_ROOT/.env"
-fi
-set +a
-DATABASE_PATH="$COMMON_GIT_DIR/codex/echovale.db" npm run dev
-'''
+command = "node .codex/scripts/dev-server.mjs restart --open"
+
+[[actions]]
+name = "Check"
+icon = "test"
+command = "npm run check"

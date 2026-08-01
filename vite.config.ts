@@ -2,6 +2,9 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
+const apiOrigin = process.env.ECHOVALE_DEV_API_ORIGIN ?? "http://127.0.0.1:43001";
+const devPort = Number(process.env.ECHOVALE_DEV_PORT ?? 45173);
+
 export default defineConfig({
   base: "/echovale/",
   plugins: [
@@ -68,15 +71,15 @@ export default defineConfig({
   },
   server: {
     host: "0.0.0.0",
-    port: 45173,
+    port: devPort,
     strictPort: true,
     proxy: {
       "/echovale/api": {
-        target: "http://127.0.0.1:43001",
+        target: apiOrigin,
         rewrite: (path) => path.replace(/^\/echovale/, ""),
       },
       "/echovale/health": {
-        target: "http://127.0.0.1:43001",
+        target: apiOrigin,
         rewrite: (path) => path.replace(/^\/echovale/, ""),
       },
     },
