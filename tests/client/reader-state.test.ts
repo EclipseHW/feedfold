@@ -8,6 +8,7 @@ import {
   readerRouteForSelection,
   readerScopeLabel,
   refreshFeedIds,
+  shouldAutoMarkRoutedArticleRead,
   updateBootstrapCounts,
 } from "../../src/client/reader-state.js";
 import type { Article, BootstrapData, Feed, Folder } from "../../src/shared/types.js";
@@ -162,6 +163,14 @@ describe("reader state", () => {
     expect(fullContentIdsAfterReload("magazine", articles, null)).toEqual(new Set());
     expect(fullContentIdsAfterReload("magazine", articles, 2)).toEqual(new Set([2]));
     expect(fullContentIdsAfterReload("expanded", articles, null)).toEqual(new Set([1, 2]));
+  });
+
+  it("keeps an open article unread after the reader explicitly marks it unread", () => {
+    expect(shouldAutoMarkRoutedArticleRead(article, article.id, new Set())).toBe(true);
+    expect(shouldAutoMarkRoutedArticleRead(article, article.id, new Set([article.id]))).toBe(false);
+    expect(
+      shouldAutoMarkRoutedArticleRead({ ...article, isRead: true }, article.id, new Set()),
+    ).toBe(false);
   });
 
   it("updates only the affected counters and never makes a count negative", () => {

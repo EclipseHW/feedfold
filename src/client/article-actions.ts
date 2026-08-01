@@ -28,6 +28,7 @@ import {
 import {
   articleSettingsInvalidation,
   invalidateArticleSummaries,
+  shouldAutoMarkRoutedArticleRead,
   updateBootstrapCounts,
 } from "./reader-state";
 
@@ -201,7 +202,13 @@ export function useArticleActions({
 
   useEffect(() => {
     if (route.routedArticleId !== null && queue.activeArticle?.id === route.routedArticleId) {
-      if (!queue.activeArticle.isRead) {
+      if (
+        shouldAutoMarkRoutedArticleRead(
+          queue.activeArticle,
+          route.routedArticleId,
+          manuallyUnreadArticleIds.current,
+        )
+      ) {
         void changeArticleState(queue.activeArticle, { isRead: true });
       }
       void loadFullArticle(queue.activeArticle);
