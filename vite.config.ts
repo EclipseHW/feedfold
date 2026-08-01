@@ -13,8 +13,8 @@ export default defineConfig({
       registerType: "prompt",
       manifest: {
         id: "/echovale/",
-        name: "Echovale",
-        short_name: "Echovale",
+        name: "echovale",
+        short_name: "echovale",
         description: "A quiet, keyboard-first, self-hosted feed reader.",
         start_url: "/echovale/",
         scope: "/echovale/",

@@ -60,6 +60,7 @@ import {
   articleSwipeIntent,
   articleSwipeOffset,
 } from "./article-swipe";
+import { BrandLogo } from "./brand";
 import {
   FeedActionMenuItems,
   type FeedManagementAction,
@@ -434,7 +435,7 @@ export function AppSkeleton() {
       className="app-shell app-loading"
       role="status"
       aria-busy="true"
-      aria-label="Loading Echovale"
+      aria-label="Loading echovale"
     >
       <aside className="sidebar skeleton-sidebar">
         <div className="skeleton-line wide" />
@@ -456,10 +457,8 @@ export function AppSkeleton() {
 export function StartupError({ message, retry }: { message: string; retry: () => void }) {
   return (
     <main className="startup-state">
-      <div className="startup-mark" aria-hidden="true">
-        <Rss size={24} />
-      </div>
-      <h1>Echovale is not reachable</h1>
+      <BrandLogo className="startup-logo" />
+      <h1>echovale is not reachable</h1>
       <p>{message}</p>
       <button className="primary-button" type="button" onClick={retry}>
         <RefreshCw aria-hidden="true" size={16} />

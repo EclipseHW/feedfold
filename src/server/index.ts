@@ -80,7 +80,7 @@ let shuttingDown = false;
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
-  app.log.info({ signal }, "Stopping Echovale");
+  app.log.info({ signal }, "Stopping echovale");
   try {
     await app.close();
     await Promise.all([refreshService.stop(), extractionQueue.stop()]);

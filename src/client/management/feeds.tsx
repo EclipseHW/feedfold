@@ -706,7 +706,7 @@ function AddFeedForm({
               No published feed found
             </h3>
             <p>
-              Echovale can look for repeated articles, releases, jobs, products, or announcements on
+              echovale can look for repeated articles, releases, jobs, products, or announcements on
               this public page and turn them into a normal feed.
             </p>
             <small>
@@ -909,7 +909,7 @@ function AddFeedForm({
 
           {selectedCandidate && !selectedCandidate.availableFields.includes("date") ? (
             <p className="web-feed-date-fallback">
-              No publication date was found. New entries will use the time Echovale first discovers
+              No publication date was found. New entries will use the time echovale first discovers
               them.
             </p>
           ) : null}

@@ -421,7 +421,7 @@ function browserFailure(error: unknown): WebFeedError {
   const message = error instanceof Error ? error.message : "Unknown browser error";
   if (/executable doesn't exist|browser.*not found|failed to launch/i.test(message)) {
     return new WebFeedError(
-      "JavaScript webpage loading is not available on this Echovale installation.",
+      "JavaScript webpage loading is not available on this echovale installation.",
       "unsupported_content",
       null,
       { cause: error },
@@ -722,7 +722,7 @@ export class WebFeedBrowserLoader {
         );
       if (await detectedChallenge(page)) {
         throw new WebFeedError(
-          "This webpage requires a CAPTCHA or bot-protection check that Echovale cannot bypass.",
+          "This webpage requires a CAPTCHA or bot-protection check that echovale cannot bypass.",
           "access_blocked",
           status,
         );
@@ -747,7 +747,7 @@ export class WebFeedBrowserLoader {
       const bodyText = await page.evaluate(() => document.body?.innerText ?? "");
       if (challengeDetected(title, bodyText.slice(0, 50_000))) {
         throw new WebFeedError(
-          "This webpage requires a CAPTCHA or bot-protection check that Echovale cannot bypass.",
+          "This webpage requires a CAPTCHA or bot-protection check that echovale cannot bypass.",
           "access_blocked",
           status,
         );
@@ -784,7 +784,7 @@ export class WebFeedBrowserLoader {
       if (!singleLine(bodyText)) {
         if (!domContentLoaded) {
           throw new WebFeedError(
-            "This webpage did not finish loading before Echovale could read its content.",
+            "This webpage did not finish loading before echovale could read its content.",
             "javascript_timeout",
             status,
           );

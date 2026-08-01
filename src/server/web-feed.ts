@@ -79,13 +79,13 @@ export class WebFeedService {
         if (loadingError) throw loadingError;
         if (!loaded.domContentLoaded) {
           throw new WebFeedError(
-            "This webpage did not finish loading before Echovale could find its items.",
+            "This webpage did not finish loading before echovale could find its items.",
             "javascript_timeout",
             loaded.httpStatus,
           );
         }
         throw new WebFeedError(
-          "Echovale could not find a repeated group of linked items on this webpage.",
+          "echovale could not find a repeated group of linked items on this webpage.",
           "unsupported_content",
           loaded.httpStatus,
         );
@@ -134,7 +134,7 @@ export class WebFeedService {
         if (loadingError) throw loadingError;
         if (!loaded.domContentLoaded) {
           throw new WebFeedError(
-            "This webpage did not finish loading before Echovale could apply the saved selection.",
+            "This webpage did not finish loading before echovale could apply the saved selection.",
             "javascript_timeout",
             loaded.httpStatus,
           );

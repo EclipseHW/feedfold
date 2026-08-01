@@ -46,6 +46,7 @@ import type {
   SessionUser,
 } from "../shared/types";
 import { MARK_READ_AGE_DAYS } from "../shared/types";
+import { BrandIdentity } from "./brand";
 import {
   FeedActionMenuItems,
   type FeedManagementAction,
@@ -198,10 +199,7 @@ export function Sidebar({
     <aside className={`sidebar${open ? " is-open" : ""}`} aria-label="Primary navigation">
       <div className="brand-row">
         <button className="brand" type="button" onClick={() => onSelectScope(null, null)}>
-          <span className="brand-mark" aria-hidden="true">
-            <Rss size={17} />
-          </span>
-          <span>Echovale</span>
+          <BrandIdentity />
         </button>
         <IconButton label="Close navigation" onClick={onClose} className="close-nav">
           <X aria-hidden="true" size={18} />

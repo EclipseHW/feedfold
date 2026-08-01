@@ -1,16 +1,14 @@
-import { LoaderCircle, LogIn, Rss, UserPlus } from "lucide-react";
+import { LoaderCircle, LogIn, UserPlus } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import type { SessionUser } from "../shared/types";
 import { api, errorMessage } from "./api";
+import { BrandIdentity } from "./brand";
 
 export function SessionLoading() {
   return (
     <main className="auth-page" aria-busy="true">
-      <div className="session-loading" role="status">
-        <span className="brand-mark" aria-hidden="true">
-          <Rss size={17} />
-        </span>
-        <span>Opening Echovale</span>
+      <div className="session-loading" role="status" aria-label="Opening echovale">
+        <BrandIdentity decorative />
       </div>
     </main>
   );
@@ -54,12 +52,7 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: Session
   return (
     <main className="auth-page">
       <section className="login-panel" aria-labelledby="auth-heading">
-        <div className="login-brand">
-          <span className="brand-mark" aria-hidden="true">
-            <Rss size={17} />
-          </span>
-          <span>Echovale</span>
-        </div>
+        <BrandIdentity className="login-brand" />
         <div className="login-heading">
           <h1 id="auth-heading">{actionLabel}</h1>
           <p>
@@ -110,7 +103,7 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: Session
           </button>
         </form>
         <div className="auth-switch">
-          <span>{registering ? "Already have an account?" : "New to Echovale?"}</span>
+          <span>{registering ? "Already have an account?" : "New to echovale?"}</span>
           <button type="button" onClick={switchMode} disabled={submitting}>
             {registering ? "Sign in" : "Create an account"}
           </button>
