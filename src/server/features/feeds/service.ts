@@ -53,12 +53,12 @@ export class FeedService {
   ): Feed {
     this.folders.assertFolderExists(userId, input.folderId);
     if (input.parsed.articles.length === 0) {
-      throw new Error("The web feed selection did not match any items");
+      throw new Error("This selection does not match any entries. Choose another entry group.");
     }
     const pageUrl = new URL(input.pageUrl).toString();
     const config = { ...input.config, pageUrl: new URL(input.config.pageUrl).toString() };
     if (config.pageUrl !== pageUrl) {
-      throw new Error("The web feed selection belongs to a different page");
+      throw new Error("This selection belongs to another page. Reload the page and choose again.");
     }
 
     return this.sqlite.transaction(() => {
@@ -87,9 +87,11 @@ export class FeedService {
   ): Feed | null {
     const existing = this.repository.getFeed(userId, id);
     if (!existing) return null;
-    if (existing.sourceKind !== "web") throw new Error("Only web feeds have page selections");
+    if (existing.sourceKind !== "web") {
+      throw new Error("Choose a web feed before editing a page selection.");
+    }
     if (parsed.articles.length === 0) {
-      throw new Error("The web feed selection did not match any items");
+      throw new Error("This selection does not match any entries. Choose another entry group.");
     }
     const config = { ...configInput, pageUrl: new URL(configInput.pageUrl).toString() };
 

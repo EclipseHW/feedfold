@@ -14,7 +14,7 @@ describe("production app hosting", () => {
     const staticDirectory = join(directory, "client");
     await mkdir(join(staticDirectory, "assets"), { recursive: true });
     await Promise.all([
-      writeFile(join(staticDirectory, "index.html"), "<main>Echovale shell</main>"),
+      writeFile(join(staticDirectory, "index.html"), "<main>echovale shell</main>"),
       writeFile(join(staticDirectory, "assets", "app.css"), "body { color: green; }"),
     ]);
 
@@ -33,7 +33,7 @@ describe("production app hosting", () => {
     try {
       const navigation = await app.inject({ method: "GET", url: "/echovale/feeds/all" });
       expect(navigation.statusCode).toBe(200);
-      expect(navigation.body).toBe("<main>Echovale shell</main>");
+      expect(navigation.body).toBe("<main>echovale shell</main>");
 
       const asset = await app.inject({ method: "GET", url: "/echovale/assets/app.css" });
       expect(asset.statusCode).toBe(200);
@@ -42,7 +42,7 @@ describe("production app hosting", () => {
 
       const api = await app.inject({ method: "GET", url: "/echovale/api/auth/session" });
       expect(api.statusCode).toBe(401);
-      expect(api.json()).toEqual({ error: "Sign in required" });
+      expect(api.json()).toEqual({ error: "Sign in to continue." });
     } finally {
       await app.close();
       await Promise.all([refresh.stop(), extraction.stop()]);

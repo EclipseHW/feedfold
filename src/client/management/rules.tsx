@@ -42,18 +42,17 @@ const RULE_ACTION_COPY: Record<
   hide: {
     label: "Hide matching articles",
     shortLabel: "Hide matches",
-    description: "Matching articles are hidden from article lists.",
+    description: "Hide matching articles from every article list in this scope.",
   },
   keep: {
     label: "Keep only matching articles",
     shortLabel: "Keep only",
-    description:
-      "Articles stay visible when they match this or another enabled keep rule that applies here.",
+    description: "Show only articles that match this or another enabled keep rule in this scope.",
   },
   mark_read: {
     label: "Mark matching articles as read",
-    shortLabel: "Mark read",
-    description: "Matching articles stay available without appearing as unread.",
+    shortLabel: "Mark as read",
+    description: "Keep matching articles available, but remove them from unread views.",
   },
 };
 
@@ -122,7 +121,7 @@ export function RulesPage({
     <div className="management-page">
       <PageHeader
         title="Rules"
-        description="Keep the articles you want, hide predictable noise, or mark matches read."
+        description="Filter articles by their text or media type, then choose what happens to matches."
         onMenu={onMenu}
         actions={
           <button
@@ -187,8 +186,8 @@ export function RulesPage({
       <section className="management-section rules-section" aria-labelledby="active-rules-heading">
         <div className="section-title-row">
           <div>
-            <h2 id="active-rules-heading">Your rules</h2>
-            <p>Rules apply to existing articles immediately and new articles during refresh.</p>
+            <h2 id="active-rules-heading">Saved rules</h2>
+            <p>Enabled rules check saved articles now and new articles during each refresh.</p>
           </div>
           <span className="rules-count">{rules.filter((rule) => rule.enabled).length} active</span>
         </div>
@@ -211,7 +210,7 @@ export function RulesPage({
           <div className="section-empty">
             <ListFilter aria-hidden="true" size={22} />
             <h3>No rules yet</h3>
-            <p>Create a rule to keep, hide, or mark articles read.</p>
+            <p>Create a rule to keep wanted articles, hide noise, or mark matches as read.</p>
             <button
               className="secondary-button"
               type="button"
@@ -365,7 +364,7 @@ export function RuleForm({
         : await mutations.createRule(input);
       await onSaved(rule);
     } catch (error) {
-      showToast(`Could not save rule: ${errorMessage(error)}`);
+      showToast(`Could not save the rule: ${errorMessage(error)}`);
     } finally {
       setSaving(false);
     }
@@ -381,7 +380,9 @@ export function RuleForm({
       <div className="inline-editor-heading">
         <div>
           <h2>{initial ? "Edit rule" : preset?.pattern ? "Filter selected text" : "Add rule"}</h2>
-          <p>Saving checks existing articles now and new articles during future refreshes.</p>
+          <p>
+            The rule checks saved articles when you save it, then checks new articles at refresh.
+          </p>
         </div>
         <button
           className="icon-button"
@@ -395,7 +396,7 @@ export function RuleForm({
       <div className="rule-form-sections">
         <section className="rule-form-section" aria-labelledby="rule-basics-heading">
           <div className="rule-form-section-heading">
-            <h3 id="rule-basics-heading">Basics</h3>
+            <h3 id="rule-basics-heading">Name and scope</h3>
           </div>
           <div className="form-grid rule-basics-grid">
             <label className="field">
@@ -442,10 +443,10 @@ export function RuleForm({
           <fieldset className="rule-condition-group" aria-describedby="rule-conditions-description">
             <legend className="sr-only">Article matching conditions</legend>
             <div className="rule-condition-columns" aria-hidden="true">
-              <span>Logic</span>
-              <span>Look in</span>
-              <span>Match</span>
-              <span>Value</span>
+              <span>Combine</span>
+              <span>Field</span>
+              <span>Test</span>
+              <span>Text</span>
               <span />
             </div>
             <ol className="rule-condition-list">
@@ -558,7 +559,10 @@ export function RuleForm({
               Add condition
             </button>
             {conditions.some((condition) => condition.field === "media") ? (
-              <small>Media type accepts short, video, article, or youtube.</small>
+              <small>
+                For media type, use <code>short</code>, <code>video</code>, <code>article</code>, or{" "}
+                <code>youtube</code>.
+              </small>
             ) : null}
           </div>
         </section>
@@ -566,7 +570,7 @@ export function RuleForm({
         <section className="rule-form-section" aria-labelledby="rule-action-heading">
           <div className="rule-form-section-heading">
             <h3 id="rule-action-heading">Action</h3>
-            <p>Choose what happens after the conditions match.</p>
+            <p>Choose what echovale does when an article matches.</p>
           </div>
           <fieldset className="rule-action-options">
             <legend className="sr-only">Rule action</legend>
@@ -600,7 +604,7 @@ export function RuleForm({
             />
             <span>
               <strong>Enable rule</strong>
-              <small>Disabled rules stay saved but do not run.</small>
+              <small>Turn this off to save the rule without applying it.</small>
             </span>
           </label>
         </section>
@@ -659,19 +663,19 @@ function RuleRow({
       await mutations.updateRule(rule.id, { enabled: !rule.enabled });
       showToast(rule.enabled ? `Disabled ${rule.name}` : `Enabled ${rule.name}`);
     } catch (error) {
-      showToast(`Could not update rule: ${errorMessage(error)}`);
+      showToast(`Could not update ${rule.name}: ${errorMessage(error)}`);
     } finally {
       setBusy(false);
     }
   };
   const remove = async () => {
-    if (!window.confirm(`Delete rule “${rule.name}”?`)) return;
+    if (!window.confirm(`Delete rule “${rule.name}”? This cannot be undone.`)) return;
     setBusy(true);
     try {
       await mutations.deleteRule(rule.id);
       showToast(`Deleted ${rule.name}`);
     } catch (error) {
-      showToast(`Could not delete rule: ${errorMessage(error)}`);
+      showToast(`Could not delete ${rule.name}: ${errorMessage(error)}`);
     } finally {
       setBusy(false);
     }

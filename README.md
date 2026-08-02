@@ -1,114 +1,124 @@
 # echovale
 
-echovale is a quiet, keyboard-first feed reader designed to be self-hosted.
+echovale is a quiet, keyboard-first feed reader that you host yourself. It follows published feeds and public webpages, filters noise with rules, and keeps subscriptions, reading state, credentials, and application data under your control.
 
-## Screenshots
+## See echovale
 
-| Reader | Subscription health |
+| Reader | Feed health |
 | :---: | :---: |
-| [![echovale magazine view populated with public demo feeds](docs/screenshots/reader-desktop.jpg)](docs/screenshots/reader-desktop.jpg) | [![Healthy YouTube, Telegram, Nitter, and RSS subscriptions in echovale](docs/screenshots/feed-sources-desktop.jpg)](docs/screenshots/feed-sources-desktop.jpg) |
+| [![echovale magazine view populated with public demo feeds](docs/screenshots/reader-desktop.jpg)](docs/screenshots/reader-desktop.jpg) | [![Healthy YouTube, Telegram, Nitter, and RSS feeds in echovale](docs/screenshots/feed-sources-desktop.jpg)](docs/screenshots/feed-sources-desktop.jpg) |
 | **YouTube article** | **Nitter / X article** |
 | [![A 3Blue1Brown YouTube video open in echovale](docs/screenshots/article-youtube.jpg)](docs/screenshots/article-youtube.jpg) | [![An Andrej Karpathy post from Nitter open in echovale](docs/screenshots/article-nitter.jpg)](docs/screenshots/article-nitter.jpg) |
 
-## Features
+## What echovale does
 
-- Keyboard navigation for the complete reading loop.
-- Follow public webpages that have no RSS, Atom, or JSON feed, including content rendered by JavaScript.
-- Rules that keep wanted articles, hide noise, or mark matches as read.
-- Full-text extraction with feed content as a visible fallback.
-- One-click AI article summaries and translations through Google Gemini, OpenAI, or Anthropic.
-- Per-feed last attempt, last success, HTTP status, and error details.
-- Repair a web feed's page selection when the website changes, without losing collected articles or their state.
-- Installable Progressive Web App with standalone windows, home-screen shortcuts, and an offline app shell.
-- Import and export OPML, including feed folders.
-- Choose newest-first or oldest-first reading order for each folder or feed. Configured sorting per folder or feed persists in the aggregated view without affecting other feeds.
+- Supports the complete reading workflow from the keyboard.
+- Follows RSS, Atom, JSON Feed, and public webpages with repeated entries, including pages rendered by JavaScript.
+- Keeps wanted articles, hides noise, or marks matches as read with rules.
+- Extracts full article text while keeping feed text available as a fallback.
+- Generates article summaries and translations through Google Gemini, OpenAI, or Anthropic.
+- Reports each feed's last attempt, last success, HTTP status, and current error.
+- Repairs a web feed after its page changes without losing saved articles or reading state.
+- Installs as a Progressive Web App with a standalone window, home-screen shortcuts, and an offline application shell.
+- Imports and exports OPML with feed folders.
+- Sorts each feed or folder from newest to oldest or oldest to newest. The aggregate view preserves each feed's configured order.
 
-## Deploy with Docker Compose
+## Start echovale with Docker Compose
 
-The included deployment runs one Node.js 24.18.0 process, a sandboxed headless Chromium process when a web feed loads, and stores SQLite data in a named volume. Do not scale the service to multiple replicas: polling and SQLite ownership are intentionally kept in one process.
+The included Compose deployment runs one Node.js 24.18.0 process, starts sandboxed headless Chromium when a web feed loads, and stores SQLite data in a named volume.
 
-Requirements:
+You need Docker Engine with Docker Compose v2.
 
-- Docker Engine with Docker Compose v2.
+1. Build and start echovale:
 
-Build and start echovale:
+   ```sh
+   docker compose up -d --build
+   ```
 
-```sh
-docker compose up -d --build
-```
+2. Open `http://127.0.0.1:3000/echovale/`.
 
-Open `http://127.0.0.1:3000/echovale/` and choose **Create an account**. Registration signs the new account in immediately, and passwords are hashed before they are stored in SQLite. To add another account, sign out and register again.
+3. Choose **Create an account**. Registration signs in the new account immediately. echovale hashes passwords before storing them in SQLite.
 
-When an existing single-account database is upgraded, its feeds, folders, rules, settings, and article state belong to the first account registered after the upgrade. Later accounts start with an empty reading queue.
+4. Check that the container is ready:
 
-Check container and database readiness:
+   ```sh
+   docker compose ps
+   ```
 
-```sh
-docker compose ps
-```
+5. Check that the server can query SQLite:
 
-```sh
-curl --fail http://127.0.0.1:3000/health
-```
+   ```sh
+   curl --fail http://127.0.0.1:3000/health
+   ```
 
-The health endpoint returns HTTP 200 only when the server can query SQLite. Application data is stored in the `echovale-data` volume at `/data/echovale.db`.
+The health endpoint returns HTTP 200 when the SQLite query succeeds. Application data is stored in the `echovale-data` volume at `/data/echovale.db`.
 
-Follow logs:
+To follow the server logs:
 
 ```sh
 docker compose logs -f --tail=200 echovale
 ```
 
-Stop the application without deleting its data:
+To stop echovale without deleting its data:
 
 ```sh
 docker compose down
 ```
 
-Never add `--volumes` to that command unless the SQLite database should be permanently deleted.
+Adding `--volumes` to this command permanently deletes the SQLite database.
 
-## Network exposure and HTTPS
+Do not scale echovale to multiple application replicas. Background polling and SQLite ownership are designed for one process.
 
-echovale has password authentication, but registration remains available to anyone who can reach the sign-in screen. Compose binds the service to host loopback by default. For access from another device, place echovale behind a trusted private network or a reverse proxy with HTTPS and its own access controls.
+### Add another account
 
-For example, a host connected to Tailscale can publish the loopback service to its tailnet:
+Sign out, choose **Create an account**, and register the next user. Accounts are isolated from each other.
+
+When you upgrade an existing single-account database, the first account registered after the upgrade receives its feeds, folders, rules, settings, and article state. Later accounts begin with an empty reading queue.
+
+## Keep access private
+
+echovale uses password authentication, but anyone who can reach the sign-in screen can register. Compose therefore publishes the service on host loopback by default.
+
+For access from another device, use a trusted private network or an HTTPS reverse proxy with its own access controls. Do not publish echovale through Tailscale Funnel or an unrestricted public proxy unless you intend to allow open registration.
+
+### Publish echovale to a Tailscale network
+
+On a host connected to Tailscale, publish the loopback service to its tailnet:
 
 ```sh
 sudo tailscale serve --bg --https=443 http://127.0.0.1:3000
 ```
 
-The command prints the private `https://<device>.<tailnet>.ts.net` address. Inspect the active configuration with:
+The command prints the private `https://<device>.<tailnet>.ts.net` address. HTTPS also enables browser features such as copy to clipboard. Tailscale Serve provisions the certificate and keeps a `--bg` configuration across restarts. See the [Tailscale Serve command reference](https://tailscale.com/docs/reference/tailscale-cli/serve).
+
+To inspect the active configuration:
 
 ```sh
 tailscale serve status
 ```
 
-HTTPS is important because browsers only allow features such as copy-to-clipboard in a secure context. Tailscale Serve terminates HTTPS with an automatically provisioned certificate and persists a `--bg` configuration across restarts. See the official [Tailscale Serve command documentation](https://tailscale.com/docs/reference/tailscale-cli/serve).
-
-Disable the proxy with:
+To stop publishing the service:
 
 ```sh
 sudo tailscale serve --https=443 off
 ```
 
-Do not expose echovale through Tailscale Funnel or an unrestricted public proxy unless open registration is intentional.
+## Configuration reference
 
-## Configuration
-
-Compose accepts these values from a project-level `.env` file or the shell:
+Compose reads these values from the shell or a project-level `.env` file:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ECHOVALE_BIND_ADDRESS` | `127.0.0.1` | Host address that publishes the container port. Keep loopback when using a local reverse proxy. |
+| `ECHOVALE_BIND_ADDRESS` | `127.0.0.1` | Host address that publishes the container port. Keep loopback when a local reverse proxy provides access. |
 | `ECHOVALE_PORT` | `3000` | Host port forwarded to echovale. |
-| `POLL_INTERVAL_MINUTES` | `20` | Initial published-feed polling interval for a new database. |
-| `FEED_FETCH_TIMEOUT_MS` | `15000` | Feed request timeout in milliseconds. |
-| `WEB_FEED_LOAD_TIMEOUT_MS` | `30000` | Maximum normal page-load time for JavaScript-rendered web feeds, in milliseconds. |
-| `ARTICLE_FETCH_TIMEOUT_MS` | `20000` | Full-text article request timeout in milliseconds. |
-| `AI_CREDENTIALS_KEY` | none | A persistent 64-character hexadecimal key used to encrypt provider API keys. AI setup is disabled until this is set. |
-| `AI_REQUEST_TIMEOUT_MS` | `60000` | AI provider request timeout in milliseconds. |
+| `POLL_INTERVAL_MINUTES` | `20` | Initial polling interval for published feeds in a new database. |
+| `FEED_FETCH_TIMEOUT_MS` | `15000` | Feed request timeout, in milliseconds. |
+| `WEB_FEED_LOAD_TIMEOUT_MS` | `30000` | Maximum normal load time for a JavaScript-rendered web feed, in milliseconds. |
+| `ARTICLE_FETCH_TIMEOUT_MS` | `20000` | Full-article request timeout, in milliseconds. |
+| `AI_CREDENTIALS_KEY` | none | Persistent 64-character hexadecimal key used to encrypt provider API keys. AI key storage remains unavailable until this is set. |
+| `AI_REQUEST_TIMEOUT_MS` | `60000` | AI provider request timeout, in milliseconds. |
 
-The container fixes its internal runtime settings to `HOST=0.0.0.0`, `PORT=3000`, and `DATABASE_PATH=/data/echovale.db`. For a non-container run, all server settings are listed in `.env.example`.
+The container fixes its internal runtime settings to `HOST=0.0.0.0`, `PORT=3000`, and `DATABASE_PATH=/data/echovale.db`. For a non-container deployment, `.env.example` lists every server setting.
 
 After changing container configuration, recreate the service:
 
@@ -116,34 +126,64 @@ After changing container configuration, recreate the service:
 docker compose up -d
 ```
 
-Background polling runs in the server and continues when no browser is open. Published feeds use the initial interval from `POLL_INTERVAL_MINUTES`; later changes made in **Settings** are stored in SQLite and survive restarts. Web feeds refresh every three hours. Manual refresh remains available from the interface. Feed health shows the last attempt separately from the last successful update, so a stale or failing source is distinguishable from a healthy feed with no new articles.
+The server continues background polling when no browser is open. Published feeds use the interval from `POLL_INTERVAL_MINUTES` until you change it in **Settings**. Changes made in **Settings** are stored in SQLite and survive restarts. Web feeds refresh every three hours and can also be refreshed manually.
 
-## Web feeds
+## Add a web feed
 
-Add a website through the existing **Add feed** flow. echovale still looks for a published RSS, Atom, or JSON feed first. When none is available, choose **Create web feed** to load the page, inspect suggested groups of repeated items, select the right group on the page or from the suggestions, and review the resulting entries before saving.
+Use a web feed when a public page has repeated entries but no published RSS, Atom, or JSON Feed.
 
-Web feeds reload the configured page in Chromium during scheduled and manual refreshes. Existing links are updated in place, new links are added once, and items that disappear remain in history. A missing publication date uses the time the item was first discovered. If a saved selection stops matching after the website changes, the feed keeps its history and shows a direct **Repair selection** action.
+1. In **Manage feeds**, choose **Add feed**.
+2. Enter any page on the website and choose **Check URL**. echovale looks for a published feed first.
+3. If no published feed exists, choose **Create web feed**.
+4. Choose a suggested entry group, or select one representative entry in the page preview.
+5. Review the feed preview and choose **Add web feed**.
 
-Web feeds cover repeated items visible after a normal load of one publicly accessible page. echovale does not sign in to websites, bypass paywalls, CAPTCHAs, or bot protection, crawl pagination or an entire site, monitor arbitrary text or prices, or compare screenshots. Temporary loading failures and JavaScript timeouts are reported separately from a page whose saved selection needs repair. Some websites cannot be converted and are rejected before a feed is created.
+During a refresh, echovale reloads the configured page in Chromium. It updates existing links, adds each new link once, and keeps entries that disappear from the page in feed history. When an entry has no publication date, echovale uses the time it first discovered the entry.
+
+If the page changes and the saved selection stops matching, open the feed's actions and choose **Edit page selection**. Repairing the selection keeps saved articles and their reading state.
+
+### Web feed limits
+
+A web feed follows repeated entries from one publicly accessible page after a normal load. It does not:
+
+- sign in to a website;
+- bypass a paywall, CAPTCHA, bot check, or other access control;
+- follow pagination or crawl an entire website;
+- monitor arbitrary text or prices;
+- compare screenshots.
+
+echovale reports temporary loading failures and JavaScript timeouts separately from a broken saved selection. It rejects pages that cannot become reliable feeds before creating a subscription.
 
 The Compose deployment runs Chromium as the non-root application user with its Linux sandbox enabled. It uses the version-pinned [Playwright seccomp profile](https://github.com/microsoft/playwright/blob/v1.62.0/utils/docker/seccomp_profile.json) and restores only the `SYS_CHROOT` capability required by that sandbox.
 
-## AI summaries and translations
+## Enable AI summaries and translations
 
-Create a persistent encryption key before saving provider credentials:
+1. Generate a persistent encryption key:
 
-```sh
-openssl rand -hex 32
-```
+   ```sh
+   openssl rand -hex 32
+   ```
 
-Save the generated value as `AI_CREDENTIALS_KEY` in the project-level `.env` file, recreate the service, then open **Settings → AI**. Choose Google Gemini, OpenAI, or Anthropic, enter the model ID you want to use, and save that provider's API key. Summaries and translations use this same model. Their default prompts can be edited per account, and named custom prompts can be added to the article prompt menu. Each provider starts with a recommended model ID, but the field accepts any model that the provider makes available to your account. Keys are encrypted per account before they enter SQLite and are never returned to the browser after saving.
+2. Save the generated value as `AI_CREDENTIALS_KEY` in the project-level `.env` file.
+3. Recreate the service.
+4. Open **Settings → AI**.
+5. Choose Google Gemini, OpenAI, or Anthropic.
+6. Enter a model ID and save the provider's API key.
 
-## Updating
+Summaries, translations, and custom prompts use the same provider and model. Each provider begins with a recommended model ID, but the model field accepts any model available to your provider account. You can edit the default summary and translation prompts for each echovale account and add named prompts to the article's AI menu.
 
-```sh
-git pull --ff-only
-```
+echovale encrypts provider keys per account before storing them in SQLite. It does not return a saved key to the browser.
 
-```sh
-docker compose up -d --build
-```
+## Update echovale
+
+1. Pull the latest commit:
+
+   ```sh
+   git pull --ff-only
+   ```
+
+2. Rebuild and restart the service:
+
+   ```sh
+   docker compose up -d --build
+   ```

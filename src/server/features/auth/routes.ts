@@ -30,7 +30,7 @@ export async function authRoutes(
     const body = credentials.parse(request.body);
     const session = authService.login(body.username, body.password);
     if (!session) {
-      return reply.code(401).send({ error: "Username or password is incorrect" });
+      return reply.code(401).send({ error: "The username or password is incorrect." });
     }
     return sendSession(reply, request, authService, session);
   });
@@ -38,13 +38,13 @@ export async function authRoutes(
   app.post("/api/auth/register", async (request, reply) => {
     const body = credentials.parse(request.body);
     const session = authService.register(body.username, body.password);
-    if (!session) return reply.code(409).send({ error: "That username is already taken" });
+    if (!session) return reply.code(409).send({ error: "That username is already in use." });
     return sendSession(reply.code(201), request, authService, session);
   });
 
   app.get("/api/auth/session", async (request, reply) => {
     const user = authService.userForToken(sessionToken(request.headers.cookie));
-    if (!user) return reply.code(401).send({ error: "Sign in required" });
+    if (!user) return reply.code(401).send({ error: "Sign in to continue." });
     return { user };
   });
 

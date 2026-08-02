@@ -285,7 +285,7 @@ export function useArticleQueue({
       return appended;
     } catch (caught) {
       if (requestId.current === currentRequestId) {
-        showToast(`Could not load older articles: ${errorMessage(caught)}`);
+        showToast(`Could not load more articles: ${errorMessage(caught)}`);
       }
       return [];
     } finally {

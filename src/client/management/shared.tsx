@@ -71,9 +71,9 @@ export function ImportOpmlButton({
       const result = await mutations.importOpml(file);
       const notes = [`${result.imported} imported`, `${result.duplicates} duplicates`];
       if (result.failed.length > 0) notes.push(`${result.failed.length} failed`);
-      showToast(`OPML import complete: ${notes.join(", ")}`);
+      showToast(`OPML imported: ${notes.join(", ")}`);
     } catch (error) {
-      showToast(`OPML import failed: ${errorMessage(error)}`);
+      showToast(`Could not import OPML: ${errorMessage(error)}`);
     } finally {
       setBusy(false);
     }
@@ -99,7 +99,7 @@ export function ImportOpmlButton({
         ) : (
           <Upload aria-hidden="true" size={16} />
         )}
-        {busy ? "Importing" : "Import OPML"}
+        {busy ? "Importing OPML" : "Import OPML"}
       </button>
     </>
   );

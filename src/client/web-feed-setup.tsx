@@ -42,7 +42,7 @@ function formatPreviewDate(value: string): string {
 }
 
 function previewTitle(article: FeedPreviewArticle): string {
-  return article.title || article.summary || "Untitled article";
+  return article.title || article.summary || "Untitled entry";
 }
 
 function CandidateSuggestion({
@@ -190,8 +190,8 @@ export function WebFeedSetup({
   }, [analysis.messageToken, candidateIds, disabled, onSelect]);
 
   const matchAnnouncement = selectedCandidate
-    ? `${selectedCandidate.itemCount} matching ${selectedCandidate.itemCount === 1 ? "item" : "items"} highlighted.`
-    : "No item group selected.";
+    ? `${selectedCandidate.itemCount} matching ${selectedCandidate.itemCount === 1 ? "item is" : "items are"} highlighted.`
+    : "No group is selected.";
 
   return (
     <section className="web-feed-setup" aria-labelledby={headingId} aria-busy={disabled}>
@@ -209,13 +209,13 @@ export function WebFeedSetup({
         ) : null}
         <div className="web-feed-setup-title">
           <h3 ref={headingRef} id={headingId} tabIndex={-1}>
-            Choose the items to follow
+            Choose which entries to follow
           </h3>
-          <p>Select a suggestion or choose one representative item directly on {analysis.title}.</p>
+          <p>Choose a suggested group, or select one representative entry on {analysis.title}.</p>
         </div>
         <span className="web-feed-selection-badge">
           <LockKeyhole aria-hidden="true" size={13} />
-          Selection mode
+          Choose entries
         </span>
       </header>
 
@@ -224,11 +224,13 @@ export function WebFeedSetup({
           <div className="web-feed-page-toolbar">
             <div>
               <strong>Page preview</strong>
-              <span>Scroll normally. Links, forms, and page actions are disabled.</span>
+              <span>
+                Scroll the page, then select one representative entry. Page controls are disabled.
+              </span>
             </div>
             <span className="web-feed-match-count" aria-hidden="true">
               <MousePointer2 aria-hidden="true" size={14} />
-              {selectedCandidate ? `${selectedCandidate.itemCount} matched` : "Choose an item"}
+              {selectedCandidate ? `${selectedCandidate.itemCount} matched` : "Select an entry"}
             </span>
           </div>
           <div className="web-feed-frame-wrap" data-disabled={disabled || undefined}>
@@ -254,8 +256,8 @@ export function WebFeedSetup({
 
         <aside className="web-feed-suggestions" aria-labelledby={suggestionsHeadingId}>
           <div className="web-feed-suggestions-heading">
-            <h4 id={suggestionsHeadingId}>Suggested groups</h4>
-            <p>Choose the group that best represents new entries.</p>
+            <h4 id={suggestionsHeadingId}>Suggested entry groups</h4>
+            <p>Choose the group that should become this feed.</p>
           </div>
           {suggestedCandidates.length > 0 ? (
             <div className="web-feed-suggestion-list">
@@ -273,12 +275,12 @@ export function WebFeedSetup({
             <div className="web-feed-suggestions-empty" role="status">
               <p>
                 {analysis.candidates.length > 0
-                  ? "No automatic suggestions were found. Choose a representative item in the page preview."
-                  : "No repeating item groups were found on this page."}
+                  ? "No group could be recommended. Select one representative entry in the page preview."
+                  : "This page has no repeated entry groups that echovale can follow."}
               </p>
               {analysis.candidates.length === 0 && onBack ? (
                 <button className="secondary-button" type="button" onClick={onBack}>
-                  Try another page
+                  Choose another page
                 </button>
               ) : null}
             </div>
@@ -294,7 +296,7 @@ export function WebFeedSetup({
         <section className="web-feed-selected-preview" aria-labelledby={`${headingId}-preview`}>
           <div className="web-feed-preview-heading">
             <div>
-              <h4 id={`${headingId}-preview`}>Feed preview</h4>
+              <h4 id={`${headingId}-preview`}>Preview this feed</h4>
               <p>
                 {selectedCandidate.itemCount} currently matched{" "}
                 {selectedCandidate.itemCount === 1 ? "entry" : "entries"}
@@ -312,7 +314,7 @@ export function WebFeedSetup({
               ))}
             </ol>
           ) : (
-            <p className="feed-preview-empty">The selected group has no previewable entries.</p>
+            <p className="feed-preview-empty">This group has no entries that can be previewed.</p>
           )}
         </section>
       ) : null}

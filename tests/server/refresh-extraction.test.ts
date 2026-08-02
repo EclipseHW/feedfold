@@ -145,7 +145,7 @@ describe("feed refresh and full-text extraction", () => {
     expect(media).toMatchObject({
       status: "failed",
       contentSource: null,
-      error: "Article response is not HTML (video/mp4)",
+      error: "The source returned video/mp4 instead of an HTML page.",
     });
     const oversized = await extractArticle(
       {
@@ -158,7 +158,7 @@ describe("feed refresh and full-text extraction", () => {
     expect(oversized).toMatchObject({
       status: "failed",
       contentSource: null,
-      error: "Article response exceeds the 5 MiB extraction limit",
+      error: "The source page is larger than the 5 MiB full-article limit.",
     });
 
     const feed = database.feeds.createFeed(TEST_USER_ID, { feedUrl: `${baseUrl}/feed` });
@@ -244,7 +244,7 @@ describe("feed refresh and full-text extraction", () => {
       extractionStatus: "failed",
       contentHtml: null,
       feedContentHtml: expect.stringContaining("Complete text supplied by the feed"),
-      extractionError: "Article request returned HTTP 503",
+      extractionError: "The source page returned HTTP 503.",
     });
 
     expect(database.feeds.getFeed(TEST_USER_ID, feed.id)?.title).toBe("Remote title");
@@ -402,9 +402,9 @@ describe("feed refresh and full-text extraction", () => {
     await refresh.waitForIdle();
 
     expect(feeds.map((feed) => database.feeds.getFeed(TEST_USER_ID, feed.id)?.lastError)).toEqual([
-      "Feed host requires browser verification (Imunify360); automated refresh cannot access this URL",
-      "Feed host requires browser verification (Cloudflare); automated refresh cannot access this URL",
-      "Feed host requires browser verification (Vercel); automated refresh cannot access this URL",
+      "This feed requires browser verification from Imunify360, so echovale cannot refresh it automatically.",
+      "This feed requires browser verification from Cloudflare, so echovale cannot refresh it automatically.",
+      "This feed requires browser verification from Vercel, so echovale cannot refresh it automatically.",
     ]);
   });
 
@@ -910,7 +910,7 @@ describe("feed refresh and full-text extraction", () => {
 
     expect(outcome).toMatchObject({
       status: "failed",
-      error: "This address is not a publicly accessible webpage.",
+      error: "This page is not public. Use a page that is available on the public internet.",
     });
     expect(hits).toBe(0);
   });

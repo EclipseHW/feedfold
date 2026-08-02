@@ -79,13 +79,13 @@ export class WebFeedService {
         if (loadingError) throw loadingError;
         if (!loaded.domContentLoaded) {
           throw new WebFeedError(
-            "This webpage did not finish loading before echovale could find its items.",
+            "This page did not finish loading before echovale could find its entries. Try again.",
             "javascript_timeout",
             loaded.httpStatus,
           );
         }
         throw new WebFeedError(
-          "echovale could not find a repeated group of linked items on this webpage.",
+          "echovale could not find a repeated group of linked entries on this page. Choose another page.",
           "unsupported_content",
           loaded.httpStatus,
         );
@@ -134,13 +134,13 @@ export class WebFeedService {
         if (loadingError) throw loadingError;
         if (!loaded.domContentLoaded) {
           throw new WebFeedError(
-            "This webpage did not finish loading before echovale could apply the saved selection.",
+            "This page did not finish loading before echovale could apply the saved selection. Try again.",
             "javascript_timeout",
             loaded.httpStatus,
           );
         }
         throw new WebFeedError(
-          "The webpage structure or content has changed and the saved selection no longer finds enough items. Reload the page to repair it.",
+          "This page has changed, so the saved selection no longer finds enough entries. Edit the page selection to repair the feed.",
           "selection_broken",
           loaded.httpStatus,
         );
@@ -167,7 +167,7 @@ export class WebFeedService {
     const snapshot = this.#snapshots.get(snapshotId);
     if (!snapshot || snapshot.userId !== userId) {
       throw new WebFeedError(
-        "This webpage preview has expired. Reload the page to continue selecting items.",
+        "This page preview has expired. Reload the page, then choose the entries again.",
         "inaccessible",
       );
     }

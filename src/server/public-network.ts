@@ -89,7 +89,7 @@ export async function resolvePublicAddress(hostnameInput: string): Promise<Pinne
     hostname.endsWith(".internal")
   ) {
     throw new PublicNetworkError(
-      "This address is not a publicly accessible webpage.",
+      "This page is not public. Use a page that is available on the public internet.",
       "inaccessible",
     );
   }
@@ -107,16 +107,22 @@ export async function resolvePublicAddress(hostnameInput: string): Promise<Pinne
         )
         .map((entry) => ({ address: entry.address, family: entry.family }));
     } catch {
-      throw new PublicNetworkError("Could not resolve this webpage's address.", "network");
+      throw new PublicNetworkError(
+        "Could not find this page's network address. Check the URL and try again.",
+        "network",
+      );
     }
   }
 
   if (addresses.length === 0) {
-    throw new PublicNetworkError("Could not resolve this webpage's address.", "network");
+    throw new PublicNetworkError(
+      "Could not find this page's network address. Check the URL and try again.",
+      "network",
+    );
   }
   if (addresses.some(({ address }) => isBlockedNetworkAddress(address))) {
     throw new PublicNetworkError(
-      "This address is not a publicly accessible webpage.",
+      "This page is not public. Use a page that is available on the public internet.",
       "inaccessible",
     );
   }
@@ -129,16 +135,19 @@ export function publicHttpUrl(value: string): URL {
   try {
     url = new URL(value);
   } catch {
-    throw new PublicNetworkError("Enter a valid public webpage URL.", "inaccessible");
+    throw new PublicNetworkError("Enter a valid public page URL.", "inaccessible");
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new PublicNetworkError(
-      "Only public HTTP and HTTPS webpages are supported.",
+      "Enter a public URL that begins with http:// or https://.",
       "inaccessible",
     );
   }
   if (url.username || url.password) {
-    throw new PublicNetworkError("Authenticated webpage URLs are not supported.", "inaccessible");
+    throw new PublicNetworkError(
+      "Remove the username and password from this URL. echovale only supports public pages.",
+      "inaccessible",
+    );
   }
   return url;
 }

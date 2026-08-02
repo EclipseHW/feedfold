@@ -86,7 +86,7 @@ function DialogHeading({
         <h2 id="management-dialog-title">{title}</h2>
         <p>{detail}</p>
       </div>
-      <button className="icon-button" type="button" onClick={onClose} aria-label="Close window">
+      <button className="icon-button" type="button" onClick={onClose} aria-label="Close dialog">
         <X aria-hidden="true" size={18} />
       </button>
     </header>
@@ -228,7 +228,7 @@ function FeedSettingsPanel({
                 </dd>
               </div>
               <div>
-                <dt>Followed</dt>
+                <dt>Subscribed</dt>
                 <dd>{formatDate(details.createdAt)}</dd>
               </div>
               <div>
@@ -236,7 +236,7 @@ function FeedSettingsPanel({
                 <dd>Every {formatRefreshInterval(details.pollIntervalMinutes)}</dd>
               </div>
               <div>
-                <dt>Last refresh attempt</dt>
+                <dt>Last attempted refresh</dt>
                 <dd>{formatDate(details.lastAttemptAt)}</dd>
               </div>
               <div>
@@ -253,8 +253,8 @@ function FeedSettingsPanel({
               </div>
               {details.sourceKind === "web" ? (
                 <div>
-                  <dt>Items matched on last success</dt>
-                  <dd>{details.lastMatchCount ?? "No successful match yet"}</dd>
+                  <dt>Entries found on last success</dt>
+                  <dd>{details.lastMatchCount ?? "No successful refresh yet"}</dd>
                 </div>
               ) : null}
             </dl>
@@ -345,7 +345,7 @@ function WebFeedSelectionPanel({
     setError(null);
     try {
       const updated = await mutations.updateWebFeedSelection(feed.id, candidate.config);
-      showToast(`Updated page selection for ${updated.title}`);
+      showToast(`Page selection updated for ${updated.title}`);
       onClose();
     } catch (caught) {
       setError(errorMessage(caught));
@@ -362,7 +362,7 @@ function WebFeedSelectionPanel({
       >
         {loading ? (
           <div className="feed-preview-loading" role="status">
-            <span>Reloading the webpage and finding repeated items…</span>
+            <span>Reloading the page and finding repeated entries…</span>
             <div className="feed-preview-loading-lines" aria-hidden="true">
               <div className="skeleton-line wide" />
               <div className="skeleton-line" />
@@ -374,8 +374,8 @@ function WebFeedSelectionPanel({
             {!analysis.savedSelectionMatched ? (
               <p className="web-feed-repair-notice" role="status">
                 <AlertTriangle aria-hidden="true" size={16} />
-                The saved selection no longer finds a meaningful group. Choose a current group to
-                repair this feed; previously collected articles will stay in its history.
+                This page has changed, so the saved selection no longer finds entries. Choose a new
+                group to repair the feed. Saved articles will remain in its history.
               </p>
             ) : null}
             <WebFeedSetup
@@ -462,7 +462,7 @@ function RenameFeedForm({
             value={title}
             onChange={(event) => setTitle(event.target.value)}
           />
-          <small>The feed URL and saved articles stay unchanged.</small>
+          <small>Renaming does not change the feed URL or saved articles.</small>
         </label>
         {error ? <DialogError message={error} /> : null}
       </div>
@@ -538,7 +538,7 @@ function MoveFeedForm({
               </option>
             ))}
           </select>
-          <small>A feed belongs to one folder. Choosing another folder moves it there.</small>
+          <small>Choose a folder to move this feed, or choose Top level.</small>
         </label>
         {error ? <DialogError message={error} /> : null}
       </div>
@@ -620,7 +620,7 @@ function AddFeedToFolderForm({
                 </option>
               ))}
             </select>
-            <small>If the feed is in another folder, it moves to {folder.name}.</small>
+            <small>Saving moves the selected feed to {folder.name}.</small>
           </label>
         )}
         {error ? <DialogError message={error} /> : null}
@@ -638,7 +638,7 @@ function AddFeedToFolderForm({
               ) : (
                 <Folder aria-hidden="true" size={15} />
               )}
-              Add to folder
+              Move to folder
             </button>
           ) : null}
         </div>
@@ -669,8 +669,8 @@ function UnsubscribeForm({
     <form className="management-dialog-form" onSubmit={(event) => void submit(event)}>
       <div className="management-dialog-body unsubscribe-copy">
         <p>
-          This removes the subscription and its stored articles. Rules scoped only to this feed are
-          removed too.
+          Unsubscribing deletes this feed, its stored articles, and rules that apply only to this
+          feed. This cannot be undone.
         </p>
       </div>
       <div className="management-dialog-footer">
@@ -685,7 +685,7 @@ function UnsubscribeForm({
             ) : (
               <Trash2 aria-hidden="true" size={15} />
             )}
-            Unsubscribe
+            Unsubscribe from feed
           </button>
         </div>
       </div>
@@ -780,19 +780,19 @@ export function ContextManagementDialog({
         : request.kind === "rename-feed"
           ? "Rename feed"
           : request.kind === "move-feed"
-            ? "Add to folder"
+            ? "Move to folder"
             : request.kind === "unsubscribe-feed"
-              ? "Unsubscribe from feed?"
+              ? "Unsubscribe from this feed?"
               : request.kind === "folder-settings"
                 ? "Folder settings"
                 : request.kind === "add-feed-to-folder"
-                  ? "Add feed to folder"
+                  ? "Move feed to folder"
                   : request.kind === "add-folder"
-                    ? "Add new folder"
+                    ? "Add subfolder"
                     : "Create rule";
   const detail =
     request.kind === "feed-settings"
-      ? "Feed settings and refresh status"
+      ? "Feed details and refresh status"
       : request.kind === "web-feed-selection"
         ? (feed?.title ?? "Web feed")
         : (feed?.title ?? folder?.name ?? "Feed management");

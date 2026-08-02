@@ -6,16 +6,16 @@ import "./shortcut-help.css";
 const shortcuts = [
   ["J / →", "Next article"],
   ["K / ←", "Previous article"],
-  ["Space", "Scroll article page"],
-  ["U", "Mark active article unread"],
+  ["Space", "Scroll one article page"],
+  ["U", "Toggle read state"],
   ["S", "Star or unstar article"],
-  ["C", "Copy active article URL"],
+  ["C", "Copy the active article link"],
   ["O", "Open active article source"],
-  ["W", "Toggle feed or full content"],
-  ["M", "Show, hide, or create article summary"],
+  ["W", "Toggle feed text and full article"],
+  ["M", "Open or create a summary"],
   ["T", "Toggle article translation"],
-  ["R", "Refresh current feed or folder"],
-  ["Shift R", "Refresh every feed"],
+  ["R", "Refresh the current view"],
+  ["Shift R", "Refresh all feeds"],
   ["[", "Decrease article text size"],
   ["]", "Increase article text size"],
   ["1", "Magazine view"],
@@ -61,7 +61,7 @@ export function ShortcutReference({ compact = false }: { compact?: boolean }) {
             <dt>
               <Kbd>g f</Kbd>
             </dt>
-            <dd>Feeds &amp; status</dd>
+            <dd>Manage feeds</dd>
           </div>
           <div>
             <dt>
@@ -125,14 +125,16 @@ export function ShortcutHelp({
       {!enabled ? (
         <div className="shortcuts-disabled">
           <AlertTriangle aria-hidden="true" size={16} />
-          <span>Single-key shortcuts are disabled in Settings. Tab navigation still works.</span>
+          <span>
+            Single-key shortcuts are off. Turn them on in Settings; Tab navigation still works.
+          </span>
         </div>
       ) : null}
       <ShortcutReference />
       <div className="dialog-footer">
-        <p>Shortcuts pause while focus is in a form field.</p>
+        <p>Single-key shortcuts pause while you type in a form field.</p>
         <button className="primary-button" type="button" onClick={() => ref.current?.close()}>
-          Close reference
+          Close
         </button>
       </div>
     </dialog>

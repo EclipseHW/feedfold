@@ -113,10 +113,7 @@ async function fetchSource(
     });
   } catch (error) {
     if (signal.aborted) {
-      throw new FeedDiscoveryError(
-        "This URL took too long to respond. Try again in a moment.",
-        "timeout",
-      );
+      throw new FeedDiscoveryError("This address did not respond in time. Try again.", "timeout");
     }
     if (error instanceof PublicNetworkError) {
       if (required) throw new FeedDiscoveryError(error.message, error.kind);
@@ -124,7 +121,7 @@ async function fetchSource(
     }
     if (required) {
       throw new FeedDiscoveryError(
-        "Could not reach this URL. Check the address and try again.",
+        "Could not reach this address. Check it, then try again.",
         "network",
       );
     }
@@ -136,8 +133,8 @@ async function fetchSource(
       const inaccessible = response.status === 401 || response.status === 403;
       throw new FeedDiscoveryError(
         inaccessible
-          ? "This page is not publicly accessible."
-          : `This URL returned HTTP ${response.status}.`,
+          ? "This page is not public. Use a page that does not require sign-in."
+          : `This address returned HTTP ${response.status}.`,
         inaccessible ? "inaccessible" : "http",
       );
     }
@@ -178,7 +175,11 @@ export async function discoverFeed(
   const telegram = telegramChannelUrls(url);
   const signal = AbortSignal.timeout(timeoutMs);
   const page = await fetchSource(telegram?.previewUrl ?? url, signal, true, fetcher);
-  if (!page) throw new FeedDiscoveryError("Could not load this URL.", "network");
+  if (!page)
+    throw new FeedDiscoveryError(
+      "Could not load this address. Check it, then try again.",
+      "network",
+    );
   if (telegram) {
     try {
       return {
@@ -190,7 +191,7 @@ export async function discoverFeed(
       };
     } catch {
       throw new FeedDiscoveryError(
-        "Could not read a public Telegram channel at this URL.",
+        "Could not read a public Telegram channel at this address.",
         "parse",
       );
     }
@@ -207,7 +208,7 @@ export async function discoverFeed(
 
   if (!isHtmlPage(page.contentType, page.source)) {
     throw new FeedDiscoveryError(
-      "This URL is not a supported webpage, RSS, Atom, or JSON feed.",
+      "This address is not an HTML page, RSS feed, Atom feed, or JSON Feed.",
       "unsupported_content",
     );
   }

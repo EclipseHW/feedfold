@@ -67,7 +67,7 @@ export function prepareArticleSummary(article: AiArticleRecord): PreparedArticle
     throw new AiError(
       "ARTICLE_HAS_NO_TEXT",
       422,
-      "This article does not contain text that can be summarized.",
+      "This article has no text to summarize. Open the source to read it.",
     );
   }
   const [sourceKind, source] = selected;

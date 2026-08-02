@@ -14,7 +14,7 @@ class FeedHttpError extends Error {
     detail?: string,
     readonly kind: FeedErrorKind = status === 401 || status === 403 ? "inaccessible" : "http",
   ) {
-    super(detail ?? `Feed request returned HTTP ${status}`);
+    super(detail ?? `The feed returned HTTP ${status}.`);
   }
 }
 
@@ -141,7 +141,7 @@ export class FeedRefreshService {
         if (!this.webFeedService) {
           this.feeds.failRefresh(feed.id, {
             httpStatus: null,
-            error: "Web feed loading is unavailable on this server",
+            error: "Web feed loading is unavailable. Check the server's Chromium setup.",
             errorKind: "unsupported_content",
             healthStatus: "failing",
             retryMinutes: feed.pollIntervalMinutes,
@@ -200,7 +200,7 @@ export class FeedRefreshService {
         } else if (verificationProvider) {
           throw new FeedHttpError(
             response.status,
-            `Feed host requires browser verification (${verificationProvider}); automated refresh cannot access this URL`,
+            `This feed requires browser verification from ${verificationProvider}, so echovale cannot refresh it automatically.`,
             "access_blocked",
           );
         }
@@ -261,7 +261,7 @@ export class FeedRefreshService {
       this.requestedIds.delete(feed.id);
       this.feeds.failRefresh(feed.id, {
         httpStatus: null,
-        error: "Refresh stopped during server shutdown",
+        error: "The refresh stopped because the server shut down. Refresh the feed again.",
         errorKind: "network",
         healthStatus: "failing",
         retryMinutes: feed.pollIntervalMinutes,

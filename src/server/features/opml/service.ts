@@ -13,7 +13,7 @@ export interface OpmlImportOutcome extends ImportResult {
 function validateFeedUrl(value: string): string {
   const parsed = new URL(value);
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new Error("Feed URL must use HTTP or HTTPS");
+    throw new Error("The feed URL must begin with http:// or https://.");
   }
   return parsed.toString();
 }

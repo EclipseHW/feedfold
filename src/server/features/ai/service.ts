@@ -127,7 +127,7 @@ export class AiService {
   ): AiSettings {
     const provider = this.providers.get(providerId);
     if (!provider) {
-      throw new AiError("AI_NOT_CONFIGURED", 422, "Choose a supported AI provider.");
+      throw new AiError("AI_NOT_CONFIGURED", 422, "Choose an AI provider in Settings.");
     }
     const selectedModel = model?.trim() || provider.defaultModel;
     this.database.ai.setAiFeatureSetting(userId, feature, {
@@ -143,7 +143,7 @@ export class AiService {
       throw new AiError(
         "AI_CREDENTIAL_STORAGE_UNAVAILABLE",
         503,
-        "API key storage is unavailable until AI_CREDENTIALS_KEY is configured on the server.",
+        "API key storage is unavailable. Set AI_CREDENTIALS_KEY on the server, then restart echovale.",
       );
     }
     const encrypted = cipher.encrypt(userId, provider, apiKey.trim());
@@ -166,7 +166,7 @@ export class AiService {
       throw new AiError(
         "AI_NOT_CONFIGURED",
         422,
-        "Choose an AI provider and model in Settings first.",
+        "Choose an AI provider and model in Settings, then try again.",
       );
     }
     const provider = this.providers.get(setting.provider) as AiProviderAdapter;
@@ -175,7 +175,7 @@ export class AiService {
       throw new AiError(
         "AI_KEY_MISSING",
         422,
-        `Add an API key for ${provider.label} in Settings first.`,
+        `Add an API key for ${provider.label} in Settings, then try again.`,
       );
     }
     const cipher = this.options.credentialCipher;
@@ -183,7 +183,7 @@ export class AiService {
       throw new AiError(
         "AI_CREDENTIAL_STORAGE_UNAVAILABLE",
         503,
-        "The server cannot open saved API keys until AI_CREDENTIALS_KEY is configured.",
+        "The server cannot decrypt saved API keys. Set AI_CREDENTIALS_KEY, then restart echovale.",
       );
     }
     const result = await provider.generateText({
@@ -206,7 +206,11 @@ export class AiService {
       ? customPrompts.find((prompt) => prompt.id === customPromptId)
       : null;
     if (customPromptId && !customPrompt) {
-      throw new AiError("CUSTOM_PROMPT_NOT_FOUND", 404, "This custom prompt no longer exists.");
+      throw new AiError(
+        "CUSTOM_PROMPT_NOT_FOUND",
+        404,
+        "This custom prompt no longer exists. Choose another AI action.",
+      );
     }
     const prompt = customPrompt?.prompt ?? summaryPrompt;
     const version = promptVersion(

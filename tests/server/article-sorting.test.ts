@@ -199,7 +199,9 @@ describe("folder article sorting", () => {
       url: "/api/articles?state=unread&cursor=not-a-cursor",
     });
     expect(invalidCursor.statusCode).toBe(400);
-    expect(invalidCursor.json()).toEqual({ error: "Invalid article cursor" });
+    expect(invalidCursor.json()).toEqual({
+      error: "This article page has expired. Reload the list.",
+    });
     expect(
       (
         await request({

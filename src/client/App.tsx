@@ -112,10 +112,10 @@ export function App() {
       if (!(error instanceof ApiError && error.status === 401)) {
         setSessionError(
           !navigator.onLine
-            ? "You are offline. Reconnect to reach your private reading queue."
+            ? "You are offline. Reconnect, then try again."
             : error instanceof ApiError
               ? errorMessage(error)
-              : "The server could not be reached. Check your connection and try again.",
+              : "echovale could not reach the server. Check the connection, then try again.",
         );
       }
     } finally {
@@ -391,7 +391,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         }
         return true;
       } catch (error) {
-        showToast(`Could not unsubscribe: ${errorMessage(error)}`);
+        showToast(`Could not unsubscribe from ${feed.title}: ${errorMessage(error)}`);
         return false;
       }
     },
@@ -414,9 +414,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         const { result, settled } = await dataResource.beginRefresh(ids, trackedIds);
         showToast(`Refreshing ${result.requested} ${result.requested === 1 ? "feed" : "feeds"}`);
         await settled;
-        showToast("Refresh complete");
+        showToast("Feeds refreshed");
       } catch (error) {
-        showToast(`Refresh failed: ${errorMessage(error)}`);
+        showToast(`Could not refresh feeds: ${errorMessage(error)}`);
       }
     },
     [bootstrap, dataResource, route.readerRoute, showToast],
@@ -506,14 +506,14 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           if (!activeArticle) return;
           const nextRead = !activeArticle.isRead;
           void articleActions.changeArticleState(activeArticle, { isRead: nextRead });
-          showToast(nextRead ? "Marked read" : "Marked unread");
+          showToast(nextRead ? "Article marked as read" : "Article marked as unread");
         },
         s: () => {
           if (!activeArticle) return;
           void articleActions.changeArticleState(activeArticle, {
             isStarred: !activeArticle.isStarred,
           });
-          showToast(activeArticle.isStarred ? "Star removed" : "Article starred");
+          showToast(activeArticle.isStarred ? "Star removed from article" : "Article starred");
         },
         c: () => void articleActions.copyArticleUrl(activeArticle),
         o: () => articleActions.openArticleSource(activeArticle),
@@ -536,12 +536,12 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         "[": () => {
           const next = Math.max(ARTICLE_FONT_MIN, preferences.articleFontSize - 1);
           preferences.setArticleFontSize(next);
-          showToast(`Global article text: ${next}px`);
+          showToast(`Article text size set to ${next}px`);
         },
         "]": () => {
           const next = Math.min(ARTICLE_FONT_MAX, preferences.articleFontSize + 1);
           preferences.setArticleFontSize(next);
-          showToast(`Global article text: ${next}px`);
+          showToast(`Article text size set to ${next}px`);
         },
         "1": () => changeReadingMode("magazine"),
         "2": () => changeReadingMode("expanded"),
@@ -664,8 +664,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                 <InlineError
                   title={
                     route.routedArticleId === null
-                      ? "Articles could not be loaded"
-                      : "Article could not be loaded"
+                      ? "Could not load articles"
+                      : "Could not load the article"
                   }
                   detail={queue.error}
                   retry={() =>

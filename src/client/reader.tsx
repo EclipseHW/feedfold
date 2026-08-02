@@ -105,7 +105,7 @@ function clearSwipeSurface(element: HTMLElement): void {
 }
 
 function formatRelativeDate(value: string | null): string {
-  if (!value) return "Date unknown";
+  if (!value) return "No date";
   const date = new Date(value);
   const seconds = Math.round((date.getTime() - Date.now()) / 1000);
   const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
@@ -458,7 +458,7 @@ export function StartupError({ message, retry }: { message: string; retry: () =>
   return (
     <main className="startup-state">
       <BrandLogo className="startup-logo" />
-      <h1>echovale is not reachable</h1>
+      <h1>echovale is unavailable</h1>
       <p>{message}</p>
       <button className="primary-button" type="button" onClick={retry}>
         <RefreshCw aria-hidden="true" size={16} />
@@ -555,10 +555,10 @@ export function EmptyArticles({
     return (
       <section className="inline-state empty-state">
         <Rss aria-hidden="true" size={24} />
-        <h2>Your reading queue starts with a feed</h2>
-        <p>Add one RSS or Atom URL, or import your existing OPML file.</p>
+        <h2>Add your first feed</h2>
+        <p>Enter a website or feed URL, or import subscriptions from an OPML file.</p>
         <button className="primary-button" type="button" onClick={onAddFeed}>
-          Add feeds
+          Add a feed
         </button>
       </section>
     );
@@ -568,7 +568,7 @@ export function EmptyArticles({
       <section className="inline-state empty-state">
         <FileText aria-hidden="true" size={24} />
         <h2>No articles match “{search}”</h2>
-        <p>Try a shorter phrase or clear the search to return to the queue.</p>
+        <p>Use a shorter phrase, or clear the search to show this queue again.</p>
         <button className="secondary-button" type="button" onClick={onClearSearch}>
           Clear search
         </button>
@@ -579,10 +579,10 @@ export function EmptyArticles({
     return (
       <section className="inline-state empty-state">
         <CheckCircle2 aria-hidden="true" size={24} />
-        <h2>You are caught up</h2>
-        <p>New articles will appear here after the next background or manual refresh.</p>
+        <h2>No unread articles</h2>
+        <p>New articles will appear after a scheduled or manual refresh.</p>
         <button className="secondary-button" type="button" onClick={onShowAll}>
-          Browse read articles
+          Show read articles
         </button>
       </section>
     );
@@ -591,7 +591,7 @@ export function EmptyArticles({
     <section className="inline-state empty-state">
       <Inbox aria-hidden="true" size={24} />
       <h2>No articles in this view</h2>
-      <p>Choose another filter or feed from the navigation.</p>
+      <p>Choose another feed or article state.</p>
       <button className="secondary-button" type="button" onClick={onShowAll}>
         Show all articles
       </button>
@@ -634,9 +634,9 @@ export function ArticleList({
   return (
     <section ref={listRef} className="article-list" aria-label="Articles">
       <div className="article-list-summary">
-        <span>{articles.filter((article) => !article.isRead).length} unread loaded</span>
+        <span>{articles.filter((article) => !article.isRead).length} unread in this page</span>
         <span>
-          Use <Kbd>J</Kbd>/<Kbd>→</Kbd> and <Kbd>K</Kbd>/<Kbd>←</Kbd> to move
+          Press <Kbd>J</Kbd>/<Kbd>→</Kbd> or <Kbd>K</Kbd>/<Kbd>←</Kbd> to move
         </span>
       </div>
       <ol>
@@ -703,10 +703,10 @@ export function ArticleList({
                 type="button"
                 aria-label={
                   article.isRead
-                    ? `Mark ${articleLabel(article)} unread`
-                    : `Mark ${articleLabel(article)} read`
+                    ? `Mark ${articleLabel(article)} as unread`
+                    : `Mark ${articleLabel(article)} as read`
                 }
-                title={article.isRead ? "Mark unread" : "Mark read"}
+                title={article.isRead ? "Mark as unread" : "Mark as read"}
                 onClick={() => onToggleRead(article)}
               >
                 {article.isRead ? (
@@ -839,14 +839,14 @@ function ArticleActions({
   const fullContentLoaded = fullContentVisible && cachedFullContent;
   const fullContentFailed = fullContentVisible && article.extractionStatus === "failed";
   const fullContentLabel = fullContentLoading
-    ? "Loading full content"
+    ? "Loading the full article"
     : fullContentLoaded
-      ? "Show feed content"
+      ? "Show feed text"
       : fullContentFailed
-        ? "Retry full content"
+        ? "Retry full article"
         : cachedFullContent
-          ? "Show full content"
-          : "Load full content";
+          ? "Show full article"
+          : "Load full article";
   const FullContentIcon = fullContentLoading
     ? LoaderCircle
     : fullContentLoaded
@@ -863,7 +863,7 @@ function ArticleActions({
       : translationState.error
         ? `Retry ${translationLanguage} translation`
         : `Translate to ${translationLanguage}`;
-  const readTooltip = article.isRead ? "Mark unread (U)" : "Mark read (U)";
+  const readTooltip = article.isRead ? "Mark as unread (U)" : "Mark as read (U)";
   const starTooltip = article.isStarred ? "Remove star (S)" : "Star article (S)";
   return (
     <div className="article-actions" role="toolbar" aria-label="Article actions">
@@ -922,8 +922,8 @@ function ArticleActions({
         style={{ anchorName: summaryAnchorName }}
         onPointerDown={summaryMenu.handleTriggerPointerDown}
         onKeyDown={summaryMenu.handleTriggerKeyDown}
-        aria-label="Choose AI prompt"
-        data-tooltip="Choose AI prompt"
+        aria-label="Choose an AI action"
+        data-tooltip="Choose an AI action"
       >
         {summaryState.loading ? (
           <LoaderCircle className="spin" aria-hidden="true" size={16} />
@@ -944,7 +944,7 @@ function ArticleActions({
         className="summary-prompt-menu context-action-menu"
         popover="auto"
         role="menu"
-        aria-label="AI prompts"
+        aria-label="AI actions"
         style={{ positionAnchor: summaryAnchorName }}
         onToggle={summaryMenu.handleMenuToggle}
         onKeyDown={summaryMenu.handleMenuKeyDown}
@@ -998,7 +998,7 @@ function ArticleActions({
       <button
         className="read-state-action"
         type="button"
-        aria-label="Read article (U)"
+        aria-label={readTooltip}
         aria-pressed={article.isRead}
         onClick={() => onToggleRead(article)}
         data-tooltip={readTooltip}
@@ -1014,7 +1014,7 @@ function ArticleActions({
         type="button"
         aria-pressed={article.isStarred}
         onClick={() => onToggleStar(article)}
-        aria-label="Star article (S)"
+        aria-label={starTooltip}
         data-tooltip={starTooltip}
       >
         <Star aria-hidden="true" size={16} fill={article.isStarred ? "currentColor" : "none"} />
@@ -1023,8 +1023,8 @@ function ArticleActions({
         className="copy-action"
         type="button"
         onClick={() => onCopy(article)}
-        aria-label="Copy article URL (C)"
-        data-tooltip="Copy article URL (C)"
+        aria-label="Copy article link (C)"
+        data-tooltip="Copy article link (C)"
       >
         <Copy aria-hidden="true" size={16} />
       </button>
@@ -1099,7 +1099,7 @@ function ArticleActions({
           ) : (
             <MailOpen aria-hidden="true" size={15} />
           )}
-          <span>{article.isRead ? "Mark unread" : "Mark read"}</span>
+          <span>{article.isRead ? "Mark as unread" : "Mark as read"}</span>
           <kbd>U</kbd>
         </button>
         <button
@@ -1124,7 +1124,7 @@ function ArticleActions({
           }}
         >
           <Copy aria-hidden="true" size={15} />
-          <span>Copy article URL</span>
+          <span>Copy article link</span>
           <kbd>C</kbd>
         </button>
         <button
@@ -1190,7 +1190,7 @@ function ArticleSummaryPanel({
             ) : (
               <RefreshCw aria-hidden="true" size={14} />
             )}
-            {state.loading ? "Updating" : "Regenerate"}
+            {state.loading ? "Updating summary" : "Update summary"}
           </button>
         ) : null}
       </div>
@@ -1206,10 +1206,10 @@ function ArticleSummaryPanel({
         </div>
       ) : state.configurationMissing ? (
         <div className="article-summary-message">
-          <strong>Article summaries are not set up</strong>
-          <p>Choose a provider and save an API key in Settings.</p>
+          <strong>Set up summaries first</strong>
+          <p>In Settings, choose an AI provider and save its API key.</p>
           <button className="secondary-button" type="button" onClick={onOpenSettings}>
-            Open AI settings
+            Open Settings
           </button>
         </div>
       ) : summary ? (
@@ -1218,11 +1218,11 @@ function ArticleSummaryPanel({
         </div>
       ) : !state.error ? (
         <div className="article-summary-message">
-          <strong>The article changed</strong>
-          <p>Create an updated summary from the latest article text.</p>
+          <strong>This summary is out of date</strong>
+          <p>The article text has changed. Create a summary from the current text.</p>
           <button className="secondary-button" type="button" onClick={() => onRegenerate(article)}>
             <Sparkles aria-hidden="true" size={14} />
-            Create updated summary
+            Update summary
           </button>
         </div>
       ) : null}
@@ -1231,7 +1231,7 @@ function ArticleSummaryPanel({
         <div className="article-summary-error" role="alert">
           <AlertTriangle aria-hidden="true" size={16} />
           <div>
-            <strong>Summary could not be created</strong>
+            <strong>Could not create the summary</strong>
             <p>{state.error}</p>
           </div>
           {!summary ? (
@@ -1242,7 +1242,7 @@ function ArticleSummaryPanel({
               onClick={() => onRegenerate(article)}
             >
               <RefreshCw aria-hidden="true" size={14} />
-              Retry summary
+              Try again
             </button>
           ) : null}
         </div>
@@ -1267,7 +1267,7 @@ function ArticleTranslationNotice({
         <LoaderCircle className="spin" aria-hidden="true" size={18} />
         <div>
           <strong>Translating to {language}</strong>
-          <p>The original article stays visible until the translation is ready.</p>
+          <p>You can keep reading the original until the translation is ready.</p>
         </div>
       </div>
     );
@@ -1277,10 +1277,10 @@ function ArticleTranslationNotice({
       <div className="article-extraction-state article-translation-state" role="note">
         <Languages aria-hidden="true" size={18} />
         <div>
-          <strong>Translation is not set up</strong>
-          <p>Choose an AI provider and save its API key in Settings.</p>
+          <strong>Set up translations first</strong>
+          <p>In Settings, choose an AI provider and save its API key.</p>
           <button className="secondary-button" type="button" onClick={onOpenSettings}>
-            Open AI settings
+            Open Settings
           </button>
         </div>
       </div>
@@ -1293,7 +1293,7 @@ function ArticleTranslationNotice({
     >
       <AlertTriangle aria-hidden="true" size={18} />
       <div>
-        <strong>Translation could not be created</strong>
+        <strong>Could not translate the article</strong>
         <p>{state.error}</p>
       </div>
     </div>
@@ -2096,7 +2096,7 @@ export function ReaderPane({
     return (
       <section className="reader-pane reader-placeholder">
         <BookOpen aria-hidden="true" size={24} />
-        <p>Choose an article to read it here.</p>
+        <p>Choose an article from the list.</p>
       </section>
     );
   }
@@ -2460,8 +2460,8 @@ function ArticleText({
         <div className="article-extraction-state extraction-loading" role="status">
           <LoaderCircle className="spin" aria-hidden="true" size={18} />
           <div>
-            <strong>Loading full content</strong>
-            <p>The feed article remains available while the source page is processed.</p>
+            <strong>Loading the full article</strong>
+            <p>You can keep reading the feed text while echovale loads the source page.</p>
           </div>
         </div>
         <FeedArticleText article={article} />
@@ -2477,10 +2477,9 @@ function ArticleText({
         <div className="article-extraction-state extraction-failed" role="note">
           <AlertTriangle aria-hidden="true" size={18} />
           <div>
-            <strong>Full content could not be loaded</strong>
+            <strong>Could not load the full article</strong>
             <p>
-              {article.extractionError ??
-                "The source page did not return readable article content."}
+              {article.extractionError ?? "The source page did not contain readable article text."}
             </p>
             <button
               className="secondary-button"
@@ -2488,7 +2487,7 @@ function ArticleText({
               onClick={() => onToggleFullContent(article)}
             >
               <RefreshCw aria-hidden="true" size={15} />
-              Retry full content
+              Try again
             </button>
           </div>
         </div>
@@ -2513,7 +2512,7 @@ function FeedArticleText({ article }: { article: Article }) {
   ) : (
     <div className="article-extraction-state">
       <FileText aria-hidden="true" size={18} />
-      <p>This feed did not include article text.</p>
+      <p>This feed did not provide article text. Open the source to read it.</p>
     </div>
   );
 }

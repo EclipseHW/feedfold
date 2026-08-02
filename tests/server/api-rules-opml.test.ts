@@ -100,7 +100,7 @@ describe("live API, OPML, and filtering rules", () => {
       payload: { username: "READER", password: "another-password" },
     });
     expect(duplicate.statusCode).toBe(409);
-    expect(duplicate.json()).toEqual({ error: "That username is already taken" });
+    expect(duplicate.json()).toEqual({ error: "That username is already in use." });
     expect(
       (
         await app.inject({
@@ -732,7 +732,7 @@ describe("live API, OPML, and filtering rules", () => {
       extractionStatus: "failed",
       contentHtml: null,
       feedContentHtml: expect.stringContaining("Feed fallback worth reading"),
-      extractionError: "Article request returned HTTP 503",
+      extractionError: "The source page returned HTTP 503.",
     });
 
     const exported = await fetch(`${apiBase}/api/opml/export`, { headers: { Cookie: cookie } });

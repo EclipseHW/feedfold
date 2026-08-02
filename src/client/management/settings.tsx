@@ -114,7 +114,7 @@ function AiSettingsSection({
           model: nextModel.trim(),
         }),
       );
-      showToast("AI model saved");
+      showToast("AI provider and model saved");
     } catch (caught) {
       setError(errorMessage(caught));
     } finally {
@@ -173,7 +173,7 @@ function AiSettingsSection({
   const removeKey = async () => {
     if (
       !window.confirm(
-        `Remove the ${provider.label} API key? New summaries and translations will stop until another key is saved.`,
+        `Remove the ${provider.label} API key? Summaries and translations will stop until you save another key.`,
       )
     ) {
       return;
@@ -225,7 +225,7 @@ function AiSettingsSection({
           translationPrompt: nextTranslationPrompt,
         }),
       );
-      showToast("AI prompts saved");
+      showToast("Default AI prompts saved");
       promptDialogRef.current?.close();
     } catch (caught) {
       setPromptError(errorMessage(caught));
@@ -302,7 +302,7 @@ function AiSettingsSection({
       <div className="settings-heading">
         <div>
           <h2 id="ai-heading">AI</h2>
-          <p>One provider and model creates summaries and article translations.</p>
+          <p>Choose the provider and model used for summaries, translations, and custom prompts.</p>
         </div>
         {busy ? (
           <span className="saving-label" role="status">
@@ -316,8 +316,8 @@ function AiSettingsSection({
         <div className="ai-settings-warning" role="alert">
           <AlertTriangle aria-hidden="true" size={17} />
           <span>
-            Set <code>AI_CREDENTIALS_KEY</code>, then restart or recreate the server to store
-            provider keys.
+            To save provider keys, set <code>AI_CREDENTIALS_KEY</code>, then restart or recreate the
+            server.
           </span>
         </div>
       ) : null}
@@ -325,7 +325,7 @@ function AiSettingsSection({
       <div className="setting-row">
         <label htmlFor="ai-summary-provider">
           <strong>Provider</strong>
-          <p>Used when a summary or translation is generated.</p>
+          <p>The active provider runs every AI action.</p>
         </label>
         <div className="ai-provider-control">
           <select
@@ -389,8 +389,8 @@ function AiSettingsSection({
           <strong>{provider.label} API key</strong>
           <p id="ai-api-key-help">
             {provider.configured
-              ? "A key is saved. Paste another key only to replace it."
-              : "The key is encrypted on this server and never shown again."}
+              ? "A key is saved. Enter a new key only if you want to replace it."
+              : "echovale encrypts this key on the server and does not show it again."}
           </p>
         </div>
         <form className="ai-key-form" onSubmit={(event) => void saveKey(event)}>
@@ -462,7 +462,7 @@ function AiSettingsSection({
       <div className="setting-row">
         <div>
           <strong>Default prompts</strong>
-          <p>Edit the built-in summary and translation instructions.</p>
+          <p>Set the instructions used by the Summarize and Translate actions.</p>
         </div>
         <button
           className="secondary-button"
@@ -479,7 +479,7 @@ function AiSettingsSection({
         <div className="custom-prompts-heading">
           <div>
             <strong>Custom prompts</strong>
-            <p>Run saved instructions on any article from the AI prompt menu.</p>
+            <p>Add named instructions that you can run from an article's AI menu.</p>
           </div>
           <button
             className="secondary-button"
@@ -523,7 +523,9 @@ function AiSettingsSection({
             ))}
           </ul>
         ) : (
-          <p className="custom-prompts-empty">No custom prompts yet.</p>
+          <p className="custom-prompts-empty">
+            No custom prompts. Add one to create another article action.
+          </p>
         )}
       </div>
 
@@ -543,7 +545,7 @@ function AiSettingsSection({
             </span>
             <div>
               <h2 id="ai-prompt-dialog-title">Edit default prompts</h2>
-              <p>These instructions are used by Summarize and Translate.</p>
+              <p>Edit the instructions behind the Summarize and Translate actions.</p>
             </div>
             <button
               className="icon-button"
@@ -666,7 +668,7 @@ function AiSettingsSection({
               <h2 id="custom-prompt-dialog-title">
                 {editingCustomPrompt ? "Edit custom prompt" : "Add custom prompt"}
               </h2>
-              <p>The article title and text are included automatically.</p>
+              <p>Write the task only. echovale adds the article title and text.</p>
             </div>
             <button
               className="icon-button"
@@ -682,7 +684,7 @@ function AiSettingsSection({
           <div className="management-dialog-body custom-prompt-dialog-body">
             <label htmlFor="custom-prompt-name">
               <span>Name</span>
-              <p id="custom-prompt-name-help">Shown in the article prompt menu.</p>
+              <p id="custom-prompt-name-help">This name appears in the article's AI menu.</p>
               <input
                 ref={customPromptNameRef}
                 id="custom-prompt-name"
@@ -804,7 +806,7 @@ export function SettingsPage({
     <div className="management-page settings-page">
       <PageHeader
         title="Settings"
-        description="Reading preferences, AI, polling, shortcuts, and portable subscriptions for this account."
+        description="Set reading behavior, refresh intervals, AI, keyboard shortcuts, and OPML transfer."
         onMenu={onMenu}
         actions={
           saving ? (
@@ -818,12 +820,12 @@ export function SettingsPage({
       <section className="settings-section" aria-labelledby="appearance-heading">
         <div className="settings-heading">
           <h2 id="appearance-heading">Appearance</h2>
-          <p>Saved for this account in this browser.</p>
+          <p>These display choices apply to this account in this browser.</p>
         </div>
         <div className="setting-row">
           <div>
             <strong>Theme</strong>
-            <p>Dark is the default for evening reading.</p>
+            <p>Choose a light or dark theme for this browser.</p>
           </div>
           <div className="theme-options">
             <button type="button" aria-pressed={theme === "dark"} onClick={() => onTheme("dark")}>
@@ -839,7 +841,7 @@ export function SettingsPage({
         <div className="setting-row">
           <div>
             <strong>Article text size</strong>
-            <p>One saved size applies to every full article in reader and expanded views.</p>
+            <p>This size applies to full articles in both reading views.</p>
           </div>
           <div className="font-stepper">
             <button
@@ -868,12 +870,12 @@ export function SettingsPage({
       <section className="settings-section" aria-labelledby="reading-behavior-heading">
         <div className="settings-heading">
           <h2 id="reading-behavior-heading">Reading behavior</h2>
-          <p>Applied consistently across feeds and folders.</p>
+          <p>These choices apply to every feed and folder.</p>
         </div>
         <div className="setting-row">
           <div>
-            <strong>Mark read on scroll</strong>
-            <p>Mark an unread card or expanded article only after you scroll completely past it.</p>
+            <strong>Mark as read on scroll</strong>
+            <p>Mark an article as read after you scroll completely past it.</p>
           </div>
           <button
             className={`switch ${settings.markReadOnScroll ? "is-on" : ""}`}
@@ -889,7 +891,7 @@ export function SettingsPage({
         <div className="setting-row">
           <label htmlFor="translation-language">
             <strong>Translation language</strong>
-            <p>Article translations use this language and the AI model configured below.</p>
+            <p>Translate articles into this language with the configured AI model.</p>
           </label>
           <form
             className="translation-language-form"
@@ -944,7 +946,7 @@ export function SettingsPage({
       <section className="settings-section" aria-labelledby="refresh-heading">
         <div className="settings-heading">
           <h2 id="refresh-heading">Refresh</h2>
-          <p>Background polling continues while the server is running.</p>
+          <p>The server refreshes feeds even when no browser is open.</p>
         </div>
         <div className="setting-row">
           <label htmlFor="poll-interval">
@@ -1000,12 +1002,12 @@ export function SettingsPage({
       <section className="settings-section" aria-labelledby="keyboard-heading">
         <div className="settings-heading">
           <h2 id="keyboard-heading">Keyboard</h2>
-          <p>Shortcuts pause while typing in any field.</p>
+          <p>Single-key shortcuts pause while you type in a form field.</p>
         </div>
         <div className="setting-row">
           <div>
             <strong>Single-key shortcuts</strong>
-            <p>Turn off navigation and action shortcuts without affecting normal tab navigation.</p>
+            <p>Turn off letter and number shortcuts. Tab navigation remains available.</p>
           </div>
           <button
             className={`switch ${settings.singleKeyShortcuts ? "is-on" : ""}`}
@@ -1024,12 +1026,12 @@ export function SettingsPage({
       <section className="settings-section" aria-labelledby="portable-heading">
         <div className="settings-heading">
           <h2 id="portable-heading">Subscriptions</h2>
-          <p>OPML keeps folder structure and feed URLs portable.</p>
+          <p>Use OPML to move feed URLs and folder structure between readers.</p>
         </div>
         <div className="setting-row">
           <div>
             <strong>Import or export OPML</strong>
-            <p>Imports skip subscriptions that already exist.</p>
+            <p>Import adds new feeds and skips feed URLs you already follow.</p>
           </div>
           <div className="settings-actions">
             <ImportOpmlButton mutations={mutations} showToast={showToast} />

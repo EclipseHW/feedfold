@@ -134,7 +134,7 @@ function invalidTranslationResponse(): AiError {
   return new AiError(
     "AI_RESPONSE_INVALID",
     502,
-    "The AI provider returned an incomplete translation. Try again.",
+    "The AI provider returned an incomplete translation. Try the translation again.",
   );
 }
 
@@ -169,7 +169,7 @@ export function prepareArticleTranslation(
     throw new AiError(
       "ARTICLE_HAS_NO_TEXT",
       422,
-      "This article does not contain text from the selected view that can be translated.",
+      "This article view has no text to translate. Choose another view or open the source.",
     );
   }
   const prompt = promptHtml(sourceHtml);
@@ -177,7 +177,7 @@ export function prepareArticleTranslation(
     throw new AiError(
       "ARTICLE_HAS_NO_TEXT",
       422,
-      "This article does not contain text from the selected view that can be translated.",
+      "This article view has no text to translate. Choose another view or open the source.",
     );
   }
   return {

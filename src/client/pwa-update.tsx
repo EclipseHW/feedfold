@@ -11,7 +11,7 @@ export function PwaUpdate() {
 
   return (
     <aside className="pwa-update" aria-live="polite" aria-label="echovale update available">
-      <span>A new version of echovale is ready.</span>
+      <span>An echovale update is ready.</span>
       <div className="pwa-update-actions">
         <button
           className="secondary-button"
@@ -19,12 +19,12 @@ export function PwaUpdate() {
           onClick={() => void updateServiceWorker()}
         >
           <RefreshCw aria-hidden="true" size={15} />
-          Update
+          Update echovale
         </button>
         <button
           className="icon-button"
           type="button"
-          aria-label="Dismiss update"
+          aria-label="Dismiss update notice"
           onClick={() => setNeedRefresh(false)}
         >
           <X aria-hidden="true" size={16} />

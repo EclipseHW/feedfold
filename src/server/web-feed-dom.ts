@@ -218,13 +218,13 @@ export function extractWebFeedSelection(
     items = [...document.querySelectorAll(selectors.item)];
   } catch {
     throw new WebFeedError(
-      "The saved page selection is no longer valid. Reload the page to repair it.",
+      "This page has changed, so the saved selection is no longer valid. Edit the page selection to repair the feed.",
       "selection_broken",
     );
   }
   if (items.length > MAX_MATCHED_ITEMS) {
     throw new WebFeedError(
-      "This selection matches too many page elements to create a reliable feed.",
+      "This selection matches too many page elements. Choose a smaller entry group.",
       "unsupported_content",
     );
   }
@@ -245,7 +245,7 @@ export function extractWebFeedSelection(
       imageElement = selectedElement(item, selectors.image);
     } catch {
       throw new WebFeedError(
-        "The saved page selection is no longer valid. Reload the page to repair it.",
+        "This page has changed, so the saved selection is no longer valid. Edit the page selection to repair the feed.",
         "selection_broken",
       );
     }
@@ -392,7 +392,7 @@ function groupLabel(parent: Element, elements: Element[]): string {
   if (/\brelease|version|changelog/.test(words)) return "Releases";
   if (/\bannounce|notice|update/.test(words)) return "Announcements";
   if (/\barticle|post|story|news|entry/.test(words)) return "Articles";
-  return "Page items";
+  return "Repeated page entries";
 }
 
 function groupScore(parent: Element, elements: Element[], fields: WebFeedField[]): number {

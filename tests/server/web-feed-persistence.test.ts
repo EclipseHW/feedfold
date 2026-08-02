@@ -246,7 +246,7 @@ describe("web feed persistence", () => {
         database.feeds.updateFeed(TEST_USER_ID, feed.id, {
           feedUrl: "https://example.test/other-page",
         }),
-      ).toThrow("Web feed URLs can only be changed by repairing the page selection");
+      ).toThrow("To change a web feed URL, edit its page selection.");
       expect(
         database.feeds.updateFeed(TEST_USER_ID, feed.id, { title: "Renamed web feed" }),
       ).toMatchObject({ title: "Renamed web feed", feedUrl: pageUrl });
@@ -321,7 +321,7 @@ describe("web feed persistence", () => {
           config: config(pageUrl),
           parsed: { title: "Jobs", siteUrl: pageUrl, articles: [] },
         }),
-      ).toThrow("The web feed selection did not match any items");
+      ).toThrow("This selection does not match any entries. Choose another entry group.");
       expect(database.feeds.listFeeds(TEST_USER_ID)).toEqual([]);
 
       const published = database.feeds.createFeed(TEST_USER_ID, {
@@ -349,7 +349,7 @@ describe("web feed persistence", () => {
             articles: [article("one", "One", "https://example.test/one")],
           },
         ),
-      ).toThrow("Only web feeds have page selections");
+      ).toThrow("Choose a web feed before editing a page selection.");
       expect(database.feeds.listOpmlFeeds(TEST_USER_ID)).toMatchObject([
         { title: "Published feed", feedUrl: "https://example.test/feed.xml" },
       ]);
