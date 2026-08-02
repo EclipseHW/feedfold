@@ -49,7 +49,7 @@ export class FolderRepository {
 
   assertFolderExists(userId: number, folderId: number | null | undefined): void {
     if (folderId !== null && folderId !== undefined && !this.getFolder(userId, folderId)) {
-      throw new InvalidRequestError("The selected folder or feed does not exist");
+      throw new InvalidRequestError("That feed or folder no longer exists. Reload and try again.");
     }
   }
 
@@ -99,7 +99,7 @@ export class FolderRepository {
       input.parentId === id ||
       (input.parentId !== undefined && this.isFolderDescendant(userId, input.parentId, id))
     ) {
-      throw new InvalidRequestError("A folder cannot be moved inside itself");
+      throw new InvalidRequestError("Choose a parent outside this folder.");
     }
     this.sqlite
       .prepare(

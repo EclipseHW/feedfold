@@ -88,7 +88,7 @@ export function useArticleActions({
         const fullArticle = await api.article(article.id);
         if (!fullContentVisibleIdsRef.current.has(article.id)) queue.mergeArticle(fullArticle);
       } catch (caught) {
-        showToast(`Could not load full article: ${errorMessage(caught)}`);
+        showToast(`Could not load the full article: ${errorMessage(caught)}`);
       } finally {
         fullContentLoadingIds.current.delete(article.id);
       }
@@ -169,7 +169,7 @@ export function useArticleActions({
         setBootstrap((current) =>
           current ? updateBootstrapCounts(current, article, -unreadDelta, -starredDelta) : current,
         );
-        showToast(`Could not update article: ${errorMessage(caught)}`);
+        showToast(`Could not update the article: ${errorMessage(caught)}`);
         await loadBootstrap();
         if (route.routedArticleId === null) await loadArticles();
       }
@@ -255,7 +255,7 @@ export function useArticleActions({
   const copyArticleUrl = useCallback(
     async (article: Article | null) => {
       if (!article?.url) {
-        showToast("This article has no source URL");
+        showToast("This article has no source link.");
         return;
       }
       try {
@@ -271,9 +271,9 @@ export function useArticleActions({
           document.execCommand("copy");
           input.remove();
         }
-        showToast("Article URL copied");
+        showToast("Article link copied");
       } catch {
-        showToast("Could not copy the article URL");
+        showToast("Could not copy the article link. Copy it from the source page instead.");
       }
     },
     [showToast],
@@ -282,7 +282,7 @@ export function useArticleActions({
   const openArticleSource = useCallback(
     (article: Article | null) => {
       if (!article?.url) {
-        showToast("This article has no source URL");
+        showToast("This article has no source link.");
         return;
       }
       window.open(article.url, "_blank", "noopener,noreferrer");
@@ -334,7 +334,7 @@ export function useArticleActions({
           next.delete(article.id);
           return next;
         });
-        showToast(`Could not load full content: ${errorMessage(caught)}`);
+        showToast(`Could not load the full article: ${errorMessage(caught)}`);
         void loadFullArticle(article);
       }
     },
@@ -559,7 +559,7 @@ export function useArticleActions({
         return true;
       } catch (caught) {
         for (const id of protectedIds) manuallyUnreadArticleIds.current.add(id);
-        showToast(`Could not mark articles read: ${errorMessage(caught)}`);
+        showToast(`Could not mark articles as read: ${errorMessage(caught)}`);
         await Promise.all([loadBootstrap(), loadArticles()]);
         return false;
       }
@@ -578,12 +578,12 @@ export function useArticleActions({
   const markVisibleRead = useCallback(async () => {
     const unreadArticles = queue.articles.filter((article) => !article.isRead);
     if (unreadArticles.length === 0) {
-      showToast("No unread articles in this view");
+      showToast("This view has no unread articles.");
       return;
     }
     if (await markArticleBatchRead(unreadArticles)) {
       showToast(
-        `Marked ${unreadArticles.length} ${unreadArticles.length === 1 ? "article" : "articles"} read`,
+        `Marked ${unreadArticles.length} ${unreadArticles.length === 1 ? "article" : "articles"} as read`,
       );
     }
   }, [markArticleBatchRead, queue.articles, showToast]);
@@ -601,11 +601,11 @@ export function useArticleActions({
         await Promise.all([loadBootstrap(), loadArticles()]);
         showToast(
           result.updated === 0
-            ? "No unread articles matched that age"
-            : `Marked ${result.updated} ${result.updated === 1 ? "article" : "articles"} read`,
+            ? "No unread articles are older than that."
+            : `Marked ${result.updated} ${result.updated === 1 ? "article" : "articles"} as read`,
         );
       } catch (caught) {
-        showToast(`Could not mark older articles read: ${errorMessage(caught)}`);
+        showToast(`Could not mark older articles as read: ${errorMessage(caught)}`);
       } finally {
         setMarkReadPending(false);
       }

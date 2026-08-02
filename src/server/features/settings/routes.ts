@@ -12,7 +12,7 @@ const duplicateArticleWindowDays = z.custom<DuplicateArticleWindowDays>(
   (value) =>
     typeof value === "number" &&
     DUPLICATE_ARTICLE_WINDOW_DAYS.includes(value as DuplicateArticleWindowDays),
-  "Choose 1, 7, or 30 days",
+  "Choose 1, 7, or 30 days.",
 );
 
 export async function settingsRoutes(

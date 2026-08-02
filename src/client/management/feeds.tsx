@@ -157,8 +157,8 @@ export function FeedsPage({
   return (
     <div className="management-page">
       <PageHeader
-        title="Feeds & status"
-        description="Review subscription health and organize sources."
+        title="Manage feeds"
+        description="Add feeds, organize folders, and resolve refresh problems."
         onMenu={onMenu}
         actions={
           activeTab === "subscriptions" ? (
@@ -199,7 +199,7 @@ export function FeedsPage({
         <div
           className="management-tabs"
           role="tablist"
-          aria-label="Feeds and status"
+          aria-label="Feed management"
           onKeyDown={handleFeedsTabKeyDown}
         >
           <button
@@ -248,7 +248,7 @@ export function FeedsPage({
               mutations={mutations}
               onCancel={closeAddFeed}
               onSaved={(feed) => {
-                showToast(`Added ${feed.title}`);
+                showToast(`Subscribed to ${feed.title}`);
                 closeAddFeed();
               }}
             />
@@ -257,8 +257,8 @@ export function FeedsPage({
           <section className="management-section" aria-labelledby="subscriptions-heading">
             <div className="section-title-row">
               <div>
-                <h2 id="subscriptions-heading">Subscriptions</h2>
-                <p>Monitor sources and act on feeds that need attention.</p>
+                <h2 id="subscriptions-heading">Feeds</h2>
+                <p>Check refresh status and repair feeds that need attention.</p>
               </div>
               <p className="feed-result-count" aria-live="polite">
                 {filtersActive ? (
@@ -317,7 +317,7 @@ export function FeedsPage({
                     Clear filters
                   </button>
                 ) : (
-                  <span className="feed-filter-hint">Combine filters to narrow the list.</span>
+                  <span className="feed-filter-hint">Filter by type and status.</span>
                 )}
               </fieldset>
             ) : null}
@@ -325,14 +325,14 @@ export function FeedsPage({
             {bootstrap.feeds.length === 0 ? (
               <div className="section-empty">
                 <Rss aria-hidden="true" size={22} />
-                <h3>No subscriptions yet</h3>
-                <p>Add a feed URL or import OPML from another reader.</p>
+                <h3>No feeds yet</h3>
+                <p>Add a website or feed URL, or import subscriptions from an OPML file.</p>
               </div>
             ) : filteredFeeds.length === 0 ? (
               <div className="section-empty filtered-empty">
                 <ListFilter aria-hidden="true" size={22} />
                 <h3>No feeds match these filters</h3>
-                <p>Choose a different type or status to see more subscriptions.</p>
+                <p>Change a filter, or clear both filters to show every feed.</p>
                 <button className="secondary-button" type="button" onClick={clearFeedFilters}>
                   Clear filters
                 </button>
@@ -379,8 +379,8 @@ export function FeedsPage({
         >
           <div className="section-title-row">
             <div>
-              <h2 id="folders-heading">Folder configuration</h2>
-              <p>Organize reading groups, nesting, and article order.</p>
+              <h2 id="folders-heading">Folders</h2>
+              <p>Group feeds, nest folders, and choose the article order.</p>
             </div>
             <p className="feed-result-count">
               <strong>{bootstrap.folders.length}</strong>{" "}
@@ -403,7 +403,7 @@ export function FeedsPage({
             <div className="section-empty">
               <FolderIcon aria-hidden="true" size={22} />
               <h3>No folders yet</h3>
-              <p>Feeds stay at the top level until you create a reading group.</p>
+              <p>Create a folder to group feeds. Until then, feeds remain at the top level.</p>
               <button
                 className="secondary-button"
                 type="button"
@@ -457,7 +457,7 @@ function FeedConfirmationSettings({
           disabled={disabled}
           onChange={(event) => onTitleChange(event.target.value)}
         />
-        <small>Keep the detected title or choose your own.</small>
+        <small>Use the detected name, or enter a name of your own.</small>
       </label>
       <label className="field">
         <span>Folder</span>
@@ -616,7 +616,7 @@ function AddFeedForm({
       if (!feed) return;
       await onSaved(feed);
     } catch (error) {
-      setError(`Could not add feed: ${errorMessage(error)}`);
+      setError(`Could not add this feed. ${errorMessage(error)}`);
     } finally {
       setSaving(false);
     }
@@ -632,7 +632,7 @@ function AddFeedForm({
       <div className="inline-editor-heading">
         <div>
           <h2>Add a feed</h2>
-          <p>Start with any page on the site. You can review the source before subscribing.</p>
+          <p>Enter a website or feed URL. Review the entries before you subscribe.</p>
         </div>
         <button
           className="icon-button"
@@ -672,7 +672,7 @@ function AddFeedForm({
             }}
           />
           <small id="feed-url-help">
-            RSS, Atom, and JSON Feed links are detected automatically.
+            echovale checks the page for RSS, Atom, and JSON Feed links.
           </small>
         </label>
         <button
@@ -685,7 +685,7 @@ function AddFeedForm({
           ) : (
             <Search aria-hidden="true" size={16} />
           )}
-          {discovering ? "Finding feed" : preview || webPage ? "Check again" : "Find feed"}
+          {discovering ? "Checking URL" : preview || webPage ? "Check again" : "Check URL"}
         </button>
       </form>
 
@@ -703,15 +703,12 @@ function AddFeedForm({
           </div>
           <div>
             <h3 id="web-feed-offer-heading" ref={previewHeadingRef} tabIndex={-1}>
-              No published feed found
+              This page has no published feed
             </h3>
-            <p>
-              echovale can look for repeated articles, releases, jobs, products, or announcements on
-              this public page and turn them into a normal feed.
-            </p>
+            <p>echovale can turn repeated entries on this public page into a web feed.</p>
             <small>
-              The page will load with JavaScript. Sign-ins, paywalls, CAPTCHAs, pagination, and
-              change tracking are not supported.
+              Web feeds support one public page. They do not support sign-ins, paywalls, CAPTCHAs,
+              pagination, or arbitrary change tracking.
             </small>
           </div>
           <button
@@ -737,8 +734,8 @@ function AddFeedForm({
             >
               <span>
                 {analyzingWebPage
-                  ? "Loading the webpage with JavaScript and finding repeated items…"
-                  : "Looking for a published feed and loading recent entries…"}
+                  ? "Loading the page and finding repeated entries…"
+                  : "Looking for a published feed and loading its latest entries…"}
               </span>
               <div className="feed-preview-loading-lines" aria-hidden="true">
                 <div className="skeleton-line wide" />
@@ -775,14 +772,14 @@ function AddFeedForm({
                       )}
                       <span aria-hidden="true">·</span>
                       <a href={displayedPreview.feedUrl} target="_blank" rel="noreferrer">
-                        Feed source
+                        Open feed source
                         <ExternalLink aria-hidden="true" size={12} />
                       </a>
                     </div>
                   </div>
                   <span className="feed-found-badge">
                     <CheckCircle2 aria-hidden="true" size={14} />
-                    Ready to add
+                    Published feed found
                   </span>
                 </div>
 
@@ -842,9 +839,7 @@ function AddFeedForm({
                     ))}
                   </ol>
                 ) : (
-                  <p className="feed-preview-empty">
-                    This feed does not currently publish any entries.
-                  </p>
+                  <p className="feed-preview-empty">This feed has no entries to preview.</p>
                 )}
               </section>
 
@@ -860,7 +855,7 @@ function AddFeedForm({
               {existingFeed ? (
                 <p className="feed-existing-notice" role="status">
                   <CheckCircle2 aria-hidden="true" size={16} />
-                  Already subscribed as <strong>{existingFeed.title}</strong>.
+                  You already follow this feed as <strong>{existingFeed.title}</strong>.
                 </p>
               ) : null}
 
@@ -909,8 +904,8 @@ function AddFeedForm({
 
           {selectedCandidate && !selectedCandidate.availableFields.includes("date") ? (
             <p className="web-feed-date-fallback">
-              No publication date was found. New entries will use the time echovale first discovers
-              them.
+              These entries have no publication date. echovale will use the time it first discovers
+              each one.
             </p>
           ) : null}
 
@@ -926,7 +921,7 @@ function AddFeedForm({
           {existingFeed ? (
             <p className="feed-existing-notice" role="status">
               <CheckCircle2 aria-hidden="true" size={16} />
-              Already subscribed as <strong>{existingFeed.title}</strong>.
+              You already follow this feed as <strong>{existingFeed.title}</strong>.
             </p>
           ) : null}
 
@@ -1008,7 +1003,7 @@ function FeedRow({
       showToast(`Saved ${title.trim()}`);
       setEditing(false);
     } catch (error) {
-      showToast(`Could not save feed: ${errorMessage(error)}`);
+      showToast(`Could not save ${feed.title}: ${errorMessage(error)}`);
     } finally {
       setBusy(false);
     }
@@ -1020,20 +1015,20 @@ function FeedRow({
       await mutations.updateFeed(feed.id, { paused: !feed.paused });
       showToast(feed.paused ? `Resumed ${feed.title}` : `Paused ${feed.title}`);
     } catch (error) {
-      showToast(`Could not update feed: ${errorMessage(error)}`);
+      showToast(`Could not update ${feed.title}: ${errorMessage(error)}`);
     } finally {
       setBusy(false);
     }
   };
 
   const remove = async () => {
-    if (!window.confirm(`Delete “${feed.title}” and all of its articles?`)) return;
+    if (!window.confirm(`Unsubscribe from “${feed.title}” and delete its stored articles?`)) return;
     setBusy(true);
     try {
       await mutations.deleteFeed(feed.id);
-      showToast(`Deleted ${feed.title}`);
+      showToast(`Unsubscribed from ${feed.title}`);
     } catch (error) {
-      showToast(`Could not delete feed: ${errorMessage(error)}`);
+      showToast(`Could not unsubscribe from ${feed.title}: ${errorMessage(error)}`);
     } finally {
       setBusy(false);
     }
@@ -1058,7 +1053,7 @@ function FeedRow({
               />
               {feed.sourceKind === "web" ? (
                 <small>
-                  Change the page through Edit page selection so its saved match stays valid.
+                  To change this URL, use Edit page selection so the saved entry group stays valid.
                 </small>
               ) : null}
             </label>
@@ -1213,8 +1208,8 @@ function FeedRow({
           type="button"
           disabled={busy}
           onClick={() => void remove()}
-          aria-label={`Delete ${feed.title}`}
-          title="Delete feed"
+          aria-label={`Unsubscribe from ${feed.title}`}
+          title="Unsubscribe from feed"
         >
           <Trash2 aria-hidden="true" size={15} />
         </button>
@@ -1274,7 +1269,7 @@ export function FolderForm({
         : await mutations.createFolder({ name: name.trim(), parentId, sortDirection });
       await onSaved(folder);
     } catch (error) {
-      showToast(`Could not save folder: ${errorMessage(error)}`);
+      showToast(`Could not save the folder: ${errorMessage(error)}`);
     } finally {
       setSaving(false);
     }
@@ -1349,15 +1344,13 @@ function FolderRow({
   const parent = folders.find((candidate) => candidate.id === folder.parentId);
 
   const remove = async () => {
-    if (
-      !window.confirm(`Delete folder “${folder.name}”? Feeds inside it will move to the top level.`)
-    )
+    if (!window.confirm(`Delete folder “${folder.name}”? Its feeds will move to the top level.`))
       return;
     try {
       await mutations.deleteFolder(folder.id);
       showToast(`Deleted folder ${folder.name}`);
     } catch (error) {
-      showToast(`Could not delete folder: ${errorMessage(error)}`);
+      showToast(`Could not delete ${folder.name}: ${errorMessage(error)}`);
     }
   };
 

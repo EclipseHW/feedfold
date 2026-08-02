@@ -75,7 +75,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
       return;
     }
     if (error instanceof ZodError) {
-      reply.code(400).send({ error: error.issues[0]?.message ?? "Invalid request" });
+      reply.code(400).send({ error: error.issues[0]?.message ?? "The request is invalid." });
       return;
     }
     if (error instanceof InvalidRequestError) {
@@ -87,16 +87,18 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
         error.code === "SQLITE_CONSTRAINT_UNIQUE" ||
         error.code === "SQLITE_CONSTRAINT_PRIMARYKEY"
       ) {
-        reply.code(409).send({ error: "That item already exists" });
+        reply.code(409).send({ error: "This item already exists." });
         return;
       }
       if (error.code === "SQLITE_CONSTRAINT_FOREIGNKEY") {
-        reply.code(400).send({ error: "The selected folder or feed does not exist" });
+        reply
+          .code(400)
+          .send({ error: "That feed or folder no longer exists. Reload and try again." });
         return;
       }
     }
     app.log.error(error);
-    reply.code(500).send({ error: "Internal server error" });
+    reply.code(500).send({ error: "The server could not complete the request. Try again." });
   });
 
   app.get("/health", async () => {
@@ -111,7 +113,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     if (path === "/api/auth/login" || path === "/api/auth/register" || path === "/api/auth/session")
       return;
     const user = services.authService.userForToken(sessionToken(request.headers.cookie));
-    if (!user) return reply.code(401).send({ error: "Sign in required" });
+    if (!user) return reply.code(401).send({ error: "Sign in to continue." });
     requestUsers.set(request, user);
   });
 
@@ -161,7 +163,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     });
     app.setNotFoundHandler((request, reply) => {
       if (request.url.startsWith("/api/") || request.url === "/health") {
-        return reply.code(404).send({ error: "Not found" });
+        return reply.code(404).send({ error: "This page does not exist." });
       }
       return reply.sendFile("index.html");
     });

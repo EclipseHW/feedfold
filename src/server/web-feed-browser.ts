@@ -69,17 +69,17 @@ function pageUrl(value: string): URL {
   try {
     url = new URL(value);
   } catch {
-    throw new WebFeedError("Enter a valid public webpage URL.", "inaccessible");
+    throw new WebFeedError("Enter a valid public page URL.", "inaccessible");
   }
   if (url.protocol !== "http:" && url.protocol !== "https:") {
     throw new WebFeedError(
-      "Only public HTTP and HTTPS webpages can become web feeds.",
+      "Enter a public URL that begins with http:// or https://.",
       "inaccessible",
     );
   }
   if (url.username || url.password) {
     throw new WebFeedError(
-      "Authenticated webpages are not supported by web feeds.",
+      "Remove the username and password from this URL. Web feeds only support public pages.",
       "inaccessible",
     );
   }
@@ -137,13 +137,13 @@ export function webFeedContentRequestError(loaded: LoadedWebFeedPage): WebFeedEr
   if (!failure) return null;
   if (failure.kind === "http" && failure.httpStatus !== null) {
     return new WebFeedError(
-      `This webpage could not finish loading its items because a page request returned HTTP ${failure.httpStatus}.`,
+      `This page could not finish loading its entries because one request returned HTTP ${failure.httpStatus}. Try again.`,
       "http",
       failure.httpStatus,
     );
   }
   return new WebFeedError(
-    "This webpage could not finish loading its items because a page request failed.",
+    "This page could not finish loading its entries because one request failed. Try again.",
     "network",
   );
 }
@@ -414,20 +414,25 @@ async function inlineComputedStyles(page: Page, byteLimit: number): Promise<void
 function browserFailure(error: unknown): WebFeedError {
   if (error instanceof WebFeedError) return error;
   if (error instanceof playwrightErrors.TimeoutError) {
-    return new WebFeedError("This webpage took too long to load.", "timeout", null, {
+    return new WebFeedError("This page took too long to load. Try again.", "timeout", null, {
       cause: error,
     });
   }
   const message = error instanceof Error ? error.message : "Unknown browser error";
   if (/executable doesn't exist|browser.*not found|failed to launch/i.test(message)) {
     return new WebFeedError(
-      "JavaScript webpage loading is not available on this echovale installation.",
+      "This echovale server cannot load JavaScript pages. Check the server's Chromium setup.",
       "unsupported_content",
       null,
       { cause: error },
     );
   }
-  return new WebFeedError("Could not load this webpage.", "network", null, { cause: error });
+  return new WebFeedError(
+    "Could not load this page. Check the address, then try again.",
+    "network",
+    null,
+    { cause: error },
+  );
 }
 
 export class WebFeedBrowserLoader {
@@ -506,7 +511,7 @@ export class WebFeedBrowserLoader {
   }
 
   async #browser(): Promise<Browser> {
-    if (this.#closed) throw new WebFeedError("Web feed loading has stopped.", "network");
+    if (this.#closed) throw new WebFeedError("Web feed loading stopped. Try again.", "network");
     if (!this.#browserPromise) {
       const browserPromise = this.#browserFactory();
       this.#browserPromise = browserPromise;
@@ -584,7 +589,7 @@ export class WebFeedBrowserLoader {
         transferredResourceBytes += event.dataLength;
         if (transferredResourceBytes > this.#maxResourceBytes && !fatalError) {
           fatalError = new WebFeedError(
-            "This webpage loads too much data to create a reliable web feed.",
+            "This page loads too much data to become a reliable web feed. Choose another page.",
             "unsupported_content",
           );
           void page?.close();
@@ -605,7 +610,7 @@ export class WebFeedBrowserLoader {
         declaredResourceBytes += length;
         if (declaredResourceBytes > this.#maxResourceBytes && !fatalError) {
           fatalError = new WebFeedError(
-            "This webpage loads too much data to create a reliable web feed.",
+            "This page loads too much data to become a reliable web feed. Choose another page.",
             "unsupported_content",
           );
           void page?.close();
@@ -615,7 +620,7 @@ export class WebFeedBrowserLoader {
         requestCount += 1;
         if (requestCount > this.#maxRequests) {
           fatalError ??= new WebFeedError(
-            "This webpage makes too many requests to create a reliable web feed.",
+            "This page makes too many requests to become a reliable web feed. Choose another page.",
             "unsupported_content",
           );
           await route.abort("blockedbyclient");
@@ -670,33 +675,45 @@ export class WebFeedBrowserLoader {
         throw browserFailure(error);
       }
       if (fatalError) throw fatalError;
-      if (!response) throw new WebFeedError("Could not load this webpage.", "network");
+      if (!response)
+        throw new WebFeedError(
+          "Could not load this page. Check the address, then try again.",
+          "network",
+        );
       const status = response.status();
       if (status === 401 || status === 407) {
-        throw new WebFeedError("This webpage is not publicly accessible.", "inaccessible", status);
+        throw new WebFeedError(
+          "This page is not public. Use a page that does not require sign-in.",
+          "inaccessible",
+          status,
+        );
       }
       if (status === 403 || status === 429) {
         throw new WebFeedError(
-          "This webpage blocked automated loading or requires a security check.",
+          "This page blocked automated loading. Choose another page, or try again later.",
           "access_blocked",
           status,
         );
       }
       if (status >= 400) {
-        throw new WebFeedError(`This webpage returned HTTP ${status}.`, "http", status);
+        throw new WebFeedError(
+          `This page returned HTTP ${status}. Try again later.`,
+          "http",
+          status,
+        );
       }
       const headers = response.headers();
       const contentType = headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase();
       if (contentType && contentType !== "text/html" && contentType !== "application/xhtml+xml") {
         throw new WebFeedError(
-          "This URL does not return a supported HTML webpage.",
+          "This URL does not return an HTML page. Choose a website page instead.",
           "unsupported_content",
           status,
         );
       }
       if (/attachment/i.test(headers["content-disposition"] ?? "")) {
         throw new WebFeedError(
-          "Downloads cannot be converted into web feeds.",
+          "This URL starts a download. Choose an HTML page instead.",
           "unsupported_content",
           status,
         );
@@ -707,7 +724,7 @@ export class WebFeedBrowserLoader {
         declaredDocumentBytes > this.#maxDocumentBytes
       ) {
         throw new WebFeedError(
-          "This webpage is too large to create a reliable web feed.",
+          "This page is too large to become a reliable web feed. Choose another page.",
           "unsupported_content",
           status,
         );
@@ -722,7 +739,7 @@ export class WebFeedBrowserLoader {
         );
       if (await detectedChallenge(page)) {
         throw new WebFeedError(
-          "This webpage requires a CAPTCHA or bot-protection check that echovale cannot bypass.",
+          "This page requires a CAPTCHA or bot check that echovale cannot complete. Choose another page.",
           "access_blocked",
           status,
         );
@@ -736,7 +753,7 @@ export class WebFeedBrowserLoader {
       );
       if (settled === "timeout") {
         throw new WebFeedError(
-          "This webpage's JavaScript did not finish updating the page in time.",
+          "This page's JavaScript did not finish in time. Try again.",
           "javascript_timeout",
           status,
         );
@@ -747,7 +764,7 @@ export class WebFeedBrowserLoader {
       const bodyText = await page.evaluate(() => document.body?.innerText ?? "");
       if (challengeDetected(title, bodyText.slice(0, 50_000))) {
         throw new WebFeedError(
-          "This webpage requires a CAPTCHA or bot-protection check that echovale cannot bypass.",
+          "This page requires a CAPTCHA or bot check that echovale cannot complete. Choose another page.",
           "access_blocked",
           status,
         );
@@ -755,7 +772,7 @@ export class WebFeedBrowserLoader {
       const initialElementCount = await page.locator("*").count();
       if (initialElementCount > this.#maxElements) {
         throw new WebFeedError(
-          "This webpage has too many elements to create a reliable web feed.",
+          "This page has too many elements to become a reliable web feed. Choose another page.",
           "unsupported_content",
           status,
         );
@@ -768,7 +785,7 @@ export class WebFeedBrowserLoader {
       const elementCount = await page.locator("*").count();
       if (elementCount > this.#maxElements) {
         throw new WebFeedError(
-          "This webpage has too many elements to create a reliable web feed.",
+          "This page has too many elements to become a reliable web feed. Choose another page.",
           "unsupported_content",
           status,
         );
@@ -776,7 +793,7 @@ export class WebFeedBrowserLoader {
       const html = await page.content();
       if (Buffer.byteLength(html, "utf8") > this.#maxDocumentBytes) {
         throw new WebFeedError(
-          "This webpage is too large to create a reliable web feed.",
+          "This page is too large to become a reliable web feed. Choose another page.",
           "unsupported_content",
           status,
         );
@@ -784,13 +801,13 @@ export class WebFeedBrowserLoader {
       if (!singleLine(bodyText)) {
         if (!domContentLoaded) {
           throw new WebFeedError(
-            "This webpage did not finish loading before echovale could read its content.",
+            "This page did not finish loading before echovale could read it. Try again.",
             "javascript_timeout",
             status,
           );
         }
         throw new WebFeedError(
-          "This webpage did not produce readable content after loading.",
+          "This page did not contain readable entries. Choose another page.",
           "unsupported_content",
           status,
         );

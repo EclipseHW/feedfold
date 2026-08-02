@@ -138,7 +138,7 @@ export function decodeArticleCursor(cursor: string): ArticleCursor {
     }
     return boundaries;
   } catch {
-    throw new InvalidRequestError("Invalid article cursor");
+    throw new InvalidRequestError("This article page has expired. Reload the list.");
   }
 }
 

@@ -118,7 +118,7 @@ export class FeedRepository {
     this.folders.assertFolderExists(userId, input.folderId);
     const feedUrl = input.feedUrl ? new URL(input.feedUrl).toString() : existing.feedUrl;
     if (existing.sourceKind === "web" && feedUrl !== existing.feedUrl) {
-      throw new Error("Web feed URLs can only be changed by repairing the page selection");
+      throw new Error("To change a web feed URL, edit its page selection.");
     }
     const title = input.title ?? (existing.title === existing.feedUrl ? feedUrl : existing.title);
     this.sqlite

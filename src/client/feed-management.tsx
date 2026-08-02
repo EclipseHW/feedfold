@@ -60,7 +60,7 @@ export function FeedActionMenuItems({
       </button>
       <button type="button" role="menuitem" onClick={() => onAction("move")}>
         <Folder aria-hidden="true" size={15} />
-        Add to folder
+        Move to folder
       </button>
       <button type="button" role="menuitem" onClick={() => onAction("rule")}>
         <ListFilter aria-hidden="true" size={15} />
@@ -74,7 +74,7 @@ export function FeedActionMenuItems({
         onClick={() => onAction("unsubscribe")}
       >
         <Trash2 aria-hidden="true" size={15} />
-        Unsubscribe
+        Unsubscribe from feed
       </button>
     </>
   );
@@ -97,7 +97,7 @@ export function FolderActionMenuItems({
       </button>
       <button type="button" role="menuitem" onClick={() => onAction("add-folder")}>
         <FolderPlus aria-hidden="true" size={15} />
-        Add new folder
+        Add subfolder
       </button>
       <button type="button" role="menuitem" onClick={() => onAction("rule")}>
         <ListFilter aria-hidden="true" size={15} />

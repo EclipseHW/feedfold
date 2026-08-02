@@ -5,7 +5,7 @@ import { PwaUpdate } from "./pwa-update";
 import "./styles.css";
 
 const root = document.getElementById("root");
-if (!root) throw new Error("echovale root element is missing");
+if (!root) throw new Error("The echovale root element is missing.");
 
 createRoot(root).render(
   <StrictMode>

@@ -56,7 +56,7 @@ function providerError(provider: string, status: number, body: unknown): AiError
     return new AiError(
       "AI_MODEL_UNAVAILABLE",
       422,
-      `The selected ${provider} model could not process this article.`,
+      `The selected ${provider} model could not process this article. Check the model ID in Settings.`,
     );
   }
   return new AiError(
@@ -86,7 +86,7 @@ async function postJson(
       throw new AiError(
         "AI_PROVIDER_TIMEOUT",
         504,
-        `${provider} took too long to respond. Try again.`,
+        `${provider} did not respond in time. Try again.`,
       );
     }
     throw new AiError("AI_PROVIDER_FAILED", 502, `${provider} could not be reached. Try again.`);
@@ -215,7 +215,7 @@ function geminiGrounding(value: unknown, text: string): AiGrounding | null {
     throw new AiError(
       "AI_PROVIDER_FAILED",
       502,
-      "Google Gemini returned a grounded response without its required Search Suggestions.",
+      "Google Gemini omitted the required Search Suggestions. Try again.",
     );
   }
 

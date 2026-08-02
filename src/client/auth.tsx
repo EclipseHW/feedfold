@@ -57,8 +57,8 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: Session
           <h1 id="auth-heading">{actionLabel}</h1>
           <p>
             {registering
-              ? "Choose a username and password for your reading queue."
-              : "Open your feeds, folders, and reading queue."}
+              ? "Create the account that will own this reading queue."
+              : "Sign in to open your reading queue."}
           </p>
         </div>
         <form className="login-form" onSubmit={submit}>
@@ -103,7 +103,7 @@ export function LoginPage({ onAuthenticated }: { onAuthenticated: (user: Session
           </button>
         </form>
         <div className="auth-switch">
-          <span>{registering ? "Already have an account?" : "New to echovale?"}</span>
+          <span>{registering ? "Already have an account?" : "Need an account?"}</span>
           <button type="button" onClick={switchMode} disabled={submitting}>
             {registering ? "Sign in" : "Create an account"}
           </button>

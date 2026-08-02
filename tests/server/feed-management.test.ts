@@ -76,7 +76,7 @@ describe("feed and folder management", () => {
     });
     expect(missingParent.statusCode).toBe(400);
     expect(missingParent.json()).toEqual({
-      error: "The selected folder or feed does not exist",
+      error: "That feed or folder no longer exists. Reload and try again.",
     });
 
     const nestedFolder = (
@@ -92,7 +92,7 @@ describe("feed and folder management", () => {
       payload: { parentId: nestedFolder.id },
     });
     expect(cyclicFolder.statusCode).toBe(400);
-    expect(cyclicFolder.json()).toEqual({ error: "A folder cannot be moved inside itself" });
+    expect(cyclicFolder.json()).toEqual({ error: "Choose a parent outside this folder." });
 
     const createResponse = await request({
       method: "POST",
@@ -130,7 +130,7 @@ describe("feed and folder management", () => {
       },
     });
     expect(duplicateFeed.statusCode).toBe(409);
-    expect(duplicateFeed.json()).toEqual({ error: "That item already exists" });
+    expect(duplicateFeed.json()).toEqual({ error: "This item already exists." });
 
     const missingRuleScope = await request({
       method: "POST",
@@ -147,7 +147,7 @@ describe("feed and folder management", () => {
     });
     expect(missingRuleScope.statusCode).toBe(400);
     expect(missingRuleScope.json()).toEqual({
-      error: "The selected folder or feed does not exist",
+      error: "That feed or folder no longer exists. Reload and try again.",
     });
 
     const getResponse = await request({

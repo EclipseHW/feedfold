@@ -16,8 +16,8 @@ export const httpUrl = z
     } catch {
       return false;
     }
-  }, "Must be an HTTP or HTTPS URL");
+  }, "Enter a URL that begins with http:// or https://.");
 
 export function missing(reply: FastifyReply, resource: string): FastifyReply {
-  return reply.code(404).send({ error: `${resource} not found` });
+  return reply.code(404).send({ error: `${resource} was not found.` });
 }

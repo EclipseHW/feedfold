@@ -27,7 +27,7 @@ export async function ruleRoutes(
     })
     .strict();
   const ruleBody = ruleFields.refine((value) => !(value.feedId && value.folderId), {
-    message: "A rule can target a feed or a folder, not both",
+    message: "Choose either one feed or one folder for this rule.",
   });
 
   app.post("/api/rules", async (request) =>
@@ -44,7 +44,7 @@ export async function ruleRoutes(
       (body.feedId === undefined ? existing.feedId : body.feedId) &&
       (body.folderId === undefined ? existing.folderId : body.folderId)
     ) {
-      return reply.code(400).send({ error: "A rule can target a feed or a folder, not both" });
+      return reply.code(400).send({ error: "Choose either one feed or one folder for this rule." });
     }
     return rules.updateRule(accountId, id, body);
   });

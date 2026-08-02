@@ -79,7 +79,7 @@ function fixturePage(broken: boolean): string {
   return `<!doctype html>
     <html>
       <head>
-        <title>Echovale fixture</title>
+        <title>echovale fixture</title>
         <link rel="stylesheet" href="/fixture.css">
       </head>
       <body>
@@ -142,7 +142,7 @@ describe("web-feed browser loading and network security", () => {
     const analysis = await service.analyze("owner", baseUrl);
     expect(analysis).toMatchObject({
       pageUrl: `${baseUrl}/`,
-      title: "Echovale fixture",
+      title: "echovale fixture",
       savedSelectionMatched: false,
       selectedCandidateId: null,
     });

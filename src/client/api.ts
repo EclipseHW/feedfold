@@ -57,7 +57,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const response = await fetch(appUrl(path), { ...init, headers, credentials: "same-origin" });
   if (!response.ok) {
-    let message = `Request failed (${response.status})`;
+    let message = `The request failed with HTTP ${response.status}. Try again.`;
     let code: string | null = null;
     try {
       const body = (await response.json()) as { error?: string; message?: string; code?: string };
@@ -269,5 +269,5 @@ export const api = {
 };
 
 export function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Something went wrong";
+  return error instanceof Error ? error.message : "Something went wrong. Try again.";
 }

@@ -214,7 +214,7 @@ export function Sidebar({
           disabled={refreshing}
         >
           <RefreshCw className={refreshing ? "spin" : ""} aria-hidden="true" size={15} />
-          {refreshing ? "Refreshing" : "Refresh feeds"}
+          {refreshing ? "Refreshing feeds" : "Refresh feeds"}
           <Kbd>R</Kbd>
         </button>
       </div>
@@ -289,8 +289,8 @@ export function Sidebar({
             <button
               type="button"
               onClick={() => onNavigate("feeds")}
-              aria-label="Manage folders"
-              title="Manage folders"
+              aria-label="Open feed management"
+              title="Open feed management"
             >
               <Plus aria-hidden="true" size={15} />
             </button>
@@ -345,7 +345,7 @@ export function Sidebar({
           ) : (
             <Rss aria-hidden="true" size={16} />
           )}
-          <span>Feeds &amp; status</span>
+          <span>Manage feeds</span>
           <Kbd>g f</Kbd>
         </button>
         <button
@@ -742,11 +742,11 @@ export function ReaderToolbar({
           </button>
         </form>
         <div className="toolbar-actions">
-          <IconButton label="Refresh feeds (R)" onClick={onRefresh} disabled={refreshing}>
+          <IconButton label="Refresh this view (R)" onClick={onRefresh} disabled={refreshing}>
             <RefreshCw className={refreshing ? "spin" : ""} aria-hidden="true" size={17} />
           </IconButton>
           <IconButton
-            label="Refresh every feed (Shift+R)"
+            label="Refresh all feeds (Shift+R)"
             onClick={onRefreshAll}
             disabled={refreshing}
             className="refresh-all-action"
@@ -758,7 +758,11 @@ export function ReaderToolbar({
             onMarkRead={onMarkRead}
             onMarkReadByAge={onMarkReadByAge}
           />
-          <IconButton label="Show keyboard shortcuts (?)" onClick={onHelp} className="help-action">
+          <IconButton
+            label="Open keyboard shortcut reference (?)"
+            onClick={onHelp}
+            className="help-action"
+          >
             <CircleHelp aria-hidden="true" size={18} />
           </IconButton>
         </div>
@@ -915,7 +919,7 @@ function MarkReadSplitButton({
   return (
     <div className="mark-read-split-button" ref={controlRef}>
       <IconButton
-        label="Mark loaded articles read"
+        label="Mark loaded articles as read"
         onClick={onMarkRead}
         disabled={disabled}
         className="mark-read-primary"
@@ -926,8 +930,8 @@ function MarkReadSplitButton({
         ref={triggerRef}
         className="icon-button mark-read-menu-trigger"
         type="button"
-        aria-label="Mark articles read by age"
-        title="Mark articles read by age"
+        aria-label="Mark older articles as read"
+        title="Mark older articles as read"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         aria-controls={MARK_READ_MENU_ID}
@@ -954,7 +958,7 @@ function MarkReadSplitButton({
               style={menuPosition}
               onKeyDown={moveMenuFocus}
             >
-              <p id={MARK_READ_MENU_HEADING_ID}>Mark as read articles</p>
+              <p id={MARK_READ_MENU_HEADING_ID}>Mark older articles as read</p>
               {MARK_READ_AGE_DAYS.map((days) => (
                 <button
                   key={days}

@@ -33,13 +33,13 @@ async function readHtmlResponse(response: Response): Promise<string> {
   const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.trim().toLowerCase();
   if (contentType && contentType !== "text/html" && contentType !== "application/xhtml+xml") {
     await cancelBody(response);
-    throw new Error(`Article response is not HTML (${contentType})`);
+    throw new Error(`The source returned ${contentType} instead of an HTML page.`);
   }
 
   const declaredLength = Number(response.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_ARTICLE_BYTES) {
     await cancelBody(response);
-    throw new Error("Article response exceeds the 5 MiB extraction limit");
+    throw new Error("The source page is larger than the 5 MiB full-article limit.");
   }
   if (!response.body) return "";
   const reader = response.body.getReader();
@@ -51,7 +51,7 @@ async function readHtmlResponse(response: Response): Promise<string> {
     totalBytes += value.byteLength;
     if (totalBytes > MAX_ARTICLE_BYTES) {
       await reader.cancel();
-      throw new Error("Article response exceeds the 5 MiB extraction limit");
+      throw new Error("The source page is larger than the 5 MiB full-article limit.");
     }
     chunks.push(value);
   }
@@ -80,7 +80,7 @@ export async function extractArticle(
         },
         signal: AbortSignal.timeout(timeoutMs),
       });
-      if (!response.ok) throw new Error(`Article request returned HTTP ${response.status}`);
+      if (!response.ok) throw new Error(`The source page returned HTTP ${response.status}.`);
       const html = await readHtmlResponse(response);
       const dom = new JSDOM(html, {
         url: response.url || record.url,
@@ -88,9 +88,11 @@ export async function extractArticle(
       });
       try {
         const result = new Readability(dom.window.document).parse();
-        if (!result?.content) throw new Error("No readable article content was found");
+        if (!result?.content)
+          throw new Error("The source page did not contain readable article text.");
         const contentHtml = cleanArticleHtml(result.content, response.url || record.url);
-        if (!containsText(contentHtml)) throw new Error("Extracted article content was empty");
+        if (!containsText(contentHtml))
+          throw new Error("The extracted article did not contain text.");
         return {
           contentHtml,
           imageUrl: firstSafeImageUrl(contentHtml, response.url || record.url),
@@ -117,7 +119,7 @@ export async function extractArticle(
     imageUrl: null,
     contentSource: null,
     status: "failed",
-    error: "Article has no URL",
+    error: "This article has no source link.",
   };
 }
 

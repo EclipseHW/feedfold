@@ -20,7 +20,7 @@ const markReadAgeDays = z
   .int()
   .refine(
     (value) => MARK_READ_AGE_DAYS.includes(value as MarkReadAgeDays),
-    "Choose one of the available age thresholds",
+    "Choose one of the available age thresholds.",
   );
 
 export async function articleRoutes(
@@ -54,7 +54,7 @@ export async function articleRoutes(
     try {
       return await telegramMedia.mediaForPost(article.url);
     } catch {
-      reply.code(502).send({ error: "Telegram media is temporarily unavailable" });
+      reply.code(502).send({ error: "Telegram media is temporarily unavailable. Try again." });
       return null;
     }
   };
@@ -136,7 +136,7 @@ export async function articleRoutes(
     const body = z
       .object({ isRead: z.boolean().optional(), isStarred: z.boolean().optional() })
       .refine((value) => value.isRead !== undefined || value.isStarred !== undefined, {
-        message: "Provide isRead or isStarred",
+        message: "Choose whether to update read state or star state.",
       })
       .parse(request.body);
     const article = articles.updateArticleState(userId(request), id, body);

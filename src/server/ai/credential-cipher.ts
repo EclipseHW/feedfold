@@ -64,7 +64,7 @@ export class CredentialCipher {
       throw new AiError(
         "AI_CREDENTIAL_UNREADABLE",
         409,
-        "The saved API key cannot be opened. Enter it again in Settings.",
+        "echovale could not decrypt the saved API key. Enter it again in Settings.",
       );
     }
   }

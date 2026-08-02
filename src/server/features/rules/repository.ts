@@ -125,7 +125,7 @@ export class RuleRepository {
       feedId !== undefined &&
       !this.sqlite.prepare("SELECT 1 FROM feeds WHERE id = ? AND user_id = ?").get(feedId, userId)
     ) {
-      throw new InvalidRequestError("The selected folder or feed does not exist");
+      throw new InvalidRequestError("That feed or folder no longer exists. Reload and try again.");
     }
     if (
       folderId !== null &&
@@ -134,7 +134,7 @@ export class RuleRepository {
         .prepare("SELECT 1 FROM folders WHERE id = ? AND user_id = ?")
         .get(folderId, userId)
     ) {
-      throw new InvalidRequestError("The selected folder or feed does not exist");
+      throw new InvalidRequestError("That feed or folder no longer exists. Reload and try again.");
     }
   }
 

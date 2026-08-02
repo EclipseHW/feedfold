@@ -88,7 +88,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     await closePublicNetwork();
     database.close();
   } catch (error) {
-    app.log.error(error, "Shutdown failed");
+    app.log.error(error, "echovale did not shut down cleanly");
     process.exitCode = 1;
   }
 }

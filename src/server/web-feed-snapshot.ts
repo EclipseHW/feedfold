@@ -52,7 +52,7 @@ function pickerScript(messageToken: string): string {
 
   const instructions = document.createElement("p");
   instructions.id = INSTRUCTIONS_ID;
-  instructions.textContent = "Selection mode. Links and controls are disabled. Use arrow keys to move between items, Enter or Space to select a group, and Escape to clear the selection.";
+  instructions.textContent = "Choose entries for this feed. Page controls are disabled. Use the arrow keys to move, Enter or Space to select a group, and Escape to clear the selection.";
   Object.assign(instructions.style, {
     position: "absolute",
     width: "1px",
@@ -72,8 +72,8 @@ function pickerScript(messageToken: string): string {
     element.tabIndex = 0;
     element.setAttribute("role", "button");
     element.setAttribute("aria-label", visibleName
-      ? "Select the group represented by " + visibleName
-      : "Select this group for the web feed");
+      ? "Choose the entry group represented by " + visibleName
+      : "Choose this entry group for the feed");
     element.setAttribute("aria-describedby", INSTRUCTIONS_ID);
     element.setAttribute("aria-pressed", "false");
   }
