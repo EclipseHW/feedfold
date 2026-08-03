@@ -114,6 +114,7 @@ function IconButton({
 interface SidebarProps {
   bootstrap: BootstrapData;
   user: SessionUser;
+  localApp?: boolean;
   currentState: ArticleState;
   selectedFeedId: number | null;
   selectedFolderId: number | null;
@@ -148,6 +149,7 @@ type SidebarContextMenuState =
 export function Sidebar({
   bootstrap,
   user,
+  localApp = false,
   currentState,
   selectedFeedId,
   selectedFolderId,
@@ -368,21 +370,23 @@ export function Sidebar({
           <span>Settings</span>
           <Kbd>g ,</Kbd>
         </button>
-        <div className="sidebar-account">
-          <span className="account-name" title={user.username}>
-            <UserRound aria-hidden="true" size={16} />
-            <span className="truncate">{user.username}</span>
-          </span>
-          <button
-            className="icon-button"
-            type="button"
-            aria-label={`Log out ${user.username}`}
-            title="Log out"
-            onClick={() => void onLogout()}
-          >
-            <LogOut aria-hidden="true" size={16} />
-          </button>
-        </div>
+        {!localApp ? (
+          <div className="sidebar-account">
+            <span className="account-name" title={user.username}>
+              <UserRound aria-hidden="true" size={16} />
+              <span className="truncate">{user.username}</span>
+            </span>
+            <button
+              className="icon-button"
+              type="button"
+              aria-label={`Log out ${user.username}`}
+              title="Log out"
+              onClick={() => void onLogout()}
+            >
+              <LogOut aria-hidden="true" size={16} />
+            </button>
+          </div>
+        ) : null}
       </div>
       {contextMenu ? (
         <SidebarContextMenu

@@ -2383,7 +2383,7 @@ function TelegramPostMedia({ article }: { article: Article }) {
         return item.kind === "image" ? (
           <img
             key={item.sourceUrl}
-            src={appUrl(item.sourceUrl)}
+            src={articleImageUrl(item.sourceUrl)}
             alt={label}
             loading="lazy"
             decoding="async"
@@ -2392,8 +2392,8 @@ function TelegramPostMedia({ article }: { article: Article }) {
           // biome-ignore lint/a11y/useMediaCaption: Telegram embeds do not expose caption tracks.
           <video
             key={item.sourceUrl}
-            src={appUrl(item.sourceUrl)}
-            poster={item.posterUrl ? appUrl(item.posterUrl) : undefined}
+            src={articleImageUrl(item.sourceUrl)}
+            poster={item.posterUrl ? articleImageUrl(item.posterUrl) : undefined}
             aria-label={label}
             style={style}
             controls

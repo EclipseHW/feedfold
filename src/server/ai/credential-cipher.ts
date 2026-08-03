@@ -10,7 +10,12 @@ function associatedData(userId: number, provider: AiProvider): Buffer {
   return Buffer.from(`${userId}:${provider}`, "utf8");
 }
 
-export class CredentialCipher {
+export interface CredentialCipherLike {
+  encrypt(userId: number, provider: AiProvider, plaintext: string): string;
+  decrypt(userId: number, provider: AiProvider, envelope: string): string;
+}
+
+export class CredentialCipher implements CredentialCipherLike {
   private constructor(private readonly key: Buffer) {}
 
   static fromHex(value: string | undefined): CredentialCipher | null {
