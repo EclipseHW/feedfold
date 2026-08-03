@@ -131,13 +131,9 @@
 .feed-filter-field select {
   width: auto;
   min-width: 174px;
-  height: 34px;
-  padding: 5px 28px 5px 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg);
+  height: var(--control-height-compact);
+  padding-block: 5px;
   color: var(--text-secondary);
-  font-size: var(--type-supporting);
 }
 
 .feed-filter-hint {
@@ -616,5 +612,11 @@
 
   .feed-cell a {
     max-width: 100%;
+  }
+}
+
+@media (max-width: 440px) {
+  .feed-filter-controls {
+    grid-template-columns: 1fr;
   }
 }
