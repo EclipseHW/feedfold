@@ -43,12 +43,6 @@
 
 .ai-provider-control select {
   min-width: 190px;
-  height: 38px;
-  padding: 7px 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-  color: var(--text);
 }
 
 .ai-model-form {

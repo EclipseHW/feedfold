@@ -1,27 +1,21 @@
 import {
   AlertTriangle,
-  ArrowLeft,
-  ArrowRight,
-  BookOpen,
   Check,
   ChevronDown,
   ChevronRight,
   CircleHelp,
+  Ellipsis,
   FileText,
   Folder,
-  Inbox,
   LayoutList,
   ListFilter,
-  LoaderCircle,
   LogOut,
   Menu,
-  Pause,
   Plus,
   RefreshCw,
   Rss,
   Search,
   Settings,
-  Star,
   UserRound,
   X,
 } from "lucide-react";
@@ -86,6 +80,7 @@ function IconButton({
   children,
   pressed,
   disabled,
+  tooltip = false,
   onClick,
   className = "",
 }: {
@@ -93,6 +88,7 @@ function IconButton({
   children: ReactNode;
   pressed?: boolean;
   disabled?: boolean;
+  tooltip?: boolean;
   onClick: () => void;
   className?: string;
 }) {
@@ -101,7 +97,8 @@ function IconButton({
       className={`icon-button ${className}`}
       type="button"
       aria-label={label}
-      title={label}
+      title={tooltip ? undefined : label}
+      data-tooltip={tooltip ? label : undefined}
       aria-pressed={pressed}
       disabled={disabled}
       onClick={onClick}
@@ -208,19 +205,6 @@ export function Sidebar({
         </IconButton>
       </div>
 
-      <div className="sidebar-refresh-row">
-        <button
-          className="quiet-button refresh-button"
-          type="button"
-          onClick={onRefresh}
-          disabled={refreshing}
-        >
-          <RefreshCw className={refreshing ? "spin" : ""} aria-hidden="true" size={15} />
-          {refreshing ? "Refreshing feeds" : "Refresh feeds"}
-          <Kbd>R</Kbd>
-        </button>
-      </div>
-
       <nav className="sidebar-navigation">
         <ul className="nav-list quick-links">
           <li>
@@ -237,30 +221,9 @@ export function Sidebar({
               type="button"
               onClick={() => onSelectState("unread")}
             >
-              <Inbox aria-hidden="true" size={16} />
               <span>Unread</span>
               <span className="nav-count">{bootstrap.counts.unread}</span>
               <Kbd>g u</Kbd>
-            </button>
-          </li>
-          <li>
-            <button
-              className="nav-item"
-              aria-current={
-                currentView === "reader" &&
-                currentState === "starred" &&
-                selectedFeedId === null &&
-                selectedFolderId === null
-                  ? "page"
-                  : undefined
-              }
-              type="button"
-              onClick={() => onSelectState("starred")}
-            >
-              <Star aria-hidden="true" size={16} />
-              <span>Starred</span>
-              <span className="nav-count">{bootstrap.counts.starred}</span>
-              <Kbd>g s</Kbd>
             </button>
           </li>
           <li>
@@ -277,10 +240,46 @@ export function Sidebar({
               type="button"
               onClick={() => onSelectState("all")}
             >
-              <BookOpen aria-hidden="true" size={16} />
-              <span>All articles</span>
+              <span>All</span>
               <span className="nav-count">{bootstrap.counts.all}</span>
               <Kbd>g a</Kbd>
+            </button>
+          </li>
+          <li>
+            <button
+              className="nav-item"
+              aria-current={
+                currentView === "reader" &&
+                currentState === "read" &&
+                selectedFeedId === null &&
+                selectedFolderId === null
+                  ? "page"
+                  : undefined
+              }
+              type="button"
+              onClick={() => onSelectState("read")}
+            >
+              <span>Read</span>
+              <span className="nav-count">{bootstrap.counts.all - bootstrap.counts.unread}</span>
+            </button>
+          </li>
+          <li>
+            <button
+              className="nav-item"
+              aria-current={
+                currentView === "reader" &&
+                currentState === "starred" &&
+                selectedFeedId === null &&
+                selectedFolderId === null
+                  ? "page"
+                  : undefined
+              }
+              type="button"
+              onClick={() => onSelectState("starred")}
+            >
+              <span>Starred</span>
+              <span className="nav-count">{bootstrap.counts.starred}</span>
+              <Kbd>g s</Kbd>
             </button>
           </li>
         </ul>
@@ -288,14 +287,25 @@ export function Sidebar({
         <div className="sidebar-scroll">
           <div className="sidebar-section-heading">
             <span>Feeds</span>
-            <button
-              type="button"
-              onClick={() => onNavigate("feeds")}
-              aria-label="Open feed management"
-              title="Open feed management"
-            >
-              <Plus aria-hidden="true" size={15} />
-            </button>
+            <span className="sidebar-section-actions">
+              <button
+                type="button"
+                onClick={onRefresh}
+                disabled={refreshing}
+                aria-label="Refresh feeds"
+                title="Refresh feeds (R)"
+              >
+                <RefreshCw className={refreshing ? "spin" : ""} aria-hidden="true" size={14} />
+              </button>
+              <button
+                type="button"
+                onClick={() => onNavigate("feeds")}
+                aria-label="Open feed management"
+                title="Open feed management"
+              >
+                <Plus aria-hidden="true" size={15} />
+              </button>
+            </span>
           </div>
 
           {bootstrap.feeds.length === 0 ? (
@@ -508,7 +518,6 @@ function SidebarFolder({
     top: number,
   ) => void;
 }) {
-  const triggerRef = useRef<HTMLButtonElement>(null);
   const revealsSelection = selectedFolderPathIds.has(folder.id);
   const [expanded, setExpanded] = useState(revealsSelection);
   const childFolders = folders.filter((candidate) => candidate.parentId === folder.id);
@@ -543,7 +552,6 @@ function SidebarFolder({
           )}
         </button>
         <button
-          ref={triggerRef}
           data-management-folder-id={folder.id}
           className="nav-item tree-nav-item"
           aria-current={
@@ -567,8 +575,22 @@ function SidebarFolder({
           aria-haspopup="menu"
         >
           <Folder aria-hidden="true" size={15} />
-          <span>{folder.name}</span>
+          <span className="truncate" title={folder.name}>
+            {folder.name}
+          </span>
           {folder.unreadCount > 0 ? <span className="nav-count">{folder.unreadCount}</span> : null}
+        </button>
+        <button
+          className="folder-menu-button"
+          type="button"
+          aria-label={`Manage ${folder.name}`}
+          title={`Manage ${folder.name}`}
+          onClick={(event) => {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            onOpenFolderMenu(folder, event.currentTarget, bounds.right, bounds.bottom);
+          }}
+        >
+          <Ellipsis aria-hidden="true" size={15} />
         </button>
       </div>
       {expanded && hasChildren ? (
@@ -614,38 +636,55 @@ function SidebarFeed({
   onSelect: () => void;
   onOpenMenu: (feed: Feed, trigger: HTMLButtonElement, left: number, top: number) => void;
 }) {
+  const healthClass =
+    feed.healthStatus !== "healthy" ? "failed" : feed.paused ? "paused" : "healthy";
+  const healthLabel =
+    feed.healthStatus !== "healthy" ? "Needs attention" : feed.paused ? "Paused" : "Healthy";
+
   return (
     <li>
-      <button
-        data-management-feed-id={feed.id}
-        className="nav-item feed-nav-item"
-        aria-current={selected ? "page" : undefined}
-        aria-haspopup="menu"
-        type="button"
-        onClick={onSelect}
-        onContextMenu={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          onOpenMenu(feed, event.currentTarget, event.clientX, event.clientY);
-        }}
-        onKeyDown={(event) => {
-          if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
-          event.preventDefault();
-          const bounds = event.currentTarget.getBoundingClientRect();
-          onOpenMenu(feed, event.currentTarget, bounds.left + 24, bounds.bottom - 4);
-        }}
-      >
-        <span className={`feed-dot${feed.lastError ? " has-error" : ""}`} aria-hidden="true" />
-        <span className="truncate">{feed.title}</span>
-        {feed.refreshing ? (
-          <LoaderCircle className="spin" aria-label="Refreshing" size={13} />
-        ) : null}
-        {feed.paused ? <Pause aria-label="Paused" size={12} /> : null}
-        {feed.lastError ? (
-          <AlertTriangle className="status-warning" aria-label="Feed error" size={13} />
-        ) : null}
-        {feed.unreadCount > 0 ? <span className="nav-count">{feed.unreadCount}</span> : null}
-      </button>
+      <div className="feed-tree-row">
+        <button
+          data-management-feed-id={feed.id}
+          className="nav-item feed-nav-item"
+          aria-current={selected ? "page" : undefined}
+          aria-haspopup="menu"
+          type="button"
+          onClick={onSelect}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onOpenMenu(feed, event.currentTarget, event.clientX, event.clientY);
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+            event.preventDefault();
+            const bounds = event.currentTarget.getBoundingClientRect();
+            onOpenMenu(feed, event.currentTarget, bounds.left + 24, bounds.bottom - 4);
+          }}
+        >
+          <span
+            className={`status-dot ${healthClass}`}
+            role="img"
+            aria-label={`Feed health: ${healthLabel}`}
+            title={feed.lastError ?? healthLabel}
+          />
+          <span className="truncate">{feed.title}</span>
+          {feed.unreadCount > 0 ? <span className="nav-count">{feed.unreadCount}</span> : null}
+        </button>
+        <button
+          className="feed-menu-button"
+          type="button"
+          aria-label={`Manage ${feed.title}`}
+          title={`Manage ${feed.title}`}
+          onClick={(event) => {
+            const bounds = event.currentTarget.getBoundingClientRect();
+            onOpenMenu(feed, event.currentTarget, bounds.right, bounds.bottom);
+          }}
+        >
+          <Ellipsis aria-hidden="true" size={15} />
+        </button>
+      </div>
     </li>
   );
 }
@@ -653,7 +692,6 @@ function SidebarFeed({
 interface ReaderToolbarProps {
   title: string;
   count: number;
-  state: ArticleState;
   searchInput: string;
   searchActive: boolean;
   mode: ReadingMode;
@@ -662,7 +700,6 @@ interface ReaderToolbarProps {
   navOpen: boolean;
   readingArticle: boolean;
   onToggleNav: () => void;
-  onStateChange: (state: ArticleState) => void;
   onSearchInput: (value: string) => void;
   onSearch: (event: FormEvent) => void;
   onClearSearch: () => void;
@@ -671,15 +708,12 @@ interface ReaderToolbarProps {
   onRefreshAll: () => void;
   onMarkRead: () => void;
   onMarkReadByAge: (days: MarkReadAgeDays) => void;
-  onPreviousScope: () => void;
-  onNextScope: () => void;
   onHelp: () => void;
 }
 
 export function ReaderToolbar({
   title,
   count,
-  state,
   searchInput,
   searchActive,
   mode,
@@ -688,7 +722,6 @@ export function ReaderToolbar({
   navOpen,
   readingArticle,
   onToggleNav,
-  onStateChange,
   onSearchInput,
   onSearch,
   onClearSearch,
@@ -697,8 +730,6 @@ export function ReaderToolbar({
   onRefreshAll,
   onMarkRead,
   onMarkReadByAge,
-  onPreviousScope,
-  onNextScope,
   onHelp,
 }: ReaderToolbarProps) {
   return (
@@ -708,22 +739,14 @@ export function ReaderToolbar({
           label={navOpen ? "Close navigation" : "Open navigation"}
           onClick={onToggleNav}
           className="menu-button"
+          tooltip
         >
           <Menu aria-hidden="true" size={19} />
         </IconButton>
         <div className="scope-title">
           <h1>{title}</h1>
-          <span>{count} loaded</span>
+          <span>{count}</span>
         </div>
-        <fieldset className="source-stepper" style={{ margin: 0, padding: 0, border: 0 }}>
-          <legend className="sr-only">Change source</legend>
-          <IconButton label="Previous source" onClick={onPreviousScope}>
-            <ArrowLeft aria-hidden="true" size={16} />
-          </IconButton>
-          <IconButton label="Next source" onClick={onNextScope}>
-            <ArrowRight aria-hidden="true" size={16} />
-          </IconButton>
-        </fieldset>
         <form className="search-form" aria-label="Article search" onSubmit={onSearch}>
           <Search aria-hidden="true" size={16} />
           <label className="sr-only" htmlFor="article-search">
@@ -745,8 +768,34 @@ export function ReaderToolbar({
             Search
           </button>
         </form>
+        <fieldset className="view-switcher">
+          <legend className="sr-only">Reading view</legend>
+          <button
+            type="button"
+            aria-label="Magazine view"
+            data-tooltip="Magazine view (1)"
+            aria-pressed={mode === "magazine"}
+            onClick={() => onModeChange("magazine")}
+          >
+            <LayoutList aria-hidden="true" size={16} />
+          </button>
+          <button
+            type="button"
+            aria-label="Expanded view"
+            data-tooltip="Expanded view (2)"
+            aria-pressed={mode === "expanded"}
+            onClick={() => onModeChange("expanded")}
+          >
+            <FileText aria-hidden="true" size={16} />
+          </button>
+        </fieldset>
         <div className="toolbar-actions">
-          <IconButton label="Refresh this view (R)" onClick={onRefresh} disabled={refreshing}>
+          <IconButton
+            label="Refresh this view (R)"
+            onClick={onRefresh}
+            disabled={refreshing}
+            tooltip
+          >
             <RefreshCw className={refreshing ? "spin" : ""} aria-hidden="true" size={17} />
           </IconButton>
           <IconButton
@@ -754,6 +803,7 @@ export function ReaderToolbar({
             onClick={onRefreshAll}
             disabled={refreshing}
             className="refresh-all-action"
+            tooltip
           >
             <Rss aria-hidden="true" size={17} />
           </IconButton>
@@ -766,44 +816,11 @@ export function ReaderToolbar({
             label="Open keyboard shortcut reference (?)"
             onClick={onHelp}
             className="help-action"
+            tooltip
           >
             <CircleHelp aria-hidden="true" size={18} />
           </IconButton>
         </div>
-      </div>
-      <div className="filter-row">
-        <fieldset className="segmented-control">
-          <legend className="sr-only">Article state filter</legend>
-          {(["unread", "all", "read", "starred"] as const).map((filter) => (
-            <button
-              key={filter}
-              type="button"
-              aria-pressed={state === filter}
-              onClick={() => onStateChange(filter)}
-            >
-              {filter === "all" ? "All" : `${filter[0]?.toUpperCase()}${filter.slice(1)}`}
-            </button>
-          ))}
-        </fieldset>
-        <fieldset className="view-switcher">
-          <legend className="sr-only">Reading view</legend>
-          <button
-            type="button"
-            aria-pressed={mode === "magazine"}
-            onClick={() => onModeChange("magazine")}
-          >
-            <LayoutList aria-hidden="true" size={16} />
-            Magazine<Kbd>1</Kbd>
-          </button>
-          <button
-            type="button"
-            aria-pressed={mode === "expanded"}
-            onClick={() => onModeChange("expanded")}
-          >
-            <FileText aria-hidden="true" size={16} />
-            Expanded<Kbd>2</Kbd>
-          </button>
-        </fieldset>
       </div>
     </header>
   );
@@ -927,6 +944,7 @@ function MarkReadSplitButton({
         onClick={onMarkRead}
         disabled={disabled}
         className="mark-read-primary"
+        tooltip
       >
         <CheckCheckIcon />
       </IconButton>
@@ -935,7 +953,7 @@ function MarkReadSplitButton({
         className="icon-button mark-read-menu-trigger"
         type="button"
         aria-label="Mark older articles as read"
-        title="Mark older articles as read"
+        data-tooltip="Mark older articles as read"
         aria-haspopup="menu"
         aria-expanded={menuOpen}
         aria-controls={MARK_READ_MENU_ID}
@@ -954,7 +972,7 @@ function MarkReadSplitButton({
             <div
               ref={menuRef}
               id={MARK_READ_MENU_ID}
-              className="mark-read-menu"
+              className="mark-read-menu context-action-menu"
               data-state={menuPresence.state}
               role="menu"
               aria-labelledby={MARK_READ_MENU_HEADING_ID}

@@ -1,6 +1,6 @@
 # echovale
 
-echovale is a quiet, keyboard-first feed reader for macOS or your own server. It follows published feeds and public webpages, filters noise with rules, and keeps subscriptions, reading state, credentials, and application data under your control.
+echovale is my RSS reader for a hand-picked web. It preserves that choice instead of ranking items for engagement or inserting ads and recommendations to keep me scrolling. It gives me new things to look forward to and a place to read without staying on guard. Subscriptions and reading data stay under your control. The same is true of the software itself: you—or your coding agent—can fork it, change it locally, and shape it around the way you read.
 
 ## See echovale
 
@@ -12,13 +12,12 @@ echovale is a quiet, keyboard-first feed reader for macOS or your own server. It
 
 ## What echovale does
 
+- Organizes chosen sources into a focused reading queue with unread, read, and starred views.
 - Supports the complete reading workflow from the keyboard.
 - Follows RSS, Atom, JSON Feed, and public webpages with repeated entries, including pages rendered by JavaScript.
 - Keeps wanted articles, hides noise, or marks matches as read with rules.
 - Extracts full article text while keeping feed text available as a fallback.
-- Generates article summaries and translations through Google Gemini, OpenAI, or Anthropic.
-- Reports each feed's last attempt, last success, HTTP status, and current error.
-- Repairs a web feed after its page changes without losing saved articles or reading state.
+- Generates article summaries and translations on demand through Google Gemini, OpenAI, or Anthropic.
 - Installs as a Progressive Web App with a standalone window, home-screen shortcuts, and an offline application shell.
 - Imports and exports OPML with feed folders.
 - Sorts each feed or folder from newest to oldest or oldest to newest. The aggregate view preserves each feed's configured order.

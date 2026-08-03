@@ -348,27 +348,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     }
   }, []);
 
-  const moveScope = useCallback(
-    (direction: 1 | -1) => {
-      if (!bootstrap) return;
-      const scopes = [
-        { feedId: null, folderId: null },
-        ...bootstrap.folders.map((folder) => ({ feedId: null, folderId: folder.id })),
-        ...bootstrap.feeds.map((feed) => ({ feedId: feed.id, folderId: null })),
-      ];
-      const currentFeedId = route.readerRoute.scope === "feed" ? route.readerRoute.scopeId : null;
-      const currentFolderId =
-        route.readerRoute.scope === "folder" ? route.readerRoute.scopeId : null;
-      const current = scopes.findIndex(
-        (scope) => scope.feedId === currentFeedId && scope.folderId === currentFolderId,
-      );
-      const next = (Math.max(current, 0) + direction + scopes.length) % scopes.length;
-      const scope = scopes[next];
-      if (scope) selectScope(scope.feedId, scope.folderId);
-    },
-    [bootstrap, route.readerRoute, selectScope],
-  );
-
   const unsubscribeFromFeed = useCallback(
     async (feed: Feed): Promise<boolean> => {
       try {
@@ -586,7 +565,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const title = readerScopeLabel(bootstrap, selectedFeedId, selectedFolderId);
 
   return (
-    <div className="app-shell">
+    <div className={`app-shell${readerOpen ? " is-reading-article" : ""}`}>
       <a className="skip-link" href="#main-content">
         Skip to articles
       </a>
@@ -615,7 +594,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
             <ReaderToolbar
               title={title}
               count={queue.articles.length}
-              state={route.readerRoute.state}
               searchInput={route.searchInput}
               searchActive={Boolean(route.readerRoute.search)}
               mode={preferences.readingMode}
@@ -624,16 +602,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               navOpen={navOpen}
               readingArticle={readerOpen && preferences.readingMode === "magazine"}
               onToggleNav={() => setNavOpen((current) => !current)}
-              onStateChange={(state) => {
-                route.navigate(
-                  readerRouteForSelection(
-                    state,
-                    selectedFeedId,
-                    selectedFolderId,
-                    route.readerRoute.search,
-                  ),
-                );
-              }}
               onSearchInput={route.setSearchInput}
               onSearch={submitSearch}
               onClearSearch={() => {
@@ -651,8 +619,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               onRefreshAll={() => void refresh(undefined, true)}
               onMarkRead={() => void articleActions.markVisibleRead()}
               onMarkReadByAge={(days) => void articleActions.markOlderArticlesRead(days)}
-              onPreviousScope={() => moveScope(-1)}
-              onNextScope={() => moveScope(1)}
               onHelp={() => setShortcutHelpOpen(true)}
             />
 

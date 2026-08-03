@@ -142,10 +142,6 @@ function mediaTypeLabel(article: Article): string | null {
   return article.media.type === "short" ? "Short" : "Video";
 }
 
-function Kbd({ children }: { children: React.ReactNode }) {
-  return <kbd>{children}</kbd>;
-}
-
 function useActionMenu() {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -376,6 +372,76 @@ function useMarkReadOnScroll({
     if (element) itemRefs.current.set(id, element);
     else itemRefs.current.delete(id);
   };
+}
+
+function useExpandedActionDocking(
+  streamRef: React.RefObject<HTMLElement | null>,
+  articleIds: string,
+) {
+  useLayoutEffect(() => {
+    const stream = streamRef.current;
+    const container = stream?.parentElement;
+    if (!stream || !container || !articleIds) return;
+
+    const dockingTargets: Array<{ actions: HTMLElement; article: HTMLElement }> = [];
+    for (const article of stream.querySelectorAll<HTMLElement>(".expanded-article")) {
+      const actions = article.querySelector<HTMLElement>(".expanded-actions");
+      if (actions) dockingTargets.push({ actions, article });
+    }
+    const dockingLead = dockingTargets[0]
+      ? Number.parseFloat(
+          window.getComputedStyle(dockingTargets[0].article).borderBottomRightRadius,
+        )
+      : 0;
+    const dockedRadius = dockingTargets[0]
+      ? Number.parseFloat(window.getComputedStyle(dockingTargets[0].actions).borderTopRightRadius)
+      : 0;
+    const currentRadii = new WeakMap<HTMLElement, number>();
+    let frameHandle: number | null = null;
+    const updateDockingState = () => {
+      frameHandle = null;
+      const containerTop = container.getBoundingClientRect().top;
+      for (const { actions, article } of dockingTargets) {
+        const articleBottom = article.getBoundingClientRect().bottom;
+        const dockingProgress =
+          dockingLead === 0
+            ? 0
+            : Math.min(
+                1,
+                Math.max(
+                  0,
+                  (containerTop +
+                    actions.getBoundingClientRect().height +
+                    dockingLead -
+                    articleBottom) /
+                    dockingLead,
+                ),
+              );
+        const radius = Math.round(dockedRadius * dockingProgress * 100) / 100;
+        if (currentRadii.get(actions) === radius) continue;
+        currentRadii.set(actions, radius);
+        actions.style.borderBottomRightRadius = `${radius}px`;
+        actions.style.borderBottomLeftRadius = `${radius}px`;
+      }
+    };
+    const scheduleDockingUpdate = () => {
+      if (frameHandle !== null) return;
+      frameHandle = window.requestAnimationFrame(updateDockingState);
+    };
+
+    updateDockingState();
+    container.addEventListener("scroll", scheduleDockingUpdate, { passive: true });
+    window.addEventListener("resize", scheduleDockingUpdate);
+    return () => {
+      container.removeEventListener("scroll", scheduleDockingUpdate);
+      window.removeEventListener("resize", scheduleDockingUpdate);
+      if (frameHandle !== null) window.cancelAnimationFrame(frameHandle);
+      for (const { actions } of dockingTargets) {
+        actions.style.removeProperty("border-bottom-right-radius");
+        actions.style.removeProperty("border-bottom-left-radius");
+      }
+    };
+  }, [articleIds, streamRef]);
 }
 
 function ArticleLoadSentinel({
@@ -633,12 +699,6 @@ export function ArticleList({
 
   return (
     <section ref={listRef} className="article-list" aria-label="Articles">
-      <div className="article-list-summary">
-        <span>{articles.filter((article) => !article.isRead).length} unread in this page</span>
-        <span>
-          Press <Kbd>J</Kbd>/<Kbd>→</Kbd> or <Kbd>K</Kbd>/<Kbd>←</Kbd> to move
-        </span>
-      </div>
       <ol>
         {articles.map((article) => (
           <li
@@ -671,24 +731,22 @@ export function ArticleList({
                 </span>
               )}
               <span className="article-list-copy">
+                <span className="article-list-title">{article.title || article.summary}</span>
                 <span className="article-list-meta">
-                  <span className="feed-name truncate">{article.feedTitle}</span>
+                  <span className="article-feed-identity">
+                    <span className="feed-name truncate">{article.feedTitle}</span>
+                  </span>
                   {article.media ? (
                     <span className={`article-media-badge ${article.media.type}`}>
                       {mediaTypeLabel(article)}
                     </span>
                   ) : null}
+                  <span className="article-meta-divider" aria-hidden="true">
+                    ·
+                  </span>
                   <time dateTime={article.publishedAt ?? article.discoveredAt}>
                     {articleDate(article)}
                   </time>
-                </span>
-                <span className="article-list-title">
-                  {!article.isRead ? (
-                    <span className="unread-dot">
-                      <span className="sr-only">Unread: </span>
-                    </span>
-                  ) : null}
-                  {article.title || article.summary}
                 </span>
                 {article.title && article.summary ? (
                   <span className="article-list-summary-text">
@@ -1089,6 +1147,26 @@ function ArticleActions({
         <button
           type="button"
           role="menuitem"
+          disabled={translationState.loading}
+          onClick={() => {
+            moreMenu.closeMenu();
+            onToggleTranslation(article);
+          }}
+        >
+          {translationState.loading ? (
+            <LoaderCircle className="spin" aria-hidden="true" size={15} />
+          ) : translationState.visible ? (
+            <BookOpenText aria-hidden="true" size={15} />
+          ) : (
+            <Languages aria-hidden="true" size={15} />
+          )}
+          <span>{translationLabel}</span>
+          <kbd>T</kbd>
+        </button>
+        <hr className="context-menu-separator" />
+        <button
+          type="button"
+          role="menuitem"
           onClick={() => {
             moreMenu.closeMenu();
             onToggleRead(article);
@@ -1101,18 +1179,6 @@ function ArticleActions({
           )}
           <span>{article.isRead ? "Mark as unread" : "Mark as read"}</span>
           <kbd>U</kbd>
-        </button>
-        <button
-          type="button"
-          role="menuitem"
-          onClick={() => {
-            moreMenu.closeMenu();
-            onToggleStar(article);
-          }}
-        >
-          <Star aria-hidden="true" size={15} fill={article.isStarred ? "currentColor" : "none"} />
-          <span>{article.isStarred ? "Remove star" : "Star article"}</span>
-          <kbd>S</kbd>
         </button>
         <hr className="context-menu-separator" />
         <button
@@ -2571,6 +2637,7 @@ export function ExpandedStream({
   onFilterSelection: (article: Article, text: string) => void;
 }) {
   const streamRef = useRef<HTMLElement>(null);
+  useExpandedActionDocking(streamRef, articles.map((article) => article.id).join(","));
   const registerItem = useMarkReadOnScroll({
     articles,
     activeId,

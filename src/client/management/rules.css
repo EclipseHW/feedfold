@@ -92,7 +92,10 @@
 }
 
 .rule-condition-operator select,
-.rule-condition-control select,
+.rule-condition-control select {
+  width: 100%;
+}
+
 .rule-condition-control input {
   width: 100%;
   height: 38px;
