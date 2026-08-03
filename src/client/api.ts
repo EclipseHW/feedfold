@@ -1,3 +1,4 @@
+import type { DesktopOperation } from "../shared/desktop.js";
 import type {
   AiArticleSourceKind,
   AiFeature,
@@ -27,6 +28,7 @@ import type {
   WebFeedAnalysis,
   WebFeedConfig,
 } from "../shared/types.js";
+import { invokeDesktop, isDesktopApp } from "./desktop.js";
 
 export const AUTH_REQUIRED_EVENT = "echovale:auth-required";
 const appBase =
@@ -49,7 +51,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function httpRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   if (init?.body && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
@@ -78,6 +80,33 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+function abortable<T>(promise: Promise<T>, signal?: AbortSignal | null): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted)
+    return Promise.reject(new DOMException("The request was aborted.", "AbortError"));
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(new DOMException("The request was aborted.", "AbortError"));
+    signal.addEventListener("abort", abort, { once: true });
+    void promise.then(resolve, reject).finally(() => signal.removeEventListener("abort", abort));
+  });
+}
+
+async function request<T>(
+  operation: DesktopOperation,
+  payload: unknown,
+  path: string,
+  init?: RequestInit,
+): Promise<T> {
+  if (!isDesktopApp()) return httpRequest<T>(path, init);
+  try {
+    return await abortable(invokeDesktop<T>(operation, payload), init?.signal);
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") throw error;
+    const desktopError = error as Error & { status?: number; code?: string | null };
+    throw new ApiError(desktopError.message, desktopError.status ?? 500, desktopError.code ?? null);
+  }
 }
 
 function queryString(query: ArticleQuery): string {
@@ -123,149 +152,226 @@ export interface RuleInput {
 
 export const api = {
   async session(): Promise<SessionUser> {
-    const body = await request<{ user: SessionUser }>("/api/auth/session");
+    const body = await request<{ user: SessionUser }>("session", undefined, "/api/auth/session");
     return body.user;
   },
 
   async login(username: string, password: string): Promise<SessionUser> {
-    const body = await request<{ user: SessionUser }>("/api/auth/login", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    });
+    const body = await request<{ user: SessionUser }>(
+      "login",
+      { username, password },
+      "/api/auth/login",
+      {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      },
+    );
     return body.user;
   },
 
   async register(username: string, password: string): Promise<SessionUser> {
-    const body = await request<{ user: SessionUser }>("/api/auth/register", {
-      method: "POST",
-      body: JSON.stringify({ username, password }),
-    });
+    const body = await request<{ user: SessionUser }>(
+      "register",
+      { username, password },
+      "/api/auth/register",
+      {
+        method: "POST",
+        body: JSON.stringify({ username, password }),
+      },
+    );
     return body.user;
   },
 
-  logout: () => request<void>("/api/auth/logout", { method: "POST" }),
+  logout: () => request<void>("logout", undefined, "/api/auth/logout", { method: "POST" }),
 
-  bootstrap: (signal?: AbortSignal) => request<BootstrapData>("/api/bootstrap", { signal }),
+  bootstrap: (signal?: AbortSignal) =>
+    request<BootstrapData>("bootstrap", undefined, "/api/bootstrap", { signal }),
 
   articles: (query: ArticleQuery, signal?: AbortSignal) =>
-    request<ArticlePage>(`/api/articles?${queryString(query)}`, { signal }),
+    request<ArticlePage>("articles", query, `/api/articles?${queryString(query)}`, { signal }),
 
   article: (id: number, signal?: AbortSignal) =>
-    request<Article>(`/api/articles/${id}`, { signal }),
+    request<Article>("article", { id }, `/api/articles/${id}`, { signal }),
 
   telegramArticleMedia: (id: number, signal?: AbortSignal) =>
-    request<TelegramArticleMedia>(`/api/articles/${id}/telegram-media`, { signal }),
+    request<TelegramArticleMedia>(
+      "telegramArticleMedia",
+      { id },
+      `/api/articles/${id}/telegram-media`,
+      { signal },
+    ),
 
   loadFullContent: (id: number) =>
-    request<Article>(`/api/articles/${id}/extract`, { method: "POST" }),
+    request<Article>("loadFullContent", { id }, `/api/articles/${id}/extract`, {
+      method: "POST",
+    }),
 
   summarizeArticle: (id: number, promptId: string | null, regenerate = false) =>
-    request<ArticleAiSummary>(`/api/articles/${id}/summary`, {
-      method: "POST",
-      body: JSON.stringify({ promptId, regenerate }),
-    }),
+    request<ArticleAiSummary>(
+      "summarizeArticle",
+      { id, promptId, regenerate },
+      `/api/articles/${id}/summary`,
+      {
+        method: "POST",
+        body: JSON.stringify({ promptId, regenerate }),
+      },
+    ),
 
   translateArticle: (id: number, sourceKind: AiArticleSourceKind) =>
-    request<ArticleAiTranslation>(`/api/articles/${id}/translation`, {
-      method: "POST",
-      body: JSON.stringify({ sourceKind }),
-    }),
+    request<ArticleAiTranslation>(
+      "translateArticle",
+      { id, sourceKind },
+      `/api/articles/${id}/translation`,
+      {
+        method: "POST",
+        body: JSON.stringify({ sourceKind }),
+      },
+    ),
 
   updateArticleState: (id: number, state: { isRead?: boolean; isStarred?: boolean }) =>
-    request<Article>(`/api/articles/${id}/state`, {
+    request<Article>("updateArticleState", { id, state }, `/api/articles/${id}/state`, {
       method: "PATCH",
       body: JSON.stringify(state),
     }),
 
   markRead: (body: MarkReadRequest) =>
-    request<{ updated: number }>("/api/articles/mark-read", {
+    request<{ updated: number }>("markRead", body, "/api/articles/mark-read", {
       method: "POST",
       body: JSON.stringify(body),
     }),
 
   refresh: (feedIds?: number[]) =>
-    request<RefreshResult>("/api/refresh", {
+    request<RefreshResult>("refresh", feedIds ? { feedIds } : {}, "/api/refresh", {
       method: "POST",
       body: JSON.stringify(feedIds ? { feedIds } : {}),
     }),
 
   discoverFeed: (url: string) =>
-    request<FeedDiscoveryResult>("/api/feeds/discover", {
+    request<FeedDiscoveryResult>("discoverFeed", { url }, "/api/feeds/discover", {
       method: "POST",
       body: JSON.stringify({ url }),
     }),
 
   analyzeWebPage: (url: string) =>
-    request<WebFeedAnalysis>("/api/web-feeds/analyze", {
+    request<WebFeedAnalysis>("analyzeWebPage", { url }, "/api/web-feeds/analyze", {
       method: "POST",
       body: JSON.stringify({ url }),
     }),
 
   createFeed: (input: FeedInput) =>
-    request<Feed>("/api/feeds", { method: "POST", body: JSON.stringify(input) }),
+    request<Feed>("createFeed", input, "/api/feeds", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
 
-  feed: (id: number) => request<Feed>(`/api/feeds/${id}`),
+  feed: (id: number) => request<Feed>("feed", { id }, `/api/feeds/${id}`),
 
   updateFeed: (id: number, input: FeedUpdateInput) =>
-    request<Feed>(`/api/feeds/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    request<Feed>("updateFeed", { id, input }, `/api/feeds/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
 
-  deleteFeed: (id: number) => request<void>(`/api/feeds/${id}`, { method: "DELETE" }),
+  deleteFeed: (id: number) =>
+    request<void>("deleteFeed", { id }, `/api/feeds/${id}`, { method: "DELETE" }),
 
   analyzeWebFeed: (id: number) =>
-    request<WebFeedAnalysis>(`/api/feeds/${id}/web-feed/analyze`, { method: "POST" }),
+    request<WebFeedAnalysis>("analyzeWebFeed", { id }, `/api/feeds/${id}/web-feed/analyze`, {
+      method: "POST",
+    }),
 
   updateWebFeedSelection: (id: number, config: WebFeedConfig) =>
-    request<Feed>(`/api/feeds/${id}/web-feed`, {
+    request<Feed>("updateWebFeedSelection", { id, config }, `/api/feeds/${id}/web-feed`, {
       method: "PATCH",
       body: JSON.stringify({ config }),
     }),
 
   createFolder: (input: FolderInput) =>
-    request<Folder>("/api/folders", { method: "POST", body: JSON.stringify(input) }),
+    request<Folder>("createFolder", input, "/api/folders", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
 
   updateFolder: (id: number, input: Partial<FolderInput>) =>
-    request<Folder>(`/api/folders/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    request<Folder>("updateFolder", { id, input }, `/api/folders/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
 
-  deleteFolder: (id: number) => request<void>(`/api/folders/${id}`, { method: "DELETE" }),
+  deleteFolder: (id: number) =>
+    request<void>("deleteFolder", { id }, `/api/folders/${id}`, { method: "DELETE" }),
 
   async rules(signal?: AbortSignal): Promise<Rule[]> {
-    const body = await request<{ rules: Rule[] }>("/api/rules", { signal });
+    const body = await request<{ rules: Rule[] }>("rules", undefined, "/api/rules", {
+      signal,
+    });
     return body.rules;
   },
 
   createRule: (input: RuleInput) =>
-    request<Rule>("/api/rules", { method: "POST", body: JSON.stringify(input) }),
+    request<Rule>("createRule", input, "/api/rules", {
+      method: "POST",
+      body: JSON.stringify(input),
+    }),
 
   updateRule: (id: number, input: Partial<RuleInput>) =>
-    request<Rule>(`/api/rules/${id}`, { method: "PATCH", body: JSON.stringify(input) }),
+    request<Rule>("updateRule", { id, input }, `/api/rules/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
 
-  deleteRule: (id: number) => request<void>(`/api/rules/${id}`, { method: "DELETE" }),
+  deleteRule: (id: number) =>
+    request<void>("deleteRule", { id }, `/api/rules/${id}`, { method: "DELETE" }),
 
   updateSettings: (input: Partial<AppSettings>) =>
-    request<AppSettings>("/api/settings", { method: "PATCH", body: JSON.stringify(input) }),
+    request<AppSettings>("updateSettings", input, "/api/settings", {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
 
-  aiSettings: () => request<AiSettings>("/api/ai/settings"),
+  aiSettings: () => request<AiSettings>("aiSettings", undefined, "/api/ai/settings"),
 
   updateAiFeature: (feature: AiFeature, input: { provider: AiProvider; model?: string }) =>
-    request<AiSettings>(`/api/ai/features/${feature}`, {
+    request<AiSettings>("updateAiFeature", { feature, input }, `/api/ai/features/${feature}`, {
       method: "PATCH",
       body: JSON.stringify(input),
     }),
 
   saveAiProviderKey: (provider: AiProvider, apiKey: string) =>
-    request<AiSettings>(`/api/ai/providers/${provider}/key`, {
-      method: "PUT",
-      body: JSON.stringify({ apiKey }),
-    }),
+    request<AiSettings>(
+      "saveAiProviderKey",
+      { provider, apiKey },
+      `/api/ai/providers/${provider}/key`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ apiKey }),
+      },
+    ),
 
   deleteAiProviderKey: (provider: AiProvider) =>
-    request<AiSettings>(`/api/ai/providers/${provider}/key`, { method: "DELETE" }),
-
-  importOpml: async (file: File) =>
-    request<ImportResult>("/api/opml/import", {
-      method: "POST",
-      body: JSON.stringify({ opml: await file.text() }),
+    request<AiSettings>("deleteAiProviderKey", { provider }, `/api/ai/providers/${provider}/key`, {
+      method: "DELETE",
     }),
+
+  async importOpml(file: File): Promise<ImportResult> {
+    const opml = await file.text();
+    return request<ImportResult>("importOpml", { opml }, "/api/opml/import", {
+      method: "POST",
+      body: JSON.stringify({ opml }),
+    });
+  },
+
+  async exportOpml(): Promise<void> {
+    const bridge = window.echovaleDesktop;
+    if (!bridge) {
+      window.location.assign(appUrl("/api/opml/export"));
+      return;
+    }
+    const response = await bridge.exportOpml();
+    if (!response.ok) {
+      throw new ApiError(response.error.message, response.error.status, response.error.code);
+    }
+  },
 };
 
 export function errorMessage(error: unknown): string {

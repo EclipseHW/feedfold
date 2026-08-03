@@ -1,7 +1,8 @@
 import { Download, LoaderCircle, Menu, Upload } from "lucide-react";
 import { type ChangeEvent, type ReactNode, useRef, useState } from "react";
-import { appUrl, errorMessage } from "../api";
+import { api, appUrl, errorMessage } from "../api";
 import type { ReaderDataMutations } from "../data-resource";
+import { isDesktopApp } from "../desktop";
 import "./common.css";
 
 export function formatDate(value: string | null): string {
@@ -106,6 +107,34 @@ export function ImportOpmlButton({
 }
 
 export function ExportOpmlLink() {
+  const [busy, setBusy] = useState(false);
+  if (isDesktopApp()) {
+    const exportOpml = async () => {
+      setBusy(true);
+      try {
+        await api.exportOpml();
+      } catch (error) {
+        window.alert(`Could not export OPML: ${errorMessage(error)}`);
+      } finally {
+        setBusy(false);
+      }
+    };
+    return (
+      <button
+        className="secondary-button"
+        type="button"
+        disabled={busy}
+        onClick={() => void exportOpml()}
+      >
+        {busy ? (
+          <LoaderCircle className="spin" aria-hidden="true" size={16} />
+        ) : (
+          <Download aria-hidden="true" size={16} />
+        )}
+        {busy ? "Exporting OPML" : "Export OPML"}
+      </button>
+    );
+  }
   return (
     <a
       className="secondary-button"

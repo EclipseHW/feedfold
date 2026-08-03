@@ -28,6 +28,7 @@ import type {
 import { DUPLICATE_ARTICLE_WINDOW_DAYS } from "../../shared/types";
 import { api, errorMessage } from "../api";
 import type { ReaderDataMutations } from "../data-resource";
+import { isDesktopApp } from "../desktop";
 import { ExportOpmlLink, formatRefreshInterval, ImportOpmlButton, Kbd, PageHeader } from "./shared";
 import { ShortcutReference } from "./shortcut-help";
 import "./dialogs.css";
@@ -316,8 +317,14 @@ function AiSettingsSection({
         <div className="ai-settings-warning" role="alert">
           <AlertTriangle aria-hidden="true" size={17} />
           <span>
-            To save provider keys, set <code>AI_CREDENTIALS_KEY</code>, then restart or recreate the
-            server.
+            {isDesktopApp() ? (
+              "Secure API-key storage is unavailable on this Mac."
+            ) : (
+              <>
+                To save provider keys, set <code>AI_CREDENTIALS_KEY</code>, then restart or recreate
+                the server.
+              </>
+            )}
           </span>
         </div>
       ) : null}

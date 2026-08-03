@@ -1,6 +1,6 @@
 # echovale
 
-echovale is a quiet, keyboard-first feed reader that you host yourself. It follows published feeds and public webpages, filters noise with rules, and keeps subscriptions, reading state, credentials, and application data under your control.
+echovale is a quiet, keyboard-first feed reader for macOS or your own server. It follows published feeds and public webpages, filters noise with rules, and keeps subscriptions, reading state, credentials, and application data under your control.
 
 ## See echovale
 
@@ -22,6 +22,32 @@ echovale is a quiet, keyboard-first feed reader that you host yourself. It follo
 - Installs as a Progressive Web App with a standalone window, home-screen shortcuts, and an offline application shell.
 - Imports and exports OPML with feed folders.
 - Sorts each feed or folder from newest to oldest or oldest to newest. The aggregate view preserves each feed's configured order.
+
+## Run the macOS desktop app
+
+The Electron app is fully local. It opens no HTTP port, needs no account or hosted backend, and sends application requests through a narrow IPC bridge. SQLite, background refreshes, article extraction, and the bundled headless browser all run inside the app. The hosted version remains available separately.
+
+For local development:
+
+```sh
+npm run dev:desktop
+```
+
+To build and open the desktop app:
+
+```sh
+npm run build && npm run desktop
+```
+
+To create distributable DMG and ZIP artifacts in `release/`:
+
+```sh
+npm run desktop:package
+```
+
+Local packages receive an ad-hoc macOS signature. Set `CSC_LINK` or `CSC_NAME` when producing a Developer ID-signed release for distribution; notarization still requires the corresponding Apple credentials.
+
+Desktop data is stored at `~/Library/Application Support/echovale/echovale.db`. Provider API keys are encrypted with macOS secure storage before they enter SQLite. Feed refreshes continue while the app is running; use **echovale → Quit echovale** or <kbd>⌘Q</kbd> to stop it completely.
 
 ## Start echovale with Docker Compose
 

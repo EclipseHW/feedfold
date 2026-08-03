@@ -26,7 +26,7 @@ import {
   prepareArticleTranslation,
   renderArticleTranslation,
 } from "../../ai/article-translation.js";
-import type { CredentialCipher } from "../../ai/credential-cipher.js";
+import type { CredentialCipherLike } from "../../ai/credential-cipher.js";
 import { AiError } from "../../ai/errors.js";
 import { createAiProviders } from "../../ai/providers.js";
 import type { AiGenerationResult, AiProviderAdapter } from "../../ai/types.js";
@@ -42,7 +42,7 @@ function promptVersion(prompt: string, defaultPrompt: string, defaultVersion: nu
 }
 
 export interface AiServiceOptions {
-  credentialCipher: CredentialCipher | null;
+  credentialCipher: CredentialCipherLike | null;
   currentDate?: () => Date;
   providers?: ReadonlyMap<AiProvider, AiProviderAdapter>;
   requestTimeoutMs?: number;

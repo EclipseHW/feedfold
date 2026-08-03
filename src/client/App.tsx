@@ -14,6 +14,7 @@ import { useArticleActions } from "./article-actions";
 import { useArticleQueue } from "./article-queue";
 import { LoginPage, SessionLoading } from "./auth";
 import { type ReaderDataBinding, ReaderDataResource } from "./data-resource";
+import { isDesktopApp } from "./desktop";
 import type {
   FeedManagementAction,
   FolderManagementAction,
@@ -592,6 +593,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       <Sidebar
         bootstrap={bootstrap}
         user={user}
+        localApp={isDesktopApp()}
         currentState={route.readerRoute.state}
         selectedFeedId={selectedFeedId}
         selectedFolderId={selectedFolderId}
