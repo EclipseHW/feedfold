@@ -91,8 +91,8 @@
   font-weight: var(--weight-semibold);
 }
 
-.rule-condition-operator select,
-.rule-condition-control select {
+.rule-condition-operator .dropdown-select,
+.rule-condition-control .dropdown-select {
   width: 100%;
 }
 

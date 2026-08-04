@@ -30,6 +30,7 @@ import type {
 } from "../../shared/types";
 import { api, errorMessage } from "../api";
 import type { ReaderDataMutations } from "../data-resource";
+import { DropdownSelect } from "../dropdown";
 import type { ManagementRequest } from "../feed-management";
 import { formatDate, formatRefreshInterval } from "./shared";
 import "./dialogs.css";
@@ -522,24 +523,20 @@ function MoveFeedForm({
   return (
     <form className="management-dialog-form" onSubmit={(event) => void submit(event)}>
       <div className="management-dialog-body">
-        <label className="field">
+        <div className="field">
           <span>Folder</span>
-          <select
-            data-dialog-initial-focus
-            value={folderId ?? ""}
-            onChange={(event) =>
-              setFolderId(event.target.value ? Number(event.target.value) : null)
-            }
-          >
-            <option value="">Top level</option>
-            {folders.map((folder) => (
-              <option key={folder.id} value={folder.id}>
-                {folder.name}
-              </option>
-            ))}
-          </select>
+          <DropdownSelect
+            ariaLabel="Folder"
+            initialFocus
+            value={folderId === null ? "" : String(folderId)}
+            options={[
+              { value: "", label: "Top level" },
+              ...folders.map((folder) => ({ value: String(folder.id), label: folder.name })),
+            ]}
+            onChange={(value) => setFolderId(value ? Number(value) : null)}
+          />
           <small>Choose a folder to move this feed, or choose Top level.</small>
-        </label>
+        </div>
         {error ? <DialogError message={error} /> : null}
       </div>
       <div className="management-dialog-footer">
@@ -606,22 +603,21 @@ function AddFeedToFolderForm({
             <p>Every feed is already in {folder.name}.</p>
           </div>
         ) : (
-          <label className="field">
+          <div className="field">
             <span>Feed</span>
-            <select
-              data-dialog-initial-focus
+            <DropdownSelect
+              ariaLabel="Feed"
+              initialFocus
               required
-              value={feedId ?? ""}
-              onChange={(event) => setFeedId(Number(event.target.value))}
-            >
-              {availableFeeds.map((feed) => (
-                <option key={feed.id} value={feed.id}>
-                  {feed.title}
-                </option>
-              ))}
-            </select>
+              value={feedId === null ? "" : String(feedId)}
+              options={availableFeeds.map((feed) => ({
+                value: String(feed.id),
+                label: feed.title,
+              }))}
+              onChange={(value) => setFeedId(Number(value))}
+            />
             <small>Saving moves the selected feed to {folder.name}.</small>
-          </label>
+          </div>
         )}
         {error ? <DialogError message={error} /> : null}
       </div>

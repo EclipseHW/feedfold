@@ -38,6 +38,7 @@ import type {
 } from "../../shared/types";
 import { api, errorMessage } from "../api";
 import type { ReaderDataMutations } from "../data-resource";
+import { DropdownSelect } from "../dropdown";
 import {
   type FeedStatusFilter,
   type FeedTypeFilter,
@@ -278,34 +279,37 @@ export function FeedsPage({
               <fieldset className="feed-filter-bar">
                 <legend className="sr-only">Filter subscriptions</legend>
                 <div className="feed-filter-controls">
-                  <label className="feed-filter-field">
+                  <div className="feed-filter-field">
                     <span>Type</span>
-                    <select
+                    <DropdownSelect
+                      ariaLabel="Feed type"
                       value={feedTypeFilter}
-                      onChange={(event) => setFeedTypeFilter(event.target.value as FeedTypeFilter)}
-                    >
-                      <option value="all">All types ({bootstrap.feeds.length})</option>
-                      <option value="published">Published feeds ({publishedFeedCount})</option>
-                      <option value="web">Web feeds ({webFeedCount})</option>
-                    </select>
-                  </label>
-                  <label className="feed-filter-field">
+                      options={[
+                        { value: "all", label: `All types (${bootstrap.feeds.length})` },
+                        { value: "published", label: `Published feeds (${publishedFeedCount})` },
+                        { value: "web", label: `Web feeds (${webFeedCount})` },
+                      ]}
+                      onChange={(value) => setFeedTypeFilter(value as FeedTypeFilter)}
+                    />
+                  </div>
+                  <div className="feed-filter-field">
                     <span>Status</span>
-                    <select
+                    <DropdownSelect
+                      ariaLabel="Feed status"
                       value={feedStatusFilter}
-                      onChange={(event) =>
-                        setFeedStatusFilter(event.target.value as FeedStatusFilter)
-                      }
-                    >
-                      <option value="all">All statuses ({bootstrap.feeds.length})</option>
-                      <option value="healthy">Healthy ({statusCounts.healthy})</option>
-                      <option value="needs_attention">
-                        Needs attention ({statusCounts.needs_attention})
-                      </option>
-                      <option value="paused">Paused ({statusCounts.paused})</option>
-                      <option value="refreshing">Refreshing ({statusCounts.refreshing})</option>
-                    </select>
-                  </label>
+                      options={[
+                        { value: "all", label: `All statuses (${bootstrap.feeds.length})` },
+                        { value: "healthy", label: `Healthy (${statusCounts.healthy})` },
+                        {
+                          value: "needs_attention",
+                          label: `Needs attention (${statusCounts.needs_attention})`,
+                        },
+                        { value: "paused", label: `Paused (${statusCounts.paused})` },
+                        { value: "refreshing", label: `Refreshing (${statusCounts.refreshing})` },
+                      ]}
+                      onChange={(value) => setFeedStatusFilter(value as FeedStatusFilter)}
+                    />
+                  </div>
                 </div>
                 {filtersActive ? (
                   <button
@@ -459,23 +463,19 @@ function FeedConfirmationSettings({
         />
         <small>Use the detected name, or enter a name of your own.</small>
       </label>
-      <label className="field">
+      <div className="field">
         <span>Folder</span>
-        <select
-          value={folderId ?? ""}
+        <DropdownSelect
+          ariaLabel="Folder"
+          value={folderId === null ? "" : String(folderId)}
           disabled={disabled}
-          onChange={(event) =>
-            onFolderChange(event.target.value ? Number(event.target.value) : null)
-          }
-        >
-          <option value="">No folder</option>
-          {folders.map((folder) => (
-            <option key={folder.id} value={folder.id}>
-              {folder.name}
-            </option>
-          ))}
-        </select>
-      </label>
+          options={[
+            { value: "", label: "No folder" },
+            ...folders.map((folder) => ({ value: String(folder.id), label: folder.name })),
+          ]}
+          onChange={(value) => onFolderChange(value ? Number(value) : null)}
+        />
+      </div>
     </div>
   );
 }
@@ -1057,22 +1057,18 @@ function FeedRow({
                 </small>
               ) : null}
             </label>
-            <label className="field">
+            <div className="field">
               <span>Folder</span>
-              <select
-                value={folderId ?? ""}
-                onChange={(event) =>
-                  setFolderId(event.target.value ? Number(event.target.value) : null)
-                }
-              >
-                <option value="">No folder</option>
-                {folders.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <DropdownSelect
+                ariaLabel="Folder"
+                value={folderId === null ? "" : String(folderId)}
+                options={[
+                  { value: "", label: "No folder" },
+                  ...folders.map((item) => ({ value: String(item.id), label: item.name })),
+                ]}
+                onChange={(value) => setFolderId(value ? Number(value) : null)}
+              />
+            </div>
             <div className="form-actions">
               <button className="secondary-button" type="button" onClick={() => setEditing(false)}>
                 Cancel
@@ -1286,30 +1282,33 @@ export function FolderForm({
           onChange={(event) => setName(event.target.value)}
         />
       </label>
-      <label className="field">
+      <div className="field">
         <span>Parent folder</span>
-        <select
-          value={parentId ?? ""}
-          onChange={(event) => setParentId(event.target.value ? Number(event.target.value) : null)}
-        >
-          <option value="">No parent</option>
-          {availableParents.map((folder) => (
-            <option key={folder.id} value={folder.id}>
-              {folder.name}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
+        <DropdownSelect
+          ariaLabel="Parent folder"
+          value={parentId === null ? "" : String(parentId)}
+          options={[
+            { value: "", label: "No parent" },
+            ...availableParents.map((folder) => ({
+              value: String(folder.id),
+              label: folder.name,
+            })),
+          ]}
+          onChange={(value) => setParentId(value ? Number(value) : null)}
+        />
+      </div>
+      <div className="field">
         <span>Article order</span>
-        <select
+        <DropdownSelect
+          ariaLabel="Article order"
           value={sortDirection}
-          onChange={(event) => setSortDirection(event.target.value as FolderSortDirection)}
-        >
-          <option value="newest">Newest first</option>
-          <option value="oldest">Oldest first</option>
-        </select>
-      </label>
+          options={[
+            { value: "newest", label: "Newest first" },
+            { value: "oldest", label: "Oldest first" },
+          ]}
+          onChange={(value) => setSortDirection(value as FolderSortDirection)}
+        />
+      </div>
       <div className="form-actions">
         <button className="secondary-button" type="button" onClick={onCancel}>
           Cancel

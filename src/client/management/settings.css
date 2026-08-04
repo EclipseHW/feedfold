@@ -41,7 +41,7 @@
   gap: 7px;
 }
 
-.ai-provider-control select {
+.ai-provider-control .dropdown-select {
   min-width: 190px;
 }
 
@@ -301,7 +301,7 @@
   color: var(--muted);
   font-size: var(--type-label);
 }
-.setting-row > select {
+.setting-row > .dropdown-select {
   width: auto;
   min-width: 155px;
 }
@@ -363,6 +363,11 @@
   border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--text);
+}
+
+.translation-language-form .dropdown-combobox {
+  min-width: 180px;
+  flex: 1;
 }
 .settings-actions {
   display: flex;

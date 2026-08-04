@@ -30,6 +30,7 @@ import { DUPLICATE_ARTICLE_WINDOW_DAYS } from "../../shared/types";
 import { api, errorMessage } from "../api";
 import type { ReaderDataMutations } from "../data-resource";
 import { isDesktopApp } from "../desktop";
+import { DropdownCombobox, DropdownSelect } from "../dropdown";
 import type { Theme } from "../reader-preferences";
 import { ExportOpmlLink, formatRefreshInterval, ImportOpmlButton, Kbd, PageHeader } from "./shared";
 import { ShortcutReference } from "./shortcut-help";
@@ -335,19 +336,16 @@ function AiSettingsSection({
           <p>The active provider runs every AI action.</p>
         </label>
         <div className="ai-provider-control">
-          <select
+          <DropdownSelect
             id="ai-summary-provider"
             value={providerId}
             disabled={busy || !aiSettings.credentialStorageAvailable}
-            onChange={(event) => selectProvider(event.target.value as AiProvider)}
-          >
-            {aiSettings.providers.map((option) => (
-              <option key={option.id} value={option.id}>
-                {option.label}
-                {option.configured ? " (key saved)" : ""}
-              </option>
-            ))}
-          </select>
+            options={aiSettings.providers.map((option) => ({
+              value: option.id,
+              label: `${option.label}${option.configured ? " (key saved)" : ""}`,
+            }))}
+            onChange={(value) => selectProvider(value as AiProvider)}
+          />
         </div>
       </div>
 
@@ -932,25 +930,25 @@ export function SettingsPage({
               if (language) void saveSettings({ translationLanguage: language });
             }}
           >
-            <input
+            <DropdownCombobox
               id="translation-language"
-              list="translation-language-suggestions"
+              ariaLabel="Translation language"
               value={translationLanguage}
+              suggestions={[
+                "English",
+                "Polish",
+                "German",
+                "Spanish",
+                "French",
+                "Italian",
+                "Portuguese",
+                "Ukrainian",
+              ]}
               maxLength={80}
               required
               disabled={saving}
-              onChange={(event) => setTranslationLanguage(event.target.value)}
+              onChange={setTranslationLanguage}
             />
-            <datalist id="translation-language-suggestions">
-              <option value="English" />
-              <option value="Polish" />
-              <option value="German" />
-              <option value="Spanish" />
-              <option value="French" />
-              <option value="Italian" />
-              <option value="Portuguese" />
-              <option value="Ukrainian" />
-            </datalist>
             <button
               className="secondary-button"
               type="submit"
@@ -986,20 +984,16 @@ export function SettingsPage({
               How often echovale checks RSS, Atom, and JSON feeds. Web feeds refresh every 3 hours.
             </p>
           </label>
-          <select
+          <DropdownSelect
             id="poll-interval"
-            value={settings.pollIntervalMinutes}
+            value={String(settings.pollIntervalMinutes)}
             disabled={saving}
-            onChange={(event) =>
-              void saveSettings({ pollIntervalMinutes: Number(event.target.value) })
-            }
-          >
-            {[5, 10, 15, 30, 60, 120].map((minutes) => (
-              <option key={minutes} value={minutes}>
-                {formatRefreshInterval(minutes)}
-              </option>
-            ))}
-          </select>
+            options={[5, 10, 15, 30, 60, 120].map((minutes) => ({
+              value: String(minutes),
+              label: formatRefreshInterval(minutes),
+            }))}
+            onChange={(value) => void saveSettings({ pollIntervalMinutes: Number(value) })}
+          />
         </div>
         <div className="setting-row">
           <label htmlFor="duplicate-article-window">
@@ -1009,24 +1003,20 @@ export function SettingsPage({
               period.
             </p>
           </label>
-          <select
+          <DropdownSelect
             id="duplicate-article-window"
-            value={settings.duplicateArticleWindowDays}
+            value={String(settings.duplicateArticleWindowDays)}
             disabled={saving}
-            onChange={(event) =>
+            options={DUPLICATE_ARTICLE_WINDOW_DAYS.map((days) => ({
+              value: String(days),
+              label: days === 1 ? "Past day" : `Past ${days} days`,
+            }))}
+            onChange={(value) =>
               void saveSettings({
-                duplicateArticleWindowDays: Number(
-                  event.target.value,
-                ) as DuplicateArticleWindowDays,
+                duplicateArticleWindowDays: Number(value) as DuplicateArticleWindowDays,
               })
             }
-          >
-            {DUPLICATE_ARTICLE_WINDOW_DAYS.map((days) => (
-              <option key={days} value={days}>
-                {days === 1 ? "Past day" : `Past ${days} days`}
-              </option>
-            ))}
-          </select>
+          />
         </div>
       </section>
 

@@ -22,6 +22,7 @@ import type {
 } from "../../shared/types";
 import { errorMessage, type RuleInput } from "../api";
 import type { ReaderDataMutations } from "../data-resource";
+import { DropdownSelect } from "../dropdown";
 import { type MotionState, useMotionPresence } from "../motion";
 import { PageHeader } from "./shared";
 import "./rules.css";
@@ -409,26 +410,27 @@ export function RuleForm({
                 onChange={(event) => setName(event.target.value)}
               />
             </label>
-            <label className="field">
+            <div className="field">
               <span>Apply to</span>
-              <select value={scope} onChange={(event) => setScope(event.target.value)}>
-                <option value="all">All feeds</option>
-                <optgroup label="Folders">
-                  {bootstrap.folders.map((folder) => (
-                    <option key={folder.id} value={`folder:${folder.id}`}>
-                      {folder.name}
-                    </option>
-                  ))}
-                </optgroup>
-                <optgroup label="Feeds">
-                  {bootstrap.feeds.map((feed) => (
-                    <option key={feed.id} value={`feed:${feed.id}`}>
-                      {feed.title}
-                    </option>
-                  ))}
-                </optgroup>
-              </select>
-            </label>
+              <DropdownSelect
+                ariaLabel="Apply to"
+                value={scope}
+                options={[
+                  { value: "all", label: "All feeds" },
+                  ...bootstrap.folders.map((folder) => ({
+                    value: `folder:${folder.id}`,
+                    label: folder.name,
+                    group: "Folders",
+                  })),
+                  ...bootstrap.feeds.map((feed) => ({
+                    value: `feed:${feed.id}`,
+                    label: feed.title,
+                    group: "Feeds",
+                  })),
+                ]}
+                onChange={setScope}
+              />
+            </div>
           </div>
         </section>
 
@@ -459,18 +461,18 @@ export function RuleForm({
                     {index === 0 ? (
                       <span className="rule-condition-connector">If</span>
                     ) : index === 1 ? (
-                      <label className="rule-condition-operator">
+                      <div className="rule-condition-operator">
                         <span className="sr-only">Join all conditions with</span>
-                        <select
+                        <DropdownSelect
+                          ariaLabel="Join all conditions with"
                           value={conditionOperator}
-                          onChange={(event) =>
-                            setConditionOperator(event.target.value as RuleConditionOperator)
-                          }
-                        >
-                          <option value="and">And</option>
-                          <option value="or">Or</option>
-                        </select>
-                      </label>
+                          options={[
+                            { value: "and", label: "And" },
+                            { value: "or", label: "Or" },
+                          ]}
+                          onChange={(value) => setConditionOperator(value as RuleConditionOperator)}
+                        />
+                      </div>
                     ) : (
                       <span className="rule-condition-connector">{connector}</span>
                     )}
@@ -479,26 +481,23 @@ export function RuleForm({
                       <label className="sr-only" htmlFor={fieldId}>
                         Look in for condition {index + 1}
                       </label>
-                      <select
+                      <DropdownSelect
                         id={fieldId}
                         value={condition.field}
-                        onChange={(event) =>
+                        options={Object.entries(RULE_FIELD_LABELS).map(([value, label]) => ({
+                          value,
+                          label,
+                        }))}
+                        onChange={(value) =>
                           setConditions((current) =>
                             current.map((item) =>
                               item.id === condition.id
-                                ? { ...item, field: event.target.value as RuleField }
+                                ? { ...item, field: value as RuleField }
                                 : item,
                             ),
                           )
                         }
-                      >
-                        <option value="title">Title</option>
-                        <option value="author">Author</option>
-                        <option value="summary">Summary</option>
-                        <option value="content">Full content</option>
-                        <option value="media">Media type</option>
-                        <option value="any">Any text</option>
-                      </select>
+                      />
                     </div>
 
                     <span className="rule-condition-comparator">contains</span>

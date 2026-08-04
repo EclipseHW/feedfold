@@ -306,7 +306,7 @@
   color: var(--text);
 }
 
-.field select {
+.field .dropdown-select {
   width: 100%;
 }
 
