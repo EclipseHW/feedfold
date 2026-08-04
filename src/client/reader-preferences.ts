@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
-import type { ReadingMode } from "../shared/types";
+import type { ReadingMode } from "../shared/types.js";
 
-export type Theme = "dark" | "light";
+export type Theme = "auto" | "dark" | "light";
+type ResolvedTheme = Exclude<Theme, "auto">;
 
 export const ARTICLE_FONT_MIN = 15;
 export const ARTICLE_FONT_MAX = 23;
@@ -23,6 +24,11 @@ function accountStorageKey(userId: number, setting: string): string {
   return `echovale-account-${userId}-${setting}`;
 }
 
+export function resolveTheme(theme: Theme, prefersLight: boolean): ResolvedTheme {
+  if (theme !== "auto") return theme;
+  return prefersLight ? "light" : "dark";
+}
+
 export function useReaderPreferences(userId: number) {
   const [readingMode, setReadingMode] = useState<ReadingMode>(() =>
     storedValue<ReadingMode>(accountStorageKey(userId, "reading-mode"), "magazine"),
@@ -41,8 +47,17 @@ export function useReaderPreferences(userId: number) {
   );
 
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    const colorScheme = window.matchMedia("(prefers-color-scheme: light)");
+    const applyTheme = () => {
+      document.documentElement.dataset.theme = resolveTheme(theme, colorScheme.matches);
+    };
+
+    applyTheme();
     window.localStorage.setItem(accountStorageKey(userId, "theme"), theme);
+
+    if (theme !== "auto") return;
+    colorScheme.addEventListener("change", applyTheme);
+    return () => colorScheme.removeEventListener("change", applyTheme);
   }, [theme, userId]);
 
   useEffect(() => {
