@@ -128,9 +128,12 @@
   font-weight: var(--weight-semibold);
 }
 
-.feed-filter-field select {
+.feed-filter-field .dropdown-select {
   width: auto;
   min-width: 174px;
+}
+
+.feed-filter-field .dropdown-select-trigger {
   height: var(--control-height-compact);
   padding-block: 5px;
   color: var(--text-secondary);
@@ -574,7 +577,7 @@
     gap: 4px;
   }
 
-  .feed-filter-field select {
+  .feed-filter-field .dropdown-select {
     width: 100%;
     min-width: 0;
   }

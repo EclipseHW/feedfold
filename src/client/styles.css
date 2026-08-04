@@ -59,10 +59,9 @@
   --radius-md: 8px;
   --control-height: 38px;
   --control-height-compact: 34px;
-  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m4.5 6 3.5 3.5L11.5 6' stroke='%237f8983' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --menu-surface: color-mix(in srgb, var(--surface-raised) 94%, transparent);
   --menu-shadow: 0 8px 24px oklch(0 0 0 / 0.32);
-  --menu-radius: 10px;
+  --menu-radius: var(--radius-md);
   --menu-padding: 6px;
   --z-sidebar: 30;
   --z-scrim: 20;
@@ -104,7 +103,6 @@
   --danger: oklch(0.51 0.17 25);
   --danger-surface: oklch(0.93 0.045 25);
   --focus: oklch(0.48 0.14 130);
-  --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16' fill='none'%3E%3Cpath d='m4.5 6 3.5 3.5L11.5 6' stroke='%2356635a' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
   --menu-shadow: 0 8px 24px oklch(0 0 0 / 0.16);
 }
 
@@ -135,7 +133,6 @@ body {
 
 button,
 input,
-select,
 textarea {
   color: inherit;
   font: inherit;
@@ -153,44 +150,6 @@ button {
 button:disabled {
   cursor: not-allowed;
   opacity: 0.5;
-}
-
-select {
-  height: var(--control-height);
-  appearance: none;
-  padding: 7px 34px 7px 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background-color: var(--bg);
-  background-image: var(--select-chevron);
-  background-repeat: no-repeat;
-  background-position: right 9px center;
-  background-size: 16px;
-  color: var(--text);
-  font-size: var(--type-supporting);
-  font-weight: var(--weight-medium);
-  line-height: var(--leading-compact);
-  transition:
-    background-color var(--duration-fast) ease,
-    border-color var(--duration-fast) ease;
-}
-
-select:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-
-select option,
-select optgroup {
-  background: var(--surface-raised);
-  color: var(--text);
-}
-
-@media (hover: hover) and (pointer: fine) {
-  select:not(:disabled):hover {
-    border-color: var(--border-strong);
-    background-color: var(--surface);
-  }
 }
 
 a {
@@ -224,7 +183,6 @@ p {
 button:focus-visible,
 a:focus-visible,
 input:focus-visible,
-select:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible {
   outline: 2px solid var(--focus);
@@ -1067,7 +1025,8 @@ kbd {
   .summary-prompt-menu,
   .article-more-menu,
   .sidebar-context-menu,
-  .article-selection-menu
+  .article-selection-menu,
+  .dropdown-menu-surface
 ) {
   padding: var(--menu-padding);
   border: 1px solid var(--border-strong);
@@ -1076,6 +1035,188 @@ kbd {
   box-shadow: var(--menu-shadow);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
   backdrop-filter: blur(18px) saturate(140%);
+}
+
+.dropdown-select {
+  min-width: 0;
+}
+
+.dropdown-combobox {
+  position: relative;
+  min-width: 0;
+}
+
+.dropdown-combobox > input {
+  width: 100%;
+  padding-right: 34px;
+}
+
+.dropdown-combobox > svg {
+  position: absolute;
+  top: 50%;
+  right: 9px;
+  color: var(--muted);
+  pointer-events: none;
+  transform: translateY(-50%);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.dropdown-combobox[data-open="true"] > svg {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.dropdown-select-trigger {
+  display: flex;
+  width: 100%;
+  height: var(--control-height);
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 7px 9px 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font-size: var(--type-supporting);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-compact);
+  text-align: left;
+  transition:
+    background-color var(--duration-fast) ease,
+    border-color var(--duration-fast) ease,
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.dropdown-select-trigger > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-select-trigger > svg {
+  flex: 0 0 auto;
+  color: var(--muted);
+  transition: transform var(--duration-fast) var(--ease-out);
+}
+
+.dropdown-select-trigger[aria-expanded="true"] > svg {
+  transform: rotate(180deg);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dropdown-select-trigger:hover:not(:disabled) {
+    border-color: var(--border-strong);
+    background: var(--surface);
+  }
+}
+
+.dropdown-select-trigger:active:not(:disabled, :focus-visible) {
+  transform: scale(0.99);
+}
+
+.dropdown-select-menu {
+  position: fixed;
+  position-try-fallbacks: flip-block, flip-inline;
+  position-area: block-end span-inline-end;
+  z-index: var(--z-context-menu);
+  inset: auto;
+  width: max-content;
+  min-width: anchor-size(width);
+  max-width: min(360px, calc(100vw - 16px));
+  max-height: min(360px, calc(100dvh - 16px));
+  margin: 6px 0 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  opacity: 0;
+  transform: translateY(-4px) scale(0.98);
+  transform-origin: top right;
+  transition:
+    opacity var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out),
+    display var(--duration-fast) allow-discrete,
+    overlay var(--duration-fast) allow-discrete;
+}
+
+.dropdown-select-menu:popover-open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.dropdown-select-group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.dropdown-select-group-label {
+  width: 100%;
+  padding: 7px 9px 5px;
+  color: var(--muted);
+  font-size: var(--type-kbd);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-compact);
+}
+
+.dropdown-select-option {
+  display: grid;
+  width: 100%;
+  min-height: 38px;
+  grid-template-columns: minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--type-supporting);
+  font-weight: var(--weight-medium);
+  line-height: var(--leading-compact);
+  text-align: left;
+  transition:
+    background-color var(--duration-fast) ease,
+    color var(--duration-fast) ease,
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.dropdown-select-option > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown-select-option > svg {
+  color: var(--accent);
+}
+
+.dropdown-select-option[aria-selected="true"] {
+  background: var(--accent-surface);
+  color: var(--text);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dropdown-select-option:hover:not(:disabled) {
+    background: var(--surface-hover);
+    color: var(--text);
+  }
+
+  .dropdown-select-option[aria-selected="true"]:hover:not(:disabled) {
+    background: var(--surface-active);
+  }
+}
+
+.dropdown-select-option:active:not(:disabled, :focus-visible) {
+  transform: scale(0.99);
+}
+
+@starting-style {
+  .dropdown-select-menu:popover-open {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.98);
+  }
 }
 
 .mark-read-menu {
@@ -3674,7 +3815,7 @@ kbd {
     align-items: stretch;
     flex-direction: column;
   }
-  .ai-provider-control select {
+  .ai-provider-control .dropdown-select {
     width: 100%;
   }
   .ai-key-input {
@@ -3934,6 +4075,7 @@ kbd {
   .article-more-menu,
   .mark-read-menu,
   .sidebar-context-menu,
+  .dropdown-select-menu,
   .toast > span,
   .toast > span[data-state="open"] {
     transition: opacity var(--duration-reduced) ease;
@@ -3983,6 +4125,19 @@ kbd {
   .article-more-menu:popover-open,
   .sidebar-context-menu {
     transform: none;
+  }
+
+  .dropdown-select-menu,
+  .dropdown-select-menu:popover-open {
+    transform: none;
+  }
+
+  .dropdown-select-trigger > svg {
+    transition: none;
+  }
+
+  .dropdown-combobox > svg {
+    transition: none;
   }
 
   .article-source-trigger svg {
@@ -4054,7 +4209,8 @@ kbd {
     .summary-prompt-menu,
     .article-more-menu,
     .sidebar-context-menu,
-    .article-selection-menu
+    .article-selection-menu,
+    .dropdown-menu-surface
   ) {
     background: var(--surface-raised);
     -webkit-backdrop-filter: none;
@@ -4072,11 +4228,6 @@ kbd {
 }
 
 @media (forced-colors: active) {
-  select {
-    appearance: auto;
-    background-image: none;
-  }
-
   .feed-dot,
   .status-dot {
     border: 1px solid CanvasText;
