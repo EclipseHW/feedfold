@@ -28,6 +28,7 @@ export async function settingsRoutes(
         duplicateArticleWindowDays: duplicateArticleWindowDays.optional(),
         singleKeyShortcuts: z.boolean().optional(),
         markReadOnScroll: z.boolean().optional(),
+        showYouTubeDescriptions: z.boolean().optional(),
         translationLanguage: z.string().trim().min(1).max(80).optional(),
         summaryPrompt: z.string().trim().min(1).max(AI_PROMPT_MAX_LENGTH).optional(),
         translationPrompt: z.string().trim().min(1).max(AI_PROMPT_MAX_LENGTH).optional(),

@@ -407,6 +407,20 @@
   transform: translateX(16px);
 }
 
+@media (max-width: 620px), (hover: none) and (pointer: coarse) {
+  .switch {
+    width: 44px;
+    height: 28px;
+  }
+
+  .switch span {
+    top: 4px;
+    left: 4px;
+    width: 18px;
+    height: 18px;
+  }
+}
+
 .visually-hidden-input {
   position: fixed;
   left: -100vw;

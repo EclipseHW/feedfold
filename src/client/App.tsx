@@ -676,6 +676,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     articles={queue.articles}
                     activeId={queue.activeArticleId}
                     markReadOnScroll={bootstrap.settings.markReadOnScroll}
+                    showYouTubeDescriptions={bootstrap.settings.showYouTubeDescriptions}
                     hasMore={queue.nextCursor !== null}
                     loadingMore={queue.loadingMore}
                     onLoadMore={() => void queue.loadOlderArticles()}
@@ -717,6 +718,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     }
                     translationLanguage={bootstrap.settings.translationLanguage}
                     customPrompts={bootstrap.settings.customPrompts}
+                    showYouTubeDescriptions={bootstrap.settings.showYouTubeDescriptions}
                     onBack={route.returnToArticleList}
                     onPrevious={() => articleActions.moveArticle(-1)}
                     onNext={() => articleActions.moveArticle(1)}
@@ -755,6 +757,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   translationStates={articleActions.articleTranslationStates}
                   translationLanguage={bootstrap.settings.translationLanguage}
                   customPrompts={bootstrap.settings.customPrompts}
+                  showYouTubeDescriptions={bootstrap.settings.showYouTubeDescriptions}
                   markReadOnScroll={bootstrap.settings.markReadOnScroll}
                   hasMore={route.routedArticleId === null && queue.nextCursor !== null}
                   loadingMore={queue.loadingMore}

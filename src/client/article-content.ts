@@ -46,3 +46,10 @@ export function articleTranslationSourceKind(
   if (article.feedContentHtml) return "feed";
   return "excerpt";
 }
+
+export function shouldShowArticleDescription(
+  article: Article,
+  showYouTubeDescriptions: boolean,
+): boolean {
+  return article.media?.provider !== "youtube" || showYouTubeDescriptions;
+}

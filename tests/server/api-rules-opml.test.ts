@@ -352,6 +352,7 @@ describe("live API, OPML, and filtering rules", () => {
       headers: { cookie: readerCookie },
       payload: {
         markReadOnScroll: false,
+        showYouTubeDescriptions: true,
         duplicateArticleWindowDays: 30,
         translationLanguage: "Polish",
         summaryPrompt: "Summarize with one concise paragraph.",
@@ -367,6 +368,7 @@ describe("live API, OPML, and filtering rules", () => {
     });
     expect(savedSettings.json()).toMatchObject({
       markReadOnScroll: false,
+      showYouTubeDescriptions: true,
       duplicateArticleWindowDays: 30,
       translationLanguage: "Polish",
       summaryPrompt: "Summarize with one concise paragraph.",
@@ -419,6 +421,7 @@ describe("live API, OPML, and filtering rules", () => {
       ).json(),
     ).toMatchObject({
       markReadOnScroll: true,
+      showYouTubeDescriptions: false,
       duplicateArticleWindowDays: 7,
       translationLanguage: "English",
       summaryPrompt: DEFAULT_ARTICLE_SUMMARY_PROMPT,

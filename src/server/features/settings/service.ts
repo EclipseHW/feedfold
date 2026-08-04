@@ -22,6 +22,7 @@ export class SettingsService {
         input.duplicateArticleWindowDays ?? current.duplicateArticleWindowDays,
       singleKeyShortcuts: input.singleKeyShortcuts ?? current.singleKeyShortcuts,
       markReadOnScroll: input.markReadOnScroll ?? current.markReadOnScroll,
+      showYouTubeDescriptions: input.showYouTubeDescriptions ?? current.showYouTubeDescriptions,
       translationLanguage: input.translationLanguage?.trim() || current.translationLanguage,
       summaryPrompt: input.summaryPrompt?.trim() || current.summaryPrompt,
       translationPrompt: input.translationPrompt?.trim() || current.translationPrompt,

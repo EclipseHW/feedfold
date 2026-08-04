@@ -3,6 +3,7 @@ import {
   articleContentView,
   articleTranslationSourceKind,
   fullContentToggleAction,
+  shouldShowArticleDescription,
 } from "../../src/client/article-content.js";
 import type { Article } from "../../src/shared/types.js";
 
@@ -79,5 +80,26 @@ describe("article content source selection", () => {
         false,
       ),
     ).toBe("excerpt");
+  });
+
+  it("hides only YouTube descriptions when the preference is off", () => {
+    const article = linkedArticle();
+    const youtubeArticle: Article = {
+      ...article,
+      media: {
+        provider: "youtube",
+        type: "video",
+        videoId: "video-id",
+        channelId: "channel-id",
+        embedUrl: "https://www.youtube.com/embed/video-id",
+        thumbnailUrl: "https://i.ytimg.com/vi/video-id/hqdefault.jpg",
+        viewCount: null,
+        rating: null,
+      },
+    };
+
+    expect(shouldShowArticleDescription(article, false)).toBe(true);
+    expect(shouldShowArticleDescription(youtubeArticle, false)).toBe(false);
+    expect(shouldShowArticleDescription(youtubeArticle, true)).toBe(true);
   });
 });
