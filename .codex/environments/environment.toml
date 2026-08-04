@@ -23,7 +23,7 @@ fi
 if [ -x ./node_modules/.bin/playwright ]; then
   fnm exec --using=.node-version ./node_modules/.bin/playwright install chromium
 fi
-fnm exec --using=.node-version node .codex/scripts/dev-server.mjs start --open
+fnm exec --using=.node-version node .codex/scripts/dev-server.mjs start --copy
 '''
 
 [cleanup]
@@ -36,7 +36,7 @@ script = "fnm exec --using=.node-version node .codex/scripts/dev-server.mjs stop
 name = "Restart dev server"
 icon = "run"
 platform = "darwin"
-command = "fnm exec --using=.node-version node .codex/scripts/dev-server.mjs restart --open"
+command = "fnm exec --using=.node-version node .codex/scripts/dev-server.mjs restart --copy"
 
 [[actions]]
 name = "Check"

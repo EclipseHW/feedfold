@@ -35,6 +35,7 @@ const statePath = join(runtimePath, "dev-server.json");
 const logPath = join(runtimePath, "dev-server.log");
 const operation = process.argv[2] ?? "start";
 const shouldOpen = process.argv.includes("--open");
+const shouldCopy = process.argv.includes("--copy");
 
 function readState() {
   if (!existsSync(statePath)) return null;
@@ -196,11 +197,20 @@ function openBrowser(url) {
   if (result.status !== 0) throw new Error(`Could not open ${url} in a browser`);
 }
 
+function copyUrl(url) {
+  if (process.platform !== "darwin") {
+    throw new Error(`Cannot copy a URL to the clipboard on ${process.platform}`);
+  }
+  const result = spawnSync("pbcopy", { input: url, encoding: "utf8" });
+  if (result.status !== 0) throw new Error("Could not copy the dev-server URL");
+}
+
 async function start() {
   const existingState = readState();
   if (existingState && isAlive(existingState.pid)) {
     assertOwnedProcess(existingState);
     if (shouldOpen) openBrowser(existingState.readyUrl);
+    if (shouldCopy) copyUrl(existingState.readyUrl);
     console.log(`Dev server is already running at ${existingState.readyUrl}`);
     return;
   }
@@ -247,6 +257,7 @@ async function start() {
     throw error;
   }
   if (shouldOpen) openBrowser(readyUrl);
+  if (shouldCopy) copyUrl(readyUrl);
   console.log(`Dev server is ready at ${readyUrl}`);
 }
 
