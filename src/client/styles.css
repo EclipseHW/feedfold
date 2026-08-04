@@ -3558,22 +3558,58 @@ kbd {
   .mark-read-menu {
     width: calc(100vw - 18px);
   }
+  .close-nav,
+  .sidebar-section-heading button {
+    width: 40px;
+    height: 40px;
+  }
+  .brand {
+    min-height: 40px;
+  }
+  .sidebar-account .icon-button {
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+  }
+  .nav-item {
+    min-height: 40px;
+  }
+  .tree-row {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+  .tree-toggle {
+    width: 40px;
+    min-height: 40px;
+  }
+  .feed-tree-row .feed-nav-item {
+    height: 40px;
+  }
+  .feed-menu-button,
+  .folder-menu-button {
+    top: 0;
+    right: 0;
+    width: 40px;
+    height: 40px;
+  }
   .reader-title-row {
     display: grid;
     grid-template-areas:
       "menu title modes"
       "search search actions";
-    grid-template-columns: 36px minmax(0, 1fr) auto;
+    grid-template-columns: 40px minmax(0, 1fr) auto;
     gap: 6px 8px;
     padding: 6px 9px 7px;
   }
   :where(.reader-toolbar.is-reading-article) .reader-title-row {
     grid-template-areas: "menu title";
-    grid-template-columns: 36px minmax(0, 1fr);
+    grid-template-columns: 40px minmax(0, 1fr);
     padding-block: 4px;
   }
   .menu-button {
     grid-area: menu;
+    width: 40px;
+    min-width: 40px;
+    min-height: 40px;
   }
   .scope-title {
     grid-area: title;
@@ -3594,6 +3630,10 @@ kbd {
     grid-area: modes;
     justify-self: end;
   }
+  .reader-title-row > .view-switcher button {
+    width: 40px;
+    min-height: 40px;
+  }
   .toolbar-actions {
     grid-area: actions;
     justify-self: end;
@@ -3604,6 +3644,7 @@ kbd {
     min-height: 40px;
   }
   .toolbar-actions .mark-read-split-button .icon-button {
+    min-width: 40px;
     min-height: 40px;
   }
   .article-actions {

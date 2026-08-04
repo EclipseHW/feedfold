@@ -890,6 +890,7 @@ export function SettingsPage({
             className={`switch ${settings.markReadOnScroll ? "is-on" : ""}`}
             type="button"
             role="switch"
+            aria-label="Mark as read on scroll"
             aria-checked={settings.markReadOnScroll}
             disabled={saving}
             onClick={() => void saveSettings({ markReadOnScroll: !settings.markReadOnScroll })}
@@ -906,6 +907,7 @@ export function SettingsPage({
             className={`switch ${settings.showYouTubeDescriptions ? "is-on" : ""}`}
             type="button"
             role="switch"
+            aria-label="Show YouTube descriptions"
             aria-checked={settings.showYouTubeDescriptions}
             disabled={saving}
             onClick={() =>
@@ -1034,6 +1036,7 @@ export function SettingsPage({
             className={`switch ${settings.singleKeyShortcuts ? "is-on" : ""}`}
             type="button"
             role="switch"
+            aria-label="Single-key shortcuts"
             aria-checked={settings.singleKeyShortcuts}
             disabled={saving}
             onClick={() => void saveSettings({ singleKeyShortcuts: !settings.singleKeyShortcuts })}
