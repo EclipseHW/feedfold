@@ -6,6 +6,7 @@ import {
   LoaderCircle,
   MessageSquareText,
   Minus,
+  Monitor,
   Moon,
   Plus,
   Sun,
@@ -29,12 +30,11 @@ import { DUPLICATE_ARTICLE_WINDOW_DAYS } from "../../shared/types";
 import { api, errorMessage } from "../api";
 import type { ReaderDataMutations } from "../data-resource";
 import { isDesktopApp } from "../desktop";
+import type { Theme } from "../reader-preferences";
 import { ExportOpmlLink, formatRefreshInterval, ImportOpmlButton, Kbd, PageHeader } from "./shared";
 import { ShortcutReference } from "./shortcut-help";
 import "./dialogs.css";
 import "./settings.css";
-
-type Theme = "dark" | "light";
 
 function AiSettingsSection({
   settings,
@@ -832,9 +832,13 @@ export function SettingsPage({
         <div className="setting-row">
           <div>
             <strong>Theme</strong>
-            <p>Choose a light or dark theme for this browser.</p>
+            <p>Choose a theme or follow your device appearance.</p>
           </div>
           <div className="theme-options">
+            <button type="button" aria-pressed={theme === "auto"} onClick={() => onTheme("auto")}>
+              <Monitor aria-hidden="true" size={17} />
+              Auto
+            </button>
             <button type="button" aria-pressed={theme === "dark"} onClick={() => onTheme("dark")}>
               <Moon aria-hidden="true" size={17} />
               Dark
