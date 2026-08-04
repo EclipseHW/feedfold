@@ -12,6 +12,7 @@ export class SettingsRepository {
                 duplicate_article_window_days AS duplicateArticleWindowDays,
                 single_key_shortcuts AS singleKeyShortcuts,
                 mark_read_on_scroll AS markReadOnScroll,
+                show_youtube_descriptions AS showYouTubeDescriptions,
                 translation_language AS translationLanguage,
                 summary_prompt AS summaryPrompt,
                 translation_prompt AS translationPrompt,
@@ -26,6 +27,7 @@ export class SettingsRepository {
       ) as AppSettings["duplicateArticleWindowDays"],
       singleKeyShortcuts: toBoolean(row.singleKeyShortcuts),
       markReadOnScroll: toBoolean(row.markReadOnScroll),
+      showYouTubeDescriptions: toBoolean(row.showYouTubeDescriptions),
       translationLanguage: String(row.translationLanguage),
       summaryPrompt: String(row.summaryPrompt),
       translationPrompt: String(row.translationPrompt),
@@ -38,8 +40,9 @@ export class SettingsRepository {
       .prepare(
         `UPDATE settings
          SET poll_interval_minutes = ?, duplicate_article_window_days = ?,
-             single_key_shortcuts = ?, mark_read_on_scroll = ?, translation_language = ?,
-             summary_prompt = ?, translation_prompt = ?, custom_prompts_json = ?
+             single_key_shortcuts = ?, mark_read_on_scroll = ?, show_youtube_descriptions = ?,
+             translation_language = ?, summary_prompt = ?, translation_prompt = ?,
+             custom_prompts_json = ?
          WHERE user_id = ?`,
       )
       .run(
@@ -47,6 +50,7 @@ export class SettingsRepository {
         settings.duplicateArticleWindowDays,
         settings.singleKeyShortcuts ? 1 : 0,
         settings.markReadOnScroll ? 1 : 0,
+        settings.showYouTubeDescriptions ? 1 : 0,
         settings.translationLanguage,
         settings.summaryPrompt,
         settings.translationPrompt,

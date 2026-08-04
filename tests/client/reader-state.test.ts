@@ -63,6 +63,7 @@ function bootstrap(): BootstrapData {
       duplicateArticleWindowDays: 7,
       singleKeyShortcuts: true,
       markReadOnScroll: true,
+      showYouTubeDescriptions: false,
       translationLanguage: "English",
       summaryPrompt: "Summarize",
       translationPrompt: "Translate",

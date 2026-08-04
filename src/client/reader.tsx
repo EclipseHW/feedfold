@@ -50,7 +50,7 @@ import type {
 } from "../shared/types";
 import { AiMarkdown } from "./ai-markdown";
 import { api, appUrl, errorMessage } from "./api";
-import { articleContentView } from "./article-content";
+import { articleContentView, shouldShowArticleDescription } from "./article-content";
 import { ArticleHtml } from "./article-html";
 import {
   type ArticleSwipeDirection,
@@ -669,6 +669,7 @@ export function ArticleList({
   articles,
   activeId,
   markReadOnScroll,
+  showYouTubeDescriptions,
   hasMore,
   loadingMore,
   onLoadMore,
@@ -680,6 +681,7 @@ export function ArticleList({
   articles: Article[];
   activeId: number | null;
   markReadOnScroll: boolean;
+  showYouTubeDescriptions: boolean;
   hasMore: boolean;
   loadingMore: boolean;
   onLoadMore: () => void;
@@ -748,7 +750,9 @@ export function ArticleList({
                     {articleDate(article)}
                   </time>
                 </span>
-                {article.title && article.summary ? (
+                {article.title &&
+                article.summary &&
+                shouldShowArticleDescription(article, showYouTubeDescriptions) ? (
                   <span className="article-list-summary-text">
                     <LinkifiedText text={article.summary} />
                   </span>
@@ -1382,6 +1386,7 @@ function ArticleDocument({
   translationState,
   translationLanguage,
   customPrompts,
+  showYouTubeDescriptions,
   onFeedAction,
   onToggleFullContent,
   onRegenerateSummary,
@@ -1395,6 +1400,7 @@ function ArticleDocument({
   translationState: ArticleTranslationViewState;
   translationLanguage: string;
   customPrompts: AiCustomPrompt[];
+  showYouTubeDescriptions: boolean;
   onFeedAction: (feedId: number, action: FeedManagementAction) => void;
   onToggleFullContent: (article: Article) => void;
   onRegenerateSummary: (article: Article) => void;
@@ -1511,6 +1517,7 @@ function ArticleDocument({
           article={article}
           fullContentVisible={fullContentVisible}
           translationState={translationState}
+          showYouTubeDescriptions={showYouTubeDescriptions}
           onToggleFullContent={onToggleFullContent}
         />
       </div>
@@ -1621,6 +1628,7 @@ export function ReaderPane({
   translationState,
   translationLanguage,
   customPrompts,
+  showYouTubeDescriptions,
   canPrevious,
   canNext,
   onBack,
@@ -1644,6 +1652,7 @@ export function ReaderPane({
   translationState: ArticleTranslationViewState;
   translationLanguage: string;
   customPrompts: AiCustomPrompt[];
+  showYouTubeDescriptions: boolean;
   canPrevious: boolean;
   canNext: boolean;
   onBack: () => void;
@@ -2176,6 +2185,7 @@ export function ReaderPane({
       translationState={surface.translationState}
       translationLanguage={translationLanguage}
       customPrompts={customPrompts}
+      showYouTubeDescriptions={showYouTubeDescriptions}
       onFeedAction={onFeedAction}
       onToggleFullContent={onToggleFullContent}
       onRegenerateSummary={onRegenerateSummary}
@@ -2370,22 +2380,27 @@ function ArticleBody({
   article,
   fullContentVisible,
   translationState,
+  showYouTubeDescriptions,
   onToggleFullContent,
 }: {
   article: Article;
   fullContentVisible: boolean;
   translationState: ArticleTranslationViewState;
+  showYouTubeDescriptions: boolean;
   onToggleFullContent: (article: Article) => void;
 }) {
   return (
     <>
       {article.media ? <ArticleMediaPlayer article={article} /> : null}
       {translationState.visible && translationState.translation ? (
-        <ArticleTranslationText translation={translationState.translation} />
+        shouldShowArticleDescription(article, showYouTubeDescriptions) ? (
+          <ArticleTranslationText translation={translationState.translation} />
+        ) : null
       ) : (
         <ArticleText
           article={article}
           fullContentVisible={fullContentVisible}
+          showYouTubeDescriptions={showYouTubeDescriptions}
           onToggleFullContent={onToggleFullContent}
         />
       )}
@@ -2509,15 +2524,17 @@ function ArticleMediaPlayer({ article }: { article: Article }) {
 function ArticleText({
   article,
   fullContentVisible,
+  showYouTubeDescriptions,
   onToggleFullContent,
 }: {
   article: Article;
   fullContentVisible: boolean;
+  showYouTubeDescriptions: boolean;
   onToggleFullContent: (article: Article) => void;
 }) {
   const contentView = articleContentView(article, fullContentVisible);
   if (contentView === "feed" || contentView === "summary" || contentView === "empty") {
-    return <FeedArticleText article={article} />;
+    return <FeedArticleText article={article} showYouTubeDescriptions={showYouTubeDescriptions} />;
   }
 
   if (contentView === "loading") {
@@ -2530,7 +2547,7 @@ function ArticleText({
             <p>You can keep reading the feed text while echovale loads the source page.</p>
           </div>
         </div>
-        <FeedArticleText article={article} />
+        <FeedArticleText article={article} showYouTubeDescriptions={showYouTubeDescriptions} />
       </>
     );
   }
@@ -2557,15 +2574,22 @@ function ArticleText({
             </button>
           </div>
         </div>
-        <FeedArticleText article={article} />
+        <FeedArticleText article={article} showYouTubeDescriptions={showYouTubeDescriptions} />
       </>
     );
   }
 
-  return <FeedArticleText article={article} />;
+  return <FeedArticleText article={article} showYouTubeDescriptions={showYouTubeDescriptions} />;
 }
 
-function FeedArticleText({ article }: { article: Article }) {
+function FeedArticleText({
+  article,
+  showYouTubeDescriptions,
+}: {
+  article: Article;
+  showYouTubeDescriptions: boolean;
+}) {
+  if (!shouldShowArticleDescription(article, showYouTubeDescriptions)) return null;
   if (article.feedContentHtml) {
     return <ArticleHtml sanitizedHtml={article.feedContentHtml} />;
   }
@@ -2592,6 +2616,7 @@ export function ExpandedStream({
   translationStates,
   translationLanguage,
   customPrompts,
+  showYouTubeDescriptions,
   markReadOnScroll,
   hasMore,
   loadingMore,
@@ -2618,6 +2643,7 @@ export function ExpandedStream({
   translationStates: ReadonlyMap<number, ArticleTranslationViewState>;
   translationLanguage: string;
   customPrompts: AiCustomPrompt[];
+  showYouTubeDescriptions: boolean;
   markReadOnScroll: boolean;
   hasMore: boolean;
   loadingMore: boolean;
@@ -2685,6 +2711,7 @@ export function ExpandedStream({
             translationState={translationStates.get(article.id) ?? EMPTY_ARTICLE_TRANSLATION_STATE}
             translationLanguage={translationLanguage}
             customPrompts={customPrompts}
+            showYouTubeDescriptions={showYouTubeDescriptions}
             onFeedAction={onFeedAction}
             onToggleFullContent={onToggleFullContent}
             onRegenerateSummary={onRegenerateSummary}

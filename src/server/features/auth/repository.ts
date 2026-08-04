@@ -62,8 +62,9 @@ export class AuthRepository {
           .prepare(
             `INSERT INTO settings (
                user_id, poll_interval_minutes, single_key_shortcuts, mark_read_on_scroll,
-               translation_language, summary_prompt, translation_prompt, custom_prompts_json
-             ) VALUES (?, ?, 1, 1, 'English', ?, ?, ?)`,
+               show_youtube_descriptions, translation_language, summary_prompt,
+               translation_prompt, custom_prompts_json
+             ) VALUES (?, ?, 1, 1, 0, 'English', ?, ?, ?)`,
           )
           .run(
             userId,

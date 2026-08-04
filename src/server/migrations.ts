@@ -783,6 +783,11 @@ const migrations: Migration[] = [
       WHERE provider = 'anthropic' AND model = 'claude-haiku-4-5-20251001';
     `,
   },
+  {
+    sql: `
+      ALTER TABLE settings ADD COLUMN show_youtube_descriptions INTEGER NOT NULL DEFAULT 0;
+    `,
+  },
 ];
 
 export function migrateDatabase(

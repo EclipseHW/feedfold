@@ -278,6 +278,7 @@ export interface AppSettings {
   duplicateArticleWindowDays: DuplicateArticleWindowDays;
   singleKeyShortcuts: boolean;
   markReadOnScroll: boolean;
+  showYouTubeDescriptions: boolean;
   translationLanguage: string;
   summaryPrompt: string;
   translationPrompt: string;

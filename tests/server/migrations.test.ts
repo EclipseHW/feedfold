@@ -123,6 +123,7 @@ Return only the summary in plain text.`,
       });
 
       database.connection.prepare("DELETE FROM migrations WHERE version >= 22").run();
+      database.connection.exec("ALTER TABLE settings DROP COLUMN show_youtube_descriptions");
       migrateDatabase(database.connection, 20);
 
       expect(database.settings.getSettings(reader.id).summaryPrompt).toBe(
@@ -361,6 +362,7 @@ Return only the summary in plain text.`,
         duplicateArticleWindowDays: 7,
         singleKeyShortcuts: true,
         markReadOnScroll: true,
+        showYouTubeDescriptions: false,
         translationLanguage: "English",
         summaryPrompt: DEFAULT_ARTICLE_SUMMARY_PROMPT,
         translationPrompt: DEFAULT_ARTICLE_TRANSLATION_PROMPT,
@@ -459,7 +461,7 @@ Return only the summary in plain text.`,
         sortDirection: "newest",
       });
       expect(database.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
-        26,
+        27,
       );
       expect(
         database.connection
@@ -499,7 +501,7 @@ Return only the summary in plain text.`,
         username: "reader",
       });
       expect(reopened.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
-        26,
+        27,
       );
       expect(
         reopened.connection.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),

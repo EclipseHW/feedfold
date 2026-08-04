@@ -900,6 +900,26 @@ export function SettingsPage({
           </button>
         </div>
         <div className="setting-row">
+          <div>
+            <strong>YouTube descriptions</strong>
+            <p>Show descriptions from YouTube videos and Shorts in lists and below the player.</p>
+          </div>
+          <button
+            className={`switch ${settings.showYouTubeDescriptions ? "is-on" : ""}`}
+            type="button"
+            role="switch"
+            aria-checked={settings.showYouTubeDescriptions}
+            disabled={saving}
+            onClick={() =>
+              void saveSettings({
+                showYouTubeDescriptions: !settings.showYouTubeDescriptions,
+              })
+            }
+          >
+            <span />
+          </button>
+        </div>
+        <div className="setting-row">
           <label htmlFor="translation-language">
             <strong>Translation language</strong>
             <p>Translate articles into this language with the configured AI model.</p>
