@@ -396,28 +396,23 @@ function useExpandedActionDocking(
     const dockedRadius = dockingTargets[0]
       ? Number.parseFloat(window.getComputedStyle(dockingTargets[0].actions).borderTopRightRadius)
       : 0;
+    const actionHeight = dockingTargets[0]?.actions.getBoundingClientRect().height ?? 0;
     const currentRadii = new WeakMap<HTMLElement, number>();
     let frameHandle: number | null = null;
     const updateDockingState = () => {
       frameHandle = null;
       const containerTop = container.getBoundingClientRect().top;
-      for (const { actions, article } of dockingTargets) {
+      const nextRadii = dockingTargets.map(({ article }) => {
+        if (dockingLead === 0) return 0;
         const articleBottom = article.getBoundingClientRect().bottom;
-        const dockingProgress =
-          dockingLead === 0
-            ? 0
-            : Math.min(
-                1,
-                Math.max(
-                  0,
-                  (containerTop +
-                    actions.getBoundingClientRect().height +
-                    dockingLead -
-                    articleBottom) /
-                    dockingLead,
-                ),
-              );
-        const radius = Math.round(dockedRadius * dockingProgress * 100) / 100;
+        const progress = Math.min(
+          1,
+          Math.max(0, (containerTop + actionHeight + dockingLead - articleBottom) / dockingLead),
+        );
+        return Math.round(dockedRadius * progress * 100) / 100;
+      });
+      for (const [index, { actions }] of dockingTargets.entries()) {
+        const radius = nextRadii[index] ?? 0;
         if (currentRadii.get(actions) === radius) continue;
         currentRadii.set(actions, radius);
         actions.style.borderBottomRightRadius = `${radius}px`;
