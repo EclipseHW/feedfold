@@ -3371,6 +3371,10 @@ kbd {
     pointer-events: auto;
   }
 
+  .app-shell.is-reading-article .sidebar.is-collapsed .sidebar-collapse-button {
+    top: 4px;
+  }
+
   .app-shell.is-sidebar-collapsed .reader-toolbar .reader-title-row {
     padding-left: 58px;
   }
