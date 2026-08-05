@@ -61,18 +61,30 @@ const ShortcutHelp = lazy(() => import("./management/shortcut-help"));
 const ContextManagementDialog = lazy(() => import("./management/context-dialog"));
 
 interface SidebarLayoutSnapshot {
-  anchorLeft: number | null;
-  toggleLeft: number | null;
+  items: Array<{ element: HTMLElement; left: number }>;
 }
 
-function visibleSidebarMotionAnchor(main: HTMLElement | null): HTMLElement | null {
-  if (!main) return null;
-  return (
-    [...main.querySelectorAll<HTMLElement>(".article-document, h1")].find((element) => {
-      const bounds = element.getBoundingClientRect();
-      return bounds.width > 0 && bounds.height > 0;
-    }) ?? null
+function visibleSidebarMotionItems(main: HTMLElement | null): HTMLElement[] {
+  if (!main) return [];
+  const toggle = document.querySelector<HTMLElement>(".sidebar-collapse-button");
+  const content = main.querySelectorAll<HTMLElement>(
+    [
+      ".reader-title-row > *",
+      ".article-list > ol",
+      ".mode-magazine .article-document",
+      ".expanded-stream",
+      ".page-header > *",
+      ".management-section",
+      ".settings-section",
+      ".management-tabs-shell",
+      ".management-route-loading",
+    ].join(","),
   );
+  return [toggle, ...content].filter((element): element is HTMLElement => {
+    if (!element) return false;
+    const bounds = element.getBoundingClientRect();
+    return bounds.width > 0 && bounds.height > 0;
+  });
 }
 
 function feedManagementRequest(feedId: number, action: FeedManagementAction): ManagementRequest {
@@ -210,11 +222,11 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
 
   const toggleDesktopSidebar = useCallback(() => {
     const main = document.querySelector<HTMLElement>(".main-column");
-    const anchor = visibleSidebarMotionAnchor(main);
-    const toggle = document.querySelector<HTMLElement>(".sidebar-collapse-button");
     sidebarLayoutSnapshot.current = {
-      anchorLeft: anchor?.getBoundingClientRect().left ?? null,
-      toggleLeft: toggle?.getBoundingClientRect().left ?? null,
+      items: visibleSidebarMotionItems(main).map((element) => ({
+        element,
+        left: element.getBoundingClientRect().left,
+      })),
     };
     setDesktopSidebarCollapsed((current) => !current);
   }, []);
@@ -226,7 +238,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     for (const animation of sidebarLayoutAnimations.current) animation.cancel();
 
     const main = document.querySelector<HTMLElement>(".main-column");
-    const anchor = visibleSidebarMotionAnchor(main);
     const toggleLabel = desktopSidebarCollapsed ? "Show sidebar" : "Hide sidebar";
     const toggle = document.querySelector<HTMLElement>(
       `.sidebar-collapse-button[aria-label="${toggleLabel}"]`,
@@ -247,25 +258,12 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         animations.push(toggle.animate([{ opacity: 0.72 }, { opacity: 1 }], { duration, easing }));
       }
     } else {
-      const anchorLeft = anchor?.getBoundingClientRect().left ?? null;
-      if (main && snapshot.anchorLeft !== null && anchorLeft !== null) {
-        const offset = snapshot.anchorLeft - anchorLeft;
+      for (const { element, left } of snapshot.items) {
+        if (!element.isConnected) continue;
+        const offset = left - element.getBoundingClientRect().left;
+        if (Math.abs(offset) < 0.5) continue;
         animations.push(
-          main.animate(
-            [
-              { transform: `translate3d(${offset}px, 0, 0)` },
-              { transform: "translate3d(0, 0, 0)" },
-            ],
-            { duration, easing },
-          ),
-        );
-      }
-
-      const toggleLeft = toggle?.getBoundingClientRect().left ?? null;
-      if (toggle && snapshot.toggleLeft !== null && toggleLeft !== null) {
-        const offset = snapshot.toggleLeft - toggleLeft;
-        animations.push(
-          toggle.animate(
+          element.animate(
             [
               { transform: `translate3d(${offset}px, 0, 0)` },
               { transform: "translate3d(0, 0, 0)" },
