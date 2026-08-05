@@ -163,6 +163,7 @@ describe("reader state", () => {
 
     expect(fullContentIdsAfterReload("magazine", articles, null)).toEqual(new Set());
     expect(fullContentIdsAfterReload("magazine", articles, 2)).toEqual(new Set([2]));
+    expect(fullContentIdsAfterReload("focus", articles, 2)).toEqual(new Set([2]));
     expect(fullContentIdsAfterReload("expanded", articles, null)).toEqual(new Set([1, 2]));
   });
 

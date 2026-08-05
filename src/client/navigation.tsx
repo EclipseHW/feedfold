@@ -6,6 +6,7 @@ import {
   CircleHelp,
   Ellipsis,
   FileText,
+  Focus as FocusIcon,
   Folder,
   LayoutList,
   ListFilter,
@@ -795,6 +796,15 @@ export function ReaderToolbar({
             onClick={() => onModeChange("expanded")}
           >
             <FileText aria-hidden="true" size={16} />
+          </button>
+          <button
+            type="button"
+            aria-label="Focus view"
+            data-tooltip="Focus view (3)"
+            aria-pressed={mode === "focus"}
+            onClick={() => onModeChange("focus")}
+          >
+            <FocusIcon aria-hidden="true" size={16} />
           </button>
         </fieldset>
         <div className="toolbar-actions">

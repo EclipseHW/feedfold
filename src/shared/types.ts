@@ -1,6 +1,6 @@
 export type ArticleState = "all" | "unread" | "read" | "starred";
 export type FolderSortDirection = "newest" | "oldest";
-export type ReadingMode = "magazine" | "expanded";
+export type ReadingMode = "magazine" | "expanded" | "focus";
 export type ExtractionStatus = "pending" | "processing" | "complete" | "failed" | "feed";
 export type FeedSourceKind = "published" | "web";
 export type FeedHealthStatus = "healthy" | "failing" | "needs_attention";
