@@ -3593,11 +3593,9 @@ kbd {
   }
   .reader-title-row {
     display: grid;
-    grid-template-areas:
-      "menu title modes"
-      "search search actions";
+    grid-template-areas: "menu title modes";
     grid-template-columns: 40px minmax(0, 1fr) auto;
-    gap: 6px 8px;
+    gap: 8px;
     padding: 6px 9px 7px;
   }
   :where(.reader-toolbar.is-reading-article) .reader-title-row {
@@ -3619,12 +3617,8 @@ kbd {
   :where(.reader-toolbar:not(.is-reading-article)) .scope-title > span {
     display: none;
   }
-  .search-form {
-    grid-area: search;
-    width: 100%;
-    height: 44px;
-    flex-basis: auto;
-    margin-left: 0;
+  .reader-title-row > :is(.search-form, .toolbar-actions) {
+    display: none;
   }
   .reader-title-row > .view-switcher {
     grid-area: modes;
@@ -3632,19 +3626,6 @@ kbd {
   }
   .reader-title-row > .view-switcher button {
     width: 40px;
-    min-height: 40px;
-  }
-  .toolbar-actions {
-    grid-area: actions;
-    justify-self: end;
-    margin-left: 0;
-  }
-  .toolbar-actions > .icon-button {
-    min-width: 40px;
-    min-height: 40px;
-  }
-  .toolbar-actions .mark-read-split-button .icon-button {
-    min-width: 40px;
     min-height: 40px;
   }
   .article-actions {
@@ -3777,8 +3758,12 @@ kbd {
     .article-actions
     > button
     > svg:not(.summary-action-chevron) {
-    width: 18px;
-    height: 18px;
+    width: 27px;
+    height: 27px;
+  }
+  :where(.mode-magazine.is-reading-article) .summary-action-chevron {
+    width: 15px;
+    height: 15px;
   }
   .summary-prompt-menu,
   .article-more-menu {
