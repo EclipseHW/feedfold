@@ -18,6 +18,42 @@ import {
   visibleClause,
 } from "../shared.js";
 
+function initialArticles(
+  parsed: ParsedFeed,
+  limit: number,
+): {
+  included: ParsedFeed;
+  ignoredExternalIds: string[];
+} {
+  if (parsed.articles.length <= limit) {
+    return { included: parsed, ignoredExternalIds: [] };
+  }
+  const ranked = parsed.articles.map((article, index) => ({ article, index }));
+  if (ranked.every(({ article }) => article.publishedAt !== null)) {
+    ranked.sort(
+      (left, right) =>
+        String(right.article.publishedAt).localeCompare(String(left.article.publishedAt)) ||
+        left.index - right.index,
+    );
+  }
+  const includedIndexes = new Set(ranked.slice(0, limit).map(({ index }) => index));
+  const includedExternalIds = new Set(
+    ranked.slice(0, limit).map(({ article }) => article.externalId),
+  );
+  return {
+    included: {
+      ...parsed,
+      articles: ranked.slice(0, limit).map(({ article }) => article),
+    },
+    ignoredExternalIds: parsed.articles
+      .filter(
+        (article, index) =>
+          !includedIndexes.has(index) && !includedExternalIds.has(article.externalId),
+      )
+      .map(({ externalId }) => externalId),
+  };
+}
+
 export class ArticleRepository {
   constructor(private readonly sqlite: Sqlite.Database) {}
 
@@ -431,8 +467,23 @@ export class ArticleRepository {
       .run(...articleValues, ...feedValues).changes;
   }
 
-  storeParsedFeedArticles(id: number, parsed: ParsedFeed): Set<number> {
+  storeParsedFeedArticles(
+    id: number,
+    parsed: ParsedFeed,
+    initialArticleLimit?: number,
+  ): Set<number> {
     const ruleArticleIds = new Set<number>();
+    const initial =
+      initialArticleLimit === undefined
+        ? { included: parsed, ignoredExternalIds: [] }
+        : initialArticles(parsed, initialArticleLimit);
+    const rememberIgnored = this.sqlite.prepare(
+      "INSERT OR IGNORE INTO ignored_feed_articles (feed_id, external_id) VALUES (?, ?)",
+    );
+    for (const externalId of initial.ignoredExternalIds) rememberIgnored.run(id, externalId);
+    const isIgnored = this.sqlite.prepare(
+      "SELECT 1 FROM ignored_feed_articles WHERE feed_id = ? AND external_id = ?",
+    );
     const findExisting = this.sqlite.prepare(
       `SELECT id, title, url, author, published_at AS publishedAt, summary,
                   image_url AS imageUrl, media_json AS mediaJson,
@@ -489,7 +540,8 @@ export class ArticleRepository {
                content_revision = content_revision + ?
            WHERE id = ?`,
     );
-    for (const article of parsed.articles) {
+    for (const article of initial.included.articles) {
+      if (isIgnored.get(id, article.externalId)) continue;
       const media = article.media ?? null;
       const mediaJson = media ? JSON.stringify(media) : null;
       const extractionStatus = "feed";
