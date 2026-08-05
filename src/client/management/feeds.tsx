@@ -16,12 +16,14 @@ import {
   RefreshCw,
   Rss,
   Search,
+  Send,
   Trash2,
   X,
 } from "lucide-react";
 import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type SVGProps,
   useCallback,
   useEffect,
   useRef,
@@ -45,12 +47,112 @@ import {
   filterFeeds,
   visibleFeedStatus,
 } from "../feed-filters";
+import {
+  type AddFeedSourceType,
+  feedSourceUrl,
+  TELEGRAM_HANDLE_PATTERN,
+  X_HANDLE_PATTERN,
+} from "../feed-source";
 import { type MotionState, useMotionPresence } from "../motion";
 import { WebFeedSetup } from "../web-feed-setup";
 import { ExportOpmlLink, formatDate, ImportOpmlButton, PageHeader } from "./shared";
 import "./feeds.css";
 
 type FeedsPageTab = "subscriptions" | "folders";
+
+function XLogo({ size = 16, ...props }: SVGProps<SVGSVGElement> & { size?: number }) {
+  return (
+    <svg {...props} width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <title>X</title>
+      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
+    </svg>
+  );
+}
+
+const ADD_FEED_SOURCE_OPTIONS = [
+  {
+    value: "rss",
+    label: "RSS feed",
+    description: "A website or RSS, Atom, or JSON Feed URL.",
+    icon: Rss,
+  },
+  {
+    value: "web",
+    label: "Web page",
+    description: "A public page with repeated entries but no published feed.",
+    icon: Globe2,
+  },
+  {
+    value: "telegram",
+    label: "Telegram",
+    description: "A public Telegram channel handle.",
+    icon: Send,
+  },
+  {
+    value: "x",
+    label: "x.com",
+    description: "An X profile handle, followed through Nitter RSS.",
+    icon: XLogo,
+  },
+] as const;
+
+const ADD_FEED_INPUTS: Record<
+  AddFeedSourceType,
+  {
+    label: string;
+    placeholder: string;
+    help: string;
+    prefix: string | null;
+    pattern?: string;
+    action: string;
+    loading: string;
+    found: string;
+    add: string;
+  }
+> = {
+  rss: {
+    label: "Website or feed URL",
+    placeholder: "https://example.com",
+    help: "echovale checks the address for RSS, Atom, and JSON Feed.",
+    prefix: null,
+    action: "Check feed",
+    loading: "Checking feed",
+    found: "Published feed found",
+    add: "Add feed",
+  },
+  web: {
+    label: "Public page URL",
+    placeholder: "https://example.com/articles",
+    help: "echovale looks for repeated links on this page. Sign-ins and paywalls are not supported.",
+    prefix: null,
+    action: "Find entries",
+    loading: "Finding entries",
+    found: "Web feed ready",
+    add: "Add web feed",
+  },
+  telegram: {
+    label: "Telegram channel handle",
+    placeholder: "Example_Channel",
+    help: "Enter the public channel handle, with or without @. Links aren't supported.",
+    prefix: "t.me/",
+    pattern: TELEGRAM_HANDLE_PATTERN,
+    action: "Preview channel",
+    loading: "Loading channel",
+    found: "Telegram channel found",
+    add: "Add Telegram feed",
+  },
+  x: {
+    label: "X profile handle",
+    placeholder: "egornomic",
+    help: "Enter the handle, with or without @. Links aren't supported. Updates come from Nitter RSS.",
+    prefix: "x.com/",
+    pattern: X_HANDLE_PATTERN,
+    action: "Preview profile",
+    loading: "Loading profile",
+    found: "Nitter RSS found",
+    add: "Add X feed",
+  },
+};
 
 function handleFeedsTabKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
   if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -497,7 +599,14 @@ function AddFeedForm({
   onCancel: () => void;
   onSaved: (feed: Feed) => Promise<void> | void;
 }) {
-  const [sourceUrl, setSourceUrl] = useState(initialSourceUrl);
+  const [sourceType, setSourceType] = useState<AddFeedSourceType>("rss");
+  const [sourceInputs, setSourceInputs] = useState<Record<AddFeedSourceType, string>>({
+    rss: initialSourceUrl,
+    web: initialSourceUrl,
+    telegram: "",
+    x: "",
+  });
+  const [previewSourceType, setPreviewSourceType] = useState<AddFeedSourceType>("rss");
   const [preview, setPreview] = useState<FeedPreview | null>(null);
   const [webPage, setWebPage] = useState<WebPageFeedDiscovery | null>(null);
   const [webAnalysis, setWebAnalysis] = useState<WebFeedAnalysis | null>(null);
@@ -518,6 +627,11 @@ function AddFeedForm({
   motionStateRef.current = motionState;
   if (preview) retainedPreview.current = preview;
   const displayedPreview = preview ?? retainedPreview.current;
+  const sourceInput = sourceInputs[sourceType];
+  const inputConfig = ADD_FEED_INPUTS[sourceType];
+  const previewInputConfig = ADD_FEED_INPUTS[previewSourceType];
+  const SourcePreviewIcon =
+    ADD_FEED_SOURCE_OPTIONS.find((option) => option.value === previewSourceType)?.icon ?? Rss;
   const showLoadingSurface = loadingPresence.present && error === null;
   const showPreviewSurface = previewPresence.present && displayedPreview !== null && error === null;
   const selectedCandidate =
@@ -536,7 +650,32 @@ function AddFeedForm({
     [],
   );
 
-  const discover = useCallback(async (url: string) => {
+  const clearDiscoveryResult = () => {
+    setPreview(null);
+    setWebPage(null);
+    setWebAnalysis(null);
+    setSelectedCandidateId(null);
+    setTitle("");
+    setError(null);
+  };
+
+  const selectSourceType = (nextSourceType: AddFeedSourceType) => {
+    if (nextSourceType === sourceType) return;
+    if (
+      (nextSourceType === "rss" || nextSourceType === "web") &&
+      (sourceType === "rss" || sourceType === "web") &&
+      !sourceInputs[nextSourceType]
+    ) {
+      setSourceInputs((current) => ({
+        ...current,
+        [nextSourceType]: current[sourceType],
+      }));
+    }
+    setSourceType(nextSourceType);
+    clearDiscoveryResult();
+  };
+
+  const discover = useCallback(async (url: string, requestedSourceType: AddFeedSourceType) => {
     if (previewFocusFrame.current !== null) {
       window.cancelAnimationFrame(previewFocusFrame.current);
       previewFocusFrame.current = null;
@@ -551,6 +690,7 @@ function AddFeedForm({
       const result = await api.discoverFeed(url);
       if (result.kind === "published") {
         setPreview(result.preview);
+        setPreviewSourceType(requestedSourceType);
         setTitle(result.preview.title);
       } else {
         setWebPage(result);
@@ -570,15 +710,18 @@ function AddFeedForm({
   useEffect(() => {
     if (!initialSourceUrl || autoDiscoveryStarted.current) return;
     autoDiscoveryStarted.current = true;
-    void discover(initialSourceUrl.trim());
+    void discover(feedSourceUrl("rss", initialSourceUrl), "rss");
   }, [discover, initialSourceUrl]);
 
-  const analyzeWebPage = async () => {
-    if (!webPage) return;
+  const analyzeWebPage = async (url: string) => {
     setAnalyzingWebPage(true);
     setError(null);
+    setPreview(null);
+    setWebPage(null);
+    setWebAnalysis(null);
+    setSelectedCandidateId(null);
     try {
-      const result = await api.analyzeWebPage(webPage.pageUrl);
+      const result = await api.analyzeWebPage(url);
       setWebAnalysis(result);
       setSelectedCandidateId(result.selectedCandidateId ?? result.suggestedCandidateIds[0] ?? null);
       setTitle(result.title);
@@ -632,7 +775,7 @@ function AddFeedForm({
       <div className="inline-editor-heading">
         <div>
           <h2>Add a feed</h2>
-          <p>Enter a website or feed URL. Review the entries before you subscribe.</p>
+          <p>Choose a source, preview its latest entries, then subscribe.</p>
         </div>
         <button
           className="icon-button"
@@ -645,47 +788,95 @@ function AddFeedForm({
         </button>
       </div>
 
+      <fieldset className="feed-source-selector">
+        <legend>Source type</legend>
+        <div className="feed-source-options">
+          {ADD_FEED_SOURCE_OPTIONS.map((option) => {
+            const OptionIcon = option.icon;
+            return (
+              <label className="feed-source-option" key={option.value}>
+                <input
+                  className="sr-only"
+                  type="radio"
+                  name="feed-source-type"
+                  value={option.value}
+                  checked={sourceType === option.value}
+                  disabled={discovering || analyzingWebPage || saving}
+                  onChange={() => selectSourceType(option.value)}
+                />
+                <span>
+                  <OptionIcon aria-hidden="true" size={16} />
+                  {option.label}
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        <p aria-live="polite">
+          {ADD_FEED_SOURCE_OPTIONS.find((option) => option.value === sourceType)?.description}
+        </p>
+      </fieldset>
+
       <form
         className="feed-discovery-form"
         onSubmit={(event) => {
           event.preventDefault();
-          void discover(sourceUrl.trim());
+          try {
+            const url = feedSourceUrl(sourceType, sourceInput);
+            if (sourceType === "web") {
+              void analyzeWebPage(url);
+            } else {
+              void discover(url, sourceType);
+            }
+          } catch (caught) {
+            setError(errorMessage(caught));
+          }
         }}
       >
         <label className="field feed-url-field">
-          <span>Website or feed URL</span>
-          <input
-            type="url"
-            required
-            value={sourceUrl}
-            placeholder="https://example.com/articles"
-            disabled={discovering || analyzingWebPage || saving}
-            aria-describedby="feed-url-help"
-            onChange={(event) => {
-              setSourceUrl(event.target.value);
-              setPreview(null);
-              setWebPage(null);
-              setWebAnalysis(null);
-              setSelectedCandidateId(null);
-              setTitle("");
-              setError(null);
-            }}
-          />
-          <small id="feed-url-help">
-            echovale checks the page for RSS, Atom, and JSON Feed links.
-          </small>
+          <span>{inputConfig.label}</span>
+          <span
+            className={inputConfig.prefix ? "feed-source-input has-prefix" : "feed-source-input"}
+          >
+            {inputConfig.prefix ? <span aria-hidden="true">{inputConfig.prefix}</span> : null}
+            <input
+              type={sourceType === "rss" || sourceType === "web" ? "url" : "text"}
+              required
+              value={sourceInput}
+              pattern={inputConfig.pattern}
+              title={inputConfig.help}
+              placeholder={inputConfig.placeholder}
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              disabled={discovering || analyzingWebPage || saving}
+              aria-describedby="feed-url-help"
+              onChange={(event) => {
+                setSourceInputs((current) => ({
+                  ...current,
+                  [sourceType]: event.target.value,
+                }));
+                clearDiscoveryResult();
+              }}
+            />
+          </span>
+          <small id="feed-url-help">{inputConfig.help}</small>
         </label>
         <button
-          className={preview || webPage ? "secondary-button" : "primary-button"}
+          className={preview || webPage || webAnalysis ? "secondary-button" : "primary-button"}
           type="submit"
-          disabled={discovering || analyzingWebPage || saving || !sourceUrl.trim()}
+          disabled={discovering || analyzingWebPage || saving || !sourceInput.trim()}
         >
-          {discovering ? (
+          {discovering || analyzingWebPage ? (
             <LoaderCircle className="spin" aria-hidden="true" size={16} />
           ) : (
             <Search aria-hidden="true" size={16} />
           )}
-          {discovering ? "Checking URL" : preview || webPage ? "Check again" : "Check URL"}
+          {discovering || analyzingWebPage
+            ? inputConfig.loading
+            : preview || webPage || webAnalysis
+              ? `${inputConfig.action} again`
+              : inputConfig.action}
         </button>
       </form>
 
@@ -715,10 +906,15 @@ function AddFeedForm({
             className="primary-button"
             type="button"
             disabled={saving}
-            onClick={() => void analyzeWebPage()}
+            onClick={() => {
+              const pageUrl = webPage.pageUrl;
+              setSourceInputs((current) => ({ ...current, web: pageUrl }));
+              setSourceType("web");
+              void analyzeWebPage(pageUrl);
+            }}
           >
             <Globe2 aria-hidden="true" size={16} />
-            Create web feed
+            Use web feed
           </button>
         </section>
       ) : null}
@@ -735,7 +931,11 @@ function AddFeedForm({
               <span>
                 {analyzingWebPage
                   ? "Loading the page and finding repeated entries…"
-                  : "Looking for a published feed and loading its latest entries…"}
+                  : sourceType === "telegram"
+                    ? "Loading the public channel and its latest posts…"
+                    : sourceType === "x"
+                      ? "Loading the profile through Nitter RSS…"
+                      : "Looking for a published feed and loading its latest entries…"}
               </span>
               <div className="feed-preview-loading-lines" aria-hidden="true">
                 <div className="skeleton-line wide" />
@@ -755,7 +955,7 @@ function AddFeedForm({
               <section className="feed-preview" aria-labelledby="feed-preview-heading">
                 <div className="feed-preview-header">
                   <div className="feed-preview-mark" aria-hidden="true">
-                    <Rss size={20} />
+                    <SourcePreviewIcon size={20} />
                   </div>
                   <div className="feed-preview-title-copy">
                     <h3 id="feed-preview-heading" ref={previewHeadingRef} tabIndex={-1}>
@@ -779,7 +979,7 @@ function AddFeedForm({
                   </div>
                   <span className="feed-found-badge">
                     <CheckCircle2 aria-hidden="true" size={14} />
-                    Published feed found
+                    {previewInputConfig.found}
                   </span>
                 </div>
 
@@ -880,7 +1080,11 @@ function AddFeedForm({
                   ) : (
                     <Plus aria-hidden="true" size={16} />
                   )}
-                  {saving ? "Adding feed" : existingFeed ? "Already added" : "Add feed"}
+                  {saving
+                    ? `Adding ${previewSourceType === "rss" ? "feed" : `${previewSourceType} feed`}`
+                    : existingFeed
+                      ? "Already added"
+                      : previewInputConfig.add}
                 </button>
               </div>
             </form>
