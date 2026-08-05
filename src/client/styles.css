@@ -1671,7 +1671,24 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--muted);
+  color: color-mix(in srgb, var(--accent) 18%, var(--muted));
+}
+
+.article-thumbnail-placeholder-artwork {
+  width: 100%;
+  height: 100%;
+}
+
+.thumbnail-valley {
+  fill: currentColor;
+}
+
+.thumbnail-valley-far {
+  opacity: 0.04;
+}
+
+.thumbnail-valley-near {
+  opacity: 0.075;
 }
 
 .article-list-copy {
