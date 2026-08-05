@@ -61,7 +61,7 @@ const ShortcutHelp = lazy(() => import("./management/shortcut-help"));
 const ContextManagementDialog = lazy(() => import("./management/context-dialog"));
 
 interface SidebarLayoutSnapshot {
-  items: Array<{ element: HTMLElement; left: number }>;
+  items: Array<{ element: HTMLElement; left: number; top: number }>;
 }
 
 function visibleSidebarMotionItems(main: HTMLElement | null): HTMLElement[] {
@@ -223,10 +223,10 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const toggleDesktopSidebar = useCallback(() => {
     const main = document.querySelector<HTMLElement>(".main-column");
     sidebarLayoutSnapshot.current = {
-      items: visibleSidebarMotionItems(main).map((element) => ({
-        element,
-        left: element.getBoundingClientRect().left,
-      })),
+      items: visibleSidebarMotionItems(main).map((element) => {
+        const bounds = element.getBoundingClientRect();
+        return { element, left: bounds.left, top: bounds.top };
+      }),
     };
     setDesktopSidebarCollapsed((current) => !current);
   }, []);
@@ -258,14 +258,16 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         animations.push(toggle.animate([{ opacity: 0.72 }, { opacity: 1 }], { duration, easing }));
       }
     } else {
-      for (const { element, left } of snapshot.items) {
+      for (const { element, left, top } of snapshot.items) {
         if (!element.isConnected) continue;
-        const offset = left - element.getBoundingClientRect().left;
-        if (Math.abs(offset) < 0.5) continue;
+        const bounds = element.getBoundingClientRect();
+        const offsetX = left - bounds.left;
+        const offsetY = top - bounds.top;
+        if (Math.abs(offsetX) < 0.5 && Math.abs(offsetY) < 0.5) continue;
         animations.push(
           element.animate(
             [
-              { transform: `translate3d(${offset}px, 0, 0)` },
+              { transform: `translate3d(${offsetX}px, ${offsetY}px, 0)` },
               { transform: "translate3d(0, 0, 0)" },
             ],
             { duration, easing },
