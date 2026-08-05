@@ -691,7 +691,6 @@ function SidebarFeed({
 
 interface ReaderToolbarProps {
   title: string;
-  count: number;
   searchInput: string;
   searchActive: boolean;
   mode: ReadingMode;
@@ -713,7 +712,6 @@ interface ReaderToolbarProps {
 
 export function ReaderToolbar({
   title,
-  count,
   searchInput,
   searchActive,
   mode,
@@ -745,7 +743,6 @@ export function ReaderToolbar({
         </IconButton>
         <div className="scope-title">
           <h1>{title}</h1>
-          <span>{count}</span>
         </div>
         <form className="search-form" aria-label="Article search" onSubmit={onSearch}>
           <Search aria-hidden="true" size={16} />
