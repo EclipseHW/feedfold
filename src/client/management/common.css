@@ -427,3 +427,19 @@
   width: 1px;
   height: 1px;
 }
+
+@media (min-width: 1021px) {
+  .app-shell.is-management-view .page-header {
+    transition: padding-left var(--duration-surface) var(--ease-in-out);
+  }
+
+  .app-shell.is-sidebar-collapsed .page-header {
+    padding-left: 58px;
+  }
+}
+
+@media (min-width: 1021px) and (prefers-reduced-motion: reduce) {
+  .app-shell.is-management-view .page-header {
+    transition-duration: 0s;
+  }
+}

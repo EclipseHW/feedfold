@@ -73,11 +73,6 @@ function visibleSidebarMotionItems(main: HTMLElement | null): HTMLElement[] {
       ".article-list > ol",
       ".mode-magazine .article-document",
       ".expanded-stream",
-      ".page-header > *",
-      ".management-section",
-      ".settings-section",
-      ".management-tabs-shell",
-      ".management-route-loading",
     ].join(","),
   );
   return [toggle, ...content].filter((element): element is HTMLElement => {
@@ -223,13 +218,13 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const toggleDesktopSidebar = useCallback(() => {
     const main = document.querySelector<HTMLElement>(".main-column");
     sidebarLayoutSnapshot.current = {
-      items: visibleSidebarMotionItems(main).map((element) => {
+      items: (route.view === "reader" ? visibleSidebarMotionItems(main) : []).map((element) => {
         const bounds = element.getBoundingClientRect();
         return { element, left: bounds.left, top: bounds.top };
       }),
     };
     setDesktopSidebarCollapsed((current) => !current);
-  }, [setDesktopSidebarCollapsed]);
+  }, [route.view, setDesktopSidebarCollapsed]);
 
   useLayoutEffect(() => {
     const snapshot = sidebarLayoutSnapshot.current;
@@ -672,7 +667,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
 
   return (
     <div
-      className={`app-shell${readerOpen ? " is-reading-article" : ""}${desktopSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}
+      className={`app-shell${route.view === "reader" ? "" : " is-management-view"}${readerOpen ? " is-reading-article" : ""}${desktopSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}
     >
       <a className="skip-link" href="#main-content">
         Skip to articles
