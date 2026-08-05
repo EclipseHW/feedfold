@@ -10,6 +10,21 @@ import "./styles.css";
 const root = document.getElementById("root");
 if (!root) throw new Error("The echovale root element is missing.");
 
+window.addEventListener(
+  "keydown",
+  () => {
+    document.documentElement.dataset.inputModality = "keyboard";
+  },
+  { capture: true },
+);
+window.addEventListener(
+  "pointerdown",
+  () => {
+    document.documentElement.dataset.inputModality = "pointer";
+  },
+  { capture: true },
+);
+
 createRoot(root).render(
   <StrictMode>
     <App />

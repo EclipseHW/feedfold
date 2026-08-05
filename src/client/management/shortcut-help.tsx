@@ -1,5 +1,5 @@
 import { AlertTriangle, Keyboard, X } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useAnimatedDialog } from "../motion";
 import { Kbd } from "./shared";
 import "./shortcut-help.css";
 
@@ -81,29 +81,17 @@ export function ShortcutReference({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export function ShortcutHelp({
-  open,
-  enabled,
-  onClose,
-}: {
-  open: boolean;
-  enabled: boolean;
-  onClose: () => void;
-}) {
-  const ref = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const dialog = ref.current;
-    if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
+export function ShortcutHelp({ enabled, onClose }: { enabled: boolean; onClose: () => void }) {
+  const dialog = useAnimatedDialog(onClose);
 
   return (
     <dialog
-      ref={ref}
+      ref={dialog.dialogRef}
       className="shortcut-dialog"
-      onClose={onClose}
-      onCancel={onClose}
+      data-state={dialog.closing ? "closing" : "open"}
+      inert={dialog.closing}
+      onClose={dialog.handleClose}
+      onCancel={dialog.handleCancel}
       aria-labelledby="shortcut-dialog-title"
     >
       <div className="dialog-heading">
@@ -116,7 +104,7 @@ export function ShortcutHelp({
         <button
           className="icon-button"
           type="button"
-          onClick={() => ref.current?.close()}
+          onClick={dialog.close}
           aria-label="Close shortcuts"
         >
           <X aria-hidden="true" size={18} />
@@ -133,7 +121,7 @@ export function ShortcutHelp({
       <ShortcutReference />
       <div className="dialog-footer">
         <p>Single-key shortcuts pause while you type in a form field.</p>
-        <button className="primary-button" type="button" onClick={() => ref.current?.close()}>
+        <button className="primary-button" type="button" onClick={dialog.close}>
           Close
         </button>
       </div>

@@ -66,7 +66,7 @@ import {
   type FeedManagementAction,
   handleActionMenuKeyDown,
 } from "./feed-management";
-import { useMotionPresence } from "./motion";
+import { interactionMotionIsInstant, useMotionPresence } from "./motion";
 import { animateHorizontalSpring, type HorizontalSpringController } from "./swipe-motion";
 import {
   captureTextSelection,
@@ -1791,6 +1791,10 @@ export function ReaderPane({
       }
 
       const navigate = direction === "next" ? onNext : onPrevious;
+      if (interactionMotionIsInstant()) {
+        void navigate();
+        return;
+      }
       if (!activeLayerRef.current) {
         void navigate();
         return;
