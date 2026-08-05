@@ -20,6 +20,7 @@ const shortcuts = [
   ["]", "Increase article text size"],
   ["1", "Magazine view"],
   ["2", "Expanded view"],
+  ["3", "Focus view"],
   ["?", "Show shortcut reference"],
 ] as const;
 

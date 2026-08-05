@@ -5,6 +5,7 @@ import type {
   BootstrapData,
   Feed,
   Folder as FolderType,
+  ReadingMode,
   Rule,
   SessionUser,
 } from "../shared/types";
@@ -403,11 +404,14 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   );
 
   const changeReadingMode = useCallback(
-    (mode: "magazine" | "expanded") => {
+    (mode: ReadingMode) => {
       queue.clearKeyboardTarget();
       preferences.setReadingMode(mode);
+      if (mode === "focus" && route.routedArticleId === null && queue.activeArticle) {
+        articleActions.openArticle(queue.activeArticle);
+      }
     },
-    [preferences, queue],
+    [articleActions, preferences, queue, route.routedArticleId],
   );
 
   const scrollArticlePage = useCallback(
@@ -525,6 +529,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         },
         "1": () => changeReadingMode("magazine"),
         "2": () => changeReadingMode("expanded"),
+        "3": () => changeReadingMode("focus"),
         "?": () => setShortcutHelpOpen(true),
       };
       if (actions[key]) {
@@ -570,7 +575,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   );
 
   return (
-    <div className={`app-shell${readerOpen ? " is-reading-article" : ""}`}>
+    <div
+      className={`app-shell${readerOpen ? " is-reading-article" : ""}${readerOpen && preferences.readingMode === "focus" ? " is-focus-reading" : ""}`}
+    >
       <a className="skip-link" href="#main-content">
         Skip to articles
       </a>
@@ -604,7 +611,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               refreshing={bootstrap.feeds.some((feed) => feed.refreshing)}
               markReadPending={articleActions.markReadPending}
               navOpen={navOpen}
-              readingArticle={readerOpen && preferences.readingMode === "magazine"}
+              readingArticle={readerOpen && preferences.readingMode !== "expanded"}
               onToggleNav={() => setNavOpen((current) => !current)}
               onSearchInput={route.setSearchInput}
               onSearch={submitSearch}
@@ -673,7 +680,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     );
                   }}
                 />
-              ) : preferences.readingMode === "magazine" ? (
+              ) : preferences.readingMode !== "expanded" ? (
                 <>
                   <ArticleList
                     key={`${route.readerRoute.state}:${selectedFeedId ?? "all"}:${selectedFolderId ?? "all"}:${route.readerRoute.search}`}
