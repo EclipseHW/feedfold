@@ -80,7 +80,7 @@ function ArticleCount({ count }: { count: number }) {
 
   return (
     <span className="nav-count" title={exactCount}>
-      <span aria-hidden="true">{count > 99 ? "99+" : count}</span>
+      <span aria-hidden="true">{count > 999 ? "999+" : count}</span>
       <span className="sr-only">{exactCount}</span>
     </span>
   );
