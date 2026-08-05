@@ -232,10 +232,13 @@ describe("reader state", () => {
 
   it("derives stable labels for reader scopes and generated filter rules", () => {
     const data = bootstrap();
-    expect(readerScopeLabel(data, 11, null)).toBe("Interfaces");
-    expect(readerScopeLabel(data, null, 1)).toBe("Engineering");
-    expect(readerScopeLabel(data, null, null)).toBe("All articles");
-    expect(readerScopeLabel(data, 999, null)).toBe("Feed");
+    expect(readerScopeLabel(data, 11, null, "unread")).toBe("Interfaces");
+    expect(readerScopeLabel(data, null, 1, "starred")).toBe("Engineering");
+    expect(readerScopeLabel(data, null, null, "unread")).toBe("Unread");
+    expect(readerScopeLabel(data, null, null, "all")).toBe("All articles");
+    expect(readerScopeLabel(data, null, null, "read")).toBe("Read");
+    expect(readerScopeLabel(data, null, null, "starred")).toBe("Starred");
+    expect(readerScopeLabel(data, 999, null, "all")).toBe("Feed");
     expect(filterRuleName("x".repeat(100))).toBe(`Filter: ${"x".repeat(71)}…`);
   });
 });

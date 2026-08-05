@@ -562,7 +562,12 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const selectedFeedId = route.readerRoute.scope === "feed" ? route.readerRoute.scopeId : null;
   const selectedFolderId = route.readerRoute.scope === "folder" ? route.readerRoute.scopeId : null;
   const readerOpen = route.routedArticleId !== null;
-  const title = readerScopeLabel(bootstrap, selectedFeedId, selectedFolderId);
+  const title = readerScopeLabel(
+    bootstrap,
+    selectedFeedId,
+    selectedFolderId,
+    route.readerRoute.state,
+  );
 
   return (
     <div className={`app-shell${readerOpen ? " is-reading-article" : ""}`}>

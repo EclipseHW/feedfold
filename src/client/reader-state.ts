@@ -85,11 +85,15 @@ export function readerScopeLabel(
   bootstrap: BootstrapData,
   feedId: number | null,
   folderId: number | null,
+  state: ArticleState,
 ): string {
   if (feedId !== null) return bootstrap.feeds.find((feed) => feed.id === feedId)?.title ?? "Feed";
   if (folderId !== null) {
     return bootstrap.folders.find((folder) => folder.id === folderId)?.name ?? "Folder";
   }
+  if (state === "unread") return "Unread";
+  if (state === "read") return "Read";
+  if (state === "starred") return "Starred";
   return "All articles";
 }
 
