@@ -195,6 +195,7 @@ export function App() {
 function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Promise<void> }) {
   const route = useAppRoute(APP_BASE_PATH);
   const preferences = useReaderPreferences(user.id);
+  const { desktopSidebarCollapsed, setDesktopSidebarCollapsed } = preferences;
   const dataResourceRef = useRef<ReaderDataResource | null>(null);
   if (!dataResourceRef.current) dataResourceRef.current = new ReaderDataResource();
   const dataResource = dataResourceRef.current;
@@ -207,7 +208,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const [managementRequest, setManagementRequest] = useState<ManagementRequest | null>(null);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
-  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null);
   const toastTimer = useRef<number | null>(null);
   const toastExitTimer = useRef<number | null>(null);
@@ -229,7 +229,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       }),
     };
     setDesktopSidebarCollapsed((current) => !current);
-  }, []);
+  }, [setDesktopSidebarCollapsed]);
 
   useLayoutEffect(() => {
     const snapshot = sidebarLayoutSnapshot.current;
