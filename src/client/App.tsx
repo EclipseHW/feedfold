@@ -1,11 +1,19 @@
 import { Check } from "lucide-react";
-import { type FormEvent, lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 import type {
   Article,
   BootstrapData,
   Feed,
   Folder as FolderType,
-  ReadingMode,
   Rule,
   SessionUser,
 } from "../shared/types";
@@ -51,6 +59,21 @@ const RulesPage = lazy(() => import("./management/rules"));
 const SettingsPage = lazy(() => import("./management/settings"));
 const ShortcutHelp = lazy(() => import("./management/shortcut-help"));
 const ContextManagementDialog = lazy(() => import("./management/context-dialog"));
+
+interface SidebarLayoutSnapshot {
+  anchorLeft: number | null;
+  toggleLeft: number | null;
+}
+
+function visibleSidebarMotionAnchor(main: HTMLElement | null): HTMLElement | null {
+  if (!main) return null;
+  return (
+    [...main.querySelectorAll<HTMLElement>(".article-document, h1")].find((element) => {
+      const bounds = element.getBoundingClientRect();
+      return bounds.width > 0 && bounds.height > 0;
+    }) ?? null
+  );
+}
 
 function feedManagementRequest(feedId: number, action: FeedManagementAction): ManagementRequest {
   if (action === "settings") return { kind: "feed-settings", feedId };
@@ -172,6 +195,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const [managementRequest, setManagementRequest] = useState<ManagementRequest | null>(null);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(false);
   const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null);
   const toastTimer = useRef<number | null>(null);
   const toastExitTimer = useRef<number | null>(null);
@@ -180,7 +204,83 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const ruleReturnRoute = useRef<ReaderRoute | null>(null);
   const bootstrapRef = useRef(bootstrap);
   const readingWorkspaceRef = useRef<HTMLDivElement>(null);
+  const sidebarLayoutSnapshot = useRef<SidebarLayoutSnapshot | null>(null);
+  const sidebarLayoutAnimations = useRef<Animation[]>([]);
   bootstrapRef.current = bootstrap;
+
+  const toggleDesktopSidebar = useCallback(() => {
+    const main = document.querySelector<HTMLElement>(".main-column");
+    const anchor = visibleSidebarMotionAnchor(main);
+    const toggle = document.querySelector<HTMLElement>(".sidebar-collapse-button");
+    sidebarLayoutSnapshot.current = {
+      anchorLeft: anchor?.getBoundingClientRect().left ?? null,
+      toggleLeft: toggle?.getBoundingClientRect().left ?? null,
+    };
+    setDesktopSidebarCollapsed((current) => !current);
+  }, []);
+
+  useLayoutEffect(() => {
+    const snapshot = sidebarLayoutSnapshot.current;
+    if (!snapshot) return;
+    sidebarLayoutSnapshot.current = null;
+    for (const animation of sidebarLayoutAnimations.current) animation.cancel();
+
+    const main = document.querySelector<HTMLElement>(".main-column");
+    const anchor = visibleSidebarMotionAnchor(main);
+    const toggleLabel = desktopSidebarCollapsed ? "Show sidebar" : "Hide sidebar";
+    const toggle = document.querySelector<HTMLElement>(
+      `.sidebar-collapse-button[aria-label="${toggleLabel}"]`,
+    );
+    const styles = window.getComputedStyle(document.documentElement);
+    const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const duration = Number.parseFloat(
+      styles.getPropertyValue(reducedMotion ? "--duration-reduced" : "--duration-surface"),
+    );
+    const easing = reducedMotion ? "ease" : styles.getPropertyValue("--ease-in-out").trim();
+    const animations: Animation[] = [];
+
+    if (reducedMotion) {
+      if (main) {
+        animations.push(main.animate([{ opacity: 0.86 }, { opacity: 1 }], { duration, easing }));
+      }
+      if (toggle) {
+        animations.push(toggle.animate([{ opacity: 0.72 }, { opacity: 1 }], { duration, easing }));
+      }
+    } else {
+      const anchorLeft = anchor?.getBoundingClientRect().left ?? null;
+      if (main && snapshot.anchorLeft !== null && anchorLeft !== null) {
+        const offset = snapshot.anchorLeft - anchorLeft;
+        animations.push(
+          main.animate(
+            [
+              { transform: `translate3d(${offset}px, 0, 0)` },
+              { transform: "translate3d(0, 0, 0)" },
+            ],
+            { duration, easing },
+          ),
+        );
+      }
+
+      const toggleLeft = toggle?.getBoundingClientRect().left ?? null;
+      if (toggle && snapshot.toggleLeft !== null && toggleLeft !== null) {
+        const offset = snapshot.toggleLeft - toggleLeft;
+        animations.push(
+          toggle.animate(
+            [
+              { transform: `translate3d(${offset}px, 0, 0)` },
+              { transform: "translate3d(0, 0, 0)" },
+            ],
+            { duration, easing },
+          ),
+        );
+      }
+    }
+
+    sidebarLayoutAnimations.current = animations;
+    return () => {
+      for (const animation of animations) animation.cancel();
+    };
+  }, [desktopSidebarCollapsed]);
 
   const showToast = useCallback((message: string) => {
     if (toastTimer.current) window.clearTimeout(toastTimer.current);
@@ -404,14 +504,11 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   );
 
   const changeReadingMode = useCallback(
-    (mode: ReadingMode) => {
+    (mode: "magazine" | "expanded") => {
       queue.clearKeyboardTarget();
       preferences.setReadingMode(mode);
-      if (mode === "focus" && route.routedArticleId === null && queue.activeArticle) {
-        articleActions.openArticle(queue.activeArticle);
-      }
     },
-    [articleActions, preferences, queue, route.routedArticleId],
+    [preferences, queue],
   );
 
   const scrollArticlePage = useCallback(
@@ -529,7 +626,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         },
         "1": () => changeReadingMode("magazine"),
         "2": () => changeReadingMode("expanded"),
-        "3": () => changeReadingMode("focus"),
         "?": () => setShortcutHelpOpen(true),
       };
       if (actions[key]) {
@@ -576,7 +672,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
 
   return (
     <div
-      className={`app-shell${readerOpen ? " is-reading-article" : ""}${readerOpen && preferences.readingMode === "focus" ? " is-focus-reading" : ""}`}
+      className={`app-shell${readerOpen ? " is-reading-article" : ""}${desktopSidebarCollapsed ? " is-sidebar-collapsed" : ""}`}
     >
       <a className="skip-link" href="#main-content">
         Skip to articles
@@ -590,7 +686,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         selectedFolderId={selectedFolderId}
         currentView={route.view}
         open={navOpen}
+        collapsed={desktopSidebarCollapsed}
         onClose={() => setNavOpen(false)}
+        onToggleCollapse={toggleDesktopSidebar}
         onSelectState={(state) => selectScope(null, null, state)}
         onSelectScope={selectScope}
         onNavigate={navigateTo}
@@ -611,7 +709,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               refreshing={bootstrap.feeds.some((feed) => feed.refreshing)}
               markReadPending={articleActions.markReadPending}
               navOpen={navOpen}
-              readingArticle={readerOpen && preferences.readingMode !== "expanded"}
+              readingArticle={readerOpen && preferences.readingMode === "magazine"}
               onToggleNav={() => setNavOpen((current) => !current)}
               onSearchInput={route.setSearchInput}
               onSearch={submitSearch}
@@ -680,7 +778,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                     );
                   }}
                 />
-              ) : preferences.readingMode !== "expanded" ? (
+              ) : preferences.readingMode === "magazine" ? (
                 <>
                   <ArticleList
                     key={`${route.readerRoute.state}:${selectedFeedId ?? "all"}:${selectedFolderId ?? "all"}:${route.readerRoute.search}`}

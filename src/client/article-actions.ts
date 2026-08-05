@@ -98,7 +98,7 @@ export function useArticleActions({
 
   useEffect(() => {
     if (
-      (readingMode !== "expanded" && route.routedArticleId === null) ||
+      (readingMode === "magazine" && route.routedArticleId === null) ||
       !queue.activeArticle ||
       !fullContentVisibleIds.has(queue.activeArticle.id) ||
       (queue.activeArticle.extractionStatus !== "pending" &&
@@ -218,7 +218,7 @@ export function useArticleActions({
   const moveArticle = useCallback(
     async (direction: 1 | -1): Promise<boolean> => {
       if (queue.articles.length === 0) return false;
-      const openReader = readingMode !== "expanded" || route.routedArticleId !== null;
+      const openReader = readingMode === "magazine" || route.routedArticleId !== null;
       if (openReader && route.routedArticleId === null && queue.activeArticle) {
         openArticle(queue.activeArticle, true);
         return true;

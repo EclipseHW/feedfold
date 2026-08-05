@@ -6,12 +6,13 @@ import {
   CircleHelp,
   Ellipsis,
   FileText,
-  Focus as FocusIcon,
   Folder,
   LayoutList,
   ListFilter,
   LogOut,
   Menu,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   RefreshCw,
   Rss,
@@ -129,7 +130,9 @@ interface SidebarProps {
   selectedFolderId: number | null;
   currentView: AppView;
   open: boolean;
+  collapsed: boolean;
   onClose: () => void;
+  onToggleCollapse: () => void;
   onSelectState: (state: ArticleState) => void;
   onSelectScope: (feedId: number | null, folderId: number | null) => void;
   onNavigate: (view: AppView) => void;
@@ -164,7 +167,9 @@ export function Sidebar({
   selectedFolderId,
   currentView,
   open,
+  collapsed,
   onClose,
+  onToggleCollapse,
   onSelectState,
   onSelectScope,
   onNavigate,
@@ -207,11 +212,25 @@ export function Sidebar({
   );
 
   return (
-    <aside className={`sidebar${open ? " is-open" : ""}`} aria-label="Primary navigation">
+    <aside
+      className={`sidebar${open ? " is-open" : ""}${collapsed ? " is-collapsed" : ""}`}
+      aria-label="Primary navigation"
+    >
       <div className="brand-row">
         <button className="brand" type="button" onClick={() => onSelectScope(null, null)}>
           <BrandIdentity />
         </button>
+        <IconButton
+          label={collapsed ? "Show sidebar" : "Hide sidebar"}
+          onClick={onToggleCollapse}
+          className="sidebar-collapse-button"
+        >
+          {collapsed ? (
+            <PanelLeftOpen aria-hidden="true" size={18} />
+          ) : (
+            <PanelLeftClose aria-hidden="true" size={18} />
+          )}
+        </IconButton>
         <IconButton label="Close navigation" onClick={onClose} className="close-nav">
           <X aria-hidden="true" size={18} />
         </IconButton>
@@ -796,15 +815,6 @@ export function ReaderToolbar({
             onClick={() => onModeChange("expanded")}
           >
             <FileText aria-hidden="true" size={16} />
-          </button>
-          <button
-            type="button"
-            aria-label="Focus view"
-            data-tooltip="Focus view (3)"
-            aria-pressed={mode === "focus"}
-            onClick={() => onModeChange("focus")}
-          >
-            <FocusIcon aria-hidden="true" size={16} />
           </button>
         </fieldset>
         <div className="toolbar-actions">
