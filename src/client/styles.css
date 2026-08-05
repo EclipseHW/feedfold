@@ -389,7 +389,8 @@ kbd {
   content: "";
   opacity: 1;
   pointer-events: none;
-  transition: opacity var(--duration-surface) var(--ease-out);
+  transform: translateX(0);
+  transition: transform var(--duration-surface) var(--ease-in-out);
 }
 
 .brand-row {
@@ -3350,7 +3351,7 @@ kbd {
   }
 
   .sidebar.is-collapsed::before {
-    opacity: 0;
+    transform: translateX(-100%);
   }
 
   .sidebar.is-collapsed :is(.brand, .sidebar-navigation, .sidebar-footer) {
@@ -4147,6 +4148,10 @@ kbd {
     transition:
       opacity var(--duration-reduced) ease,
       visibility 0s linear var(--duration-reduced);
+  }
+
+  .sidebar.is-collapsed::before {
+    opacity: 0;
   }
 
   .nav-scrim {
