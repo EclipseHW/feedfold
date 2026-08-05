@@ -517,10 +517,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
             ? workspace.querySelector<HTMLElement>(".article-swipe-layer.is-active")
             : null;
       if (!scrollContainer) return false;
-      scrollContainer.scrollBy({
-        top: direction * scrollContainer.clientHeight * 0.85,
-        behavior: "smooth",
-      });
+      scrollContainer.scrollTop += direction * scrollContainer.clientHeight * 0.85;
       return true;
     },
     [preferences.readingMode, route.routedArticleId, route.view],
@@ -940,7 +937,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       {shortcutHelpOpen ? (
         <Suspense fallback={null}>
           <ShortcutHelp
-            open
             enabled={bootstrap.settings.singleKeyShortcuts}
             onClose={() => setShortcutHelpOpen(false)}
           />

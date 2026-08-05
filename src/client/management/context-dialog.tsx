@@ -32,6 +32,7 @@ import { api, errorMessage } from "../api";
 import type { ReaderDataMutations } from "../data-resource";
 import { DropdownSelect } from "../dropdown";
 import type { ManagementRequest } from "../feed-management";
+import { useAnimatedDialog } from "../motion";
 import { formatDate, formatRefreshInterval } from "./shared";
 import "./dialogs.css";
 
@@ -706,7 +707,6 @@ export function ContextManagementDialog({
   onUnsubscribe: (feed: Feed) => Promise<boolean>;
   showToast: (message: string) => void;
 }) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const returnFocusRef = useRef<HTMLElement | null>(
     document.activeElement instanceof HTMLElement ? document.activeElement : null,
   );
@@ -721,15 +721,6 @@ export function ContextManagementDialog({
       : "parentId" in request
         ? bootstrap.folders.find((candidate) => candidate.id === request.parentId)
         : undefined;
-
-  useEffect(() => {
-    const dialog = dialogRef.current;
-    dialog?.showModal();
-    const focusFrame = window.requestAnimationFrame(() => {
-      dialog?.querySelector<HTMLElement>("[data-dialog-initial-focus]")?.focus();
-    });
-    return () => window.cancelAnimationFrame(focusFrame);
-  }, []);
 
   const finishClose = useCallback(() => {
     if (closedRef.current) return;
@@ -754,10 +745,16 @@ export function ContextManagementDialog({
     });
   }, [onClose, request]);
 
-  const close = () => {
-    if (dialogRef.current?.open) dialogRef.current.close();
-    else finishClose();
-  };
+  const dialog = useAnimatedDialog(finishClose);
+
+  useEffect(() => {
+    const focusFrame = window.requestAnimationFrame(() => {
+      dialog.dialogRef.current?.querySelector<HTMLElement>("[data-dialog-initial-focus]")?.focus();
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [dialog.dialogRef]);
+
+  const close = dialog.close;
   const isRule = request.kind === "create-feed-rule" || request.kind === "create-folder-rule";
   const isWide = isRule || request.kind === "web-feed-selection";
 
@@ -807,11 +804,14 @@ export function ContextManagementDialog({
 
   return (
     <dialog
-      ref={dialogRef}
+      ref={dialog.dialogRef}
       className={`management-dialog${isWide ? " is-wide" : ""}`}
+      data-state={dialog.closing ? "closing" : "open"}
+      inert={dialog.closing}
       aria-labelledby={isRule ? undefined : "management-dialog-title"}
       aria-label={isRule ? "Create rule" : undefined}
-      onClose={finishClose}
+      onClose={dialog.handleClose}
+      onCancel={dialog.handleCancel}
     >
       {isRule ? (
         <RuleForm

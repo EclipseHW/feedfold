@@ -233,7 +233,7 @@
 
 .inline-editor[data-motion-state="closed"] {
   opacity: 0;
-  transform: translateY(-4px) scale(0.98);
+  transform: translateY(-4px) scale(0.97);
   pointer-events: none;
   transition-duration: var(--duration-fast);
 }
@@ -241,7 +241,7 @@
 @starting-style {
   .inline-editor[data-motion-state="open"] {
     opacity: 0;
-    transform: translateY(-4px) scale(0.98);
+    transform: translateY(-4px) scale(0.97);
   }
 }
 
@@ -394,8 +394,8 @@
   border-radius: 50%;
   background: var(--muted);
   transition:
-    transform 160ms var(--ease-in-out),
-    background-color 160ms ease;
+    transform var(--duration-fast) var(--ease-in-out),
+    background-color var(--duration-fast) ease;
 }
 
 .switch.is-on {
