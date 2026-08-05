@@ -895,11 +895,6 @@ kbd {
   white-space: nowrap;
 }
 
-.scope-title > span {
-  color: var(--muted);
-  font-size: var(--type-label);
-}
-
 .toolbar-actions {
   display: flex;
   align-items: center;
@@ -1471,7 +1466,6 @@ kbd {
   flex: 1;
 }
 
-:where(.reader-toolbar.is-reading-article) .scope-title > span,
 :where(.reader-toolbar.is-reading-article) .search-form,
 :where(.reader-toolbar.is-reading-article) .view-switcher,
 :where(.reader-toolbar.is-reading-article) .toolbar-actions {
@@ -3613,9 +3607,6 @@ kbd {
     grid-area: title;
     max-width: none;
     align-self: center;
-  }
-  :where(.reader-toolbar:not(.is-reading-article)) .scope-title > span {
-    display: none;
   }
   .reader-title-row > :is(.search-form, .toolbar-actions) {
     display: none;

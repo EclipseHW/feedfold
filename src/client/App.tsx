@@ -598,7 +598,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           <>
             <ReaderToolbar
               title={title}
-              count={queue.articles.length}
               searchInput={route.searchInput}
               searchActive={Boolean(route.readerRoute.search)}
               mode={preferences.readingMode}
