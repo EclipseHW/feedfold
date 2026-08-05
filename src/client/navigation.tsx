@@ -75,6 +75,17 @@ function Kbd({ children }: { children: ReactNode }) {
   return <kbd>{children}</kbd>;
 }
 
+function ArticleCount({ count }: { count: number }) {
+  const exactCount = count.toLocaleString();
+
+  return (
+    <span className="nav-count" title={exactCount}>
+      <span aria-hidden="true">{count > 99 ? "99+" : count}</span>
+      <span className="sr-only">{exactCount}</span>
+    </span>
+  );
+}
+
 function IconButton({
   label,
   children,
@@ -222,7 +233,7 @@ export function Sidebar({
               onClick={() => onSelectState("unread")}
             >
               <span>Unread</span>
-              <span className="nav-count">{bootstrap.counts.unread}</span>
+              <ArticleCount count={bootstrap.counts.unread} />
               <Kbd>g u</Kbd>
             </button>
           </li>
@@ -241,7 +252,7 @@ export function Sidebar({
               onClick={() => onSelectState("all")}
             >
               <span>All</span>
-              <span className="nav-count">{bootstrap.counts.all}</span>
+              <ArticleCount count={bootstrap.counts.all} />
               <Kbd>g a</Kbd>
             </button>
           </li>
@@ -260,7 +271,7 @@ export function Sidebar({
               onClick={() => onSelectState("read")}
             >
               <span>Read</span>
-              <span className="nav-count">{bootstrap.counts.all - bootstrap.counts.unread}</span>
+              <ArticleCount count={bootstrap.counts.all - bootstrap.counts.unread} />
             </button>
           </li>
           <li>
@@ -278,7 +289,7 @@ export function Sidebar({
               onClick={() => onSelectState("starred")}
             >
               <span>Starred</span>
-              <span className="nav-count">{bootstrap.counts.starred}</span>
+              <ArticleCount count={bootstrap.counts.starred} />
               <Kbd>g s</Kbd>
             </button>
           </li>
@@ -578,7 +589,7 @@ function SidebarFolder({
           <span className="truncate" title={folder.name}>
             {folder.name}
           </span>
-          {folder.unreadCount > 0 ? <span className="nav-count">{folder.unreadCount}</span> : null}
+          {folder.unreadCount > 0 ? <ArticleCount count={folder.unreadCount} /> : null}
         </button>
         <button
           className="folder-menu-button"
@@ -670,7 +681,7 @@ function SidebarFeed({
             title={feed.lastError ?? healthLabel}
           />
           <span className="truncate">{feed.title}</span>
-          {feed.unreadCount > 0 ? <span className="nav-count">{feed.unreadCount}</span> : null}
+          {feed.unreadCount > 0 ? <ArticleCount count={feed.unreadCount} /> : null}
         </button>
         <button
           className="feed-menu-button"
