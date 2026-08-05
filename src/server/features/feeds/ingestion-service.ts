@@ -5,6 +5,8 @@ import type { RuleRepository } from "../rules/repository.js";
 import type { ParsedFeed } from "../shared.js";
 import type { FeedRepository } from "./repository.js";
 
+const INITIAL_ARTICLE_LIMIT = 10;
+
 export interface SuccessfulFeedRefresh {
   httpStatus: number;
   etag: string | null;
@@ -50,7 +52,14 @@ export class FeedIngestionService {
       const changedArticleIds = new Set<number>();
       if (parsed) {
         this.feeds.updateFromParsedFeed(feedId, parsed);
-        for (const articleId of this.articles.storeParsedFeedArticles(feedId, parsed)) {
+        const initialArticleLimit = this.feeds.isInitialRefresh(feedId)
+          ? INITIAL_ARTICLE_LIMIT
+          : undefined;
+        for (const articleId of this.articles.storeParsedFeedArticles(
+          feedId,
+          parsed,
+          initialArticleLimit,
+        )) {
           changedArticleIds.add(articleId);
         }
       }

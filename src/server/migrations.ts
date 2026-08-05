@@ -788,6 +788,15 @@ const migrations: Migration[] = [
       ALTER TABLE settings ADD COLUMN show_youtube_descriptions INTEGER NOT NULL DEFAULT 0;
     `,
   },
+  {
+    sql: `
+      CREATE TABLE ignored_feed_articles (
+        feed_id INTEGER NOT NULL REFERENCES feeds(id) ON DELETE CASCADE,
+        external_id TEXT NOT NULL,
+        PRIMARY KEY(feed_id, external_id)
+      );
+    `,
+  },
 ];
 
 export function migrateDatabase(

@@ -33,6 +33,58 @@ async function listen(server: Server): Promise<string> {
 }
 
 describe("feed refresh and full-text extraction", () => {
+  it("starts new subscriptions with the 10 latest articles without backfilling older entries", async () => {
+    let latestArticle = 12;
+    const server = createServer((_request, response) => {
+      const items = Array.from({ length: latestArticle }, (_, index) => index + 1)
+        .map(
+          (article) => `<item>
+            <guid>article-${article}</guid>
+            <title>Article ${article}</title>
+            <link>https://example.test/articles/${article}</link>
+            <pubDate>${new Date(Date.UTC(2026, 6, article)).toUTCString()}</pubDate>
+          </item>`,
+        )
+        .join("");
+      response.writeHead(200, { "Content-Type": "application/rss+xml" });
+      response.end(`<?xml version="1.0"?><rss version="2.0"><channel>
+        <title>Busy feed</title><link>https://example.test/</link><description>Updates</description>
+        ${items}
+      </channel></rss>`);
+    });
+    const feedUrl = await listen(server);
+    const database = await temporaryDatabase();
+    const refresh = new FeedRefreshService(database.feeds, 1, 2_000, undefined, fetch);
+    cleanups.push(async () => {
+      await refresh.stop();
+      database.close();
+    });
+
+    const feed = database.feeds.createFeed(TEST_USER_ID, { feedUrl });
+    refresh.request([feed.id]);
+    await refresh.waitForIdle();
+
+    const initialArticles = database.articles.listArticles(TEST_USER_ID, {
+      state: "all",
+      feedId: feed.id,
+    });
+    expect(initialArticles.map(({ title }) => title)).toEqual(
+      Array.from({ length: 10 }, (_, index) => `Article ${12 - index}`),
+    );
+
+    latestArticle = 13;
+    refresh.request([feed.id]);
+    await refresh.waitForIdle();
+
+    const refreshedArticles = database.articles.listArticles(TEST_USER_ID, {
+      state: "all",
+      feedId: feed.id,
+    });
+    expect(refreshedArticles.map(({ title }) => title)).toEqual(
+      Array.from({ length: 11 }, (_, index) => `Article ${13 - index}`),
+    );
+  });
+
   it("shows sanitized feed content until publisher extraction is explicitly requested", async () => {
     let baseUrl = "";
     let feedRequests = 0;
@@ -429,6 +481,12 @@ describe("feed refresh and full-text extraction", () => {
         feedContentHtml: `<p>Readable feed content ${index}</p>`,
       })),
     };
+    database.feeds.completeRefresh(feed.id, {
+      httpStatus: 200,
+      etag: null,
+      lastModified: null,
+      pollIntervalMinutes: 20,
+    });
     database.feeds.completeRefresh(feed.id, {
       httpStatus: 200,
       etag: null,

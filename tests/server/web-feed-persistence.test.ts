@@ -50,6 +50,54 @@ function article(externalId: string, title: string, url: string) {
 }
 
 describe("web feed persistence", () => {
+  it("limits a new page subscription without importing the skipped backlog later", async () => {
+    const database = await temporaryDatabase();
+    const pageUrl = "https://example.test/updates";
+    try {
+      const initialArticles = Array.from({ length: 12 }, (_, index) => {
+        const number = index + 1;
+        return article(`web:${number}`, `Update ${number}`, `${pageUrl}/${number}`);
+      });
+      const feed = database.feeds.createWebFeed(TEST_USER_ID, {
+        title: "Updates",
+        pageUrl,
+        folderId: null,
+        config: config(pageUrl),
+        parsed: { title: "Updates", siteUrl: pageUrl, articles: initialArticles },
+      });
+
+      expect(database.feeds.getFeed(TEST_USER_ID, feed.id)?.totalCount).toBe(10);
+      expect(
+        database.articles
+          .listArticles(TEST_USER_ID, { state: "all", feedId: feed.id })
+          .map(({ title }) => title)
+          .sort(),
+      ).toEqual(Array.from({ length: 10 }, (_, index) => `Update ${index + 1}`).sort());
+
+      database.feeds.completeRefresh(feed.id, {
+        httpStatus: 200,
+        etag: null,
+        lastModified: null,
+        pollIntervalMinutes: 180,
+        parsed: {
+          title: "Updates",
+          siteUrl: pageUrl,
+          articles: [article("web:new", "New update", `${pageUrl}/new`), ...initialArticles],
+        },
+      });
+
+      const refreshedTitles = database.articles
+        .listArticles(TEST_USER_ID, { state: "all", feedId: feed.id })
+        .map(({ title }) => title);
+      expect(refreshedTitles).toHaveLength(11);
+      expect(refreshedTitles).toContain("New update");
+      expect(refreshedTitles).not.toContain("Update 11");
+      expect(refreshedTitles).not.toContain("Update 12");
+    } finally {
+      database.close();
+    }
+  });
+
   it("atomically saves selections and refreshes stable items without losing history or state", async () => {
     const database = await temporaryDatabase();
     const pageUrl = "https://example.test/releases";
@@ -297,6 +345,7 @@ describe("web feed persistence", () => {
       .run("2026-07-27T12:00:00.000Z", "2026-07-27T12:20:00.000Z", webFeed.id);
     database.connection.prepare("DELETE FROM migrations WHERE version >= 20").run();
     database.connection.exec("ALTER TABLE settings DROP COLUMN show_youtube_descriptions");
+    database.connection.exec("DROP TABLE ignored_feed_articles");
     database.close();
 
     const migrated = new AppDatabase(path);

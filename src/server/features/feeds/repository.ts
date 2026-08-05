@@ -314,6 +314,13 @@ export class FeedRepository {
     return selection?.revision === expectedRevision;
   }
 
+  isInitialRefresh(id: number): boolean {
+    const row = this.sqlite
+      .prepare("SELECT last_success_at AS lastSuccessAt FROM feeds WHERE id = ?")
+      .get(id) as { lastSuccessAt: string | null } | undefined;
+    return row?.lastSuccessAt === null;
+  }
+
   updateFromParsedFeed(id: number, parsed: ParsedFeed): void {
     this.sqlite
       .prepare(
