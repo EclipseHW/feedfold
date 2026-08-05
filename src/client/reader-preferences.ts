@@ -20,6 +20,12 @@ function storedNumber(key: string, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function storedBoolean(key: string, fallback: boolean): boolean {
+  const stored = window.localStorage.getItem(key);
+  if (stored === null) return fallback;
+  return stored === "true";
+}
+
 function accountStorageKey(userId: number, setting: string): string {
   return `echovale-account-${userId}-${setting}`;
 }
@@ -44,6 +50,9 @@ export function useReaderPreferences(userId: number) {
         storedNumber(accountStorageKey(userId, "article-font-size"), ARTICLE_FONT_DEFAULT),
       ),
     ),
+  );
+  const [desktopSidebarCollapsed, setDesktopSidebarCollapsed] = useState(() =>
+    storedBoolean(accountStorageKey(userId, "desktop-sidebar-collapsed"), false),
   );
 
   useEffect(() => {
@@ -72,6 +81,13 @@ export function useReaderPreferences(userId: number) {
     window.localStorage.setItem(accountStorageKey(userId, "reading-mode"), readingMode);
   }, [readingMode, userId]);
 
+  useEffect(() => {
+    window.localStorage.setItem(
+      accountStorageKey(userId, "desktop-sidebar-collapsed"),
+      String(desktopSidebarCollapsed),
+    );
+  }, [desktopSidebarCollapsed, userId]);
+
   return {
     readingMode,
     setReadingMode,
@@ -79,5 +95,7 @@ export function useReaderPreferences(userId: number) {
     setTheme,
     articleFontSize,
     setArticleFontSize,
+    desktopSidebarCollapsed,
+    setDesktopSidebarCollapsed,
   };
 }
