@@ -53,7 +53,6 @@ const webFeedConfig = z
         image: selector.nullable(),
       })
       .strict(),
-    minimumItemCount: z.number().int().min(2).max(1_000),
   })
   .strict();
 const articleQuery = z

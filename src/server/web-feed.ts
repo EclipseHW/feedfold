@@ -128,8 +128,7 @@ export class WebFeedService {
         loaded.pageUrl,
         config.selectors,
       );
-      const minimum = Math.max(1, Math.floor(config.minimumItemCount));
-      if (!Number.isFinite(config.minimumItemCount) || extracted.articles.length < minimum) {
+      if (extracted.articles.length === 0) {
         const loadingError = webFeedContentRequestError(loaded);
         if (loadingError) throw loadingError;
         if (!loaded.domContentLoaded) {
@@ -140,7 +139,7 @@ export class WebFeedService {
           );
         }
         throw new WebFeedError(
-          "This page has changed, so the saved selection no longer finds enough entries. Edit the page selection to repair the feed.",
+          "This page has changed, so the saved selection no longer finds entries. Edit the page selection to repair the feed.",
           "selection_broken",
           loaded.httpStatus,
         );

@@ -31,7 +31,6 @@ async function listen(server: Server): Promise<string> {
 function savedArticleConfig(pageUrl: string): WebFeedConfig {
   return {
     pageUrl,
-    minimumItemCount: 3,
     selectors: {
       item: "main > article",
       link: "a[href]",
@@ -249,6 +248,30 @@ describe("web-feed browser loading and network security", () => {
     ]);
   }, 15_000);
 
+  it("keeps a saved selection valid when its matching group shrinks", async () => {
+    const server = createServer((_request, response) => {
+      response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+      response.end(`<!doctype html>
+        <title>Current releases</title>
+        <main>
+          <article class="card"><a href="/new-year">First release of the new year</a></article>
+        </main>`);
+    });
+    const baseUrl = await listen(server);
+    const service = new WebFeedService({
+      allowPrivateNetworks: true,
+      settleQuietMs: 100,
+      settleTimeoutMs: 500,
+    });
+    cleanups.push(() => service.close());
+
+    const refreshed = await service.extract(savedArticleConfig(baseUrl));
+
+    expect(refreshed.parsed.articles.map((article) => article.title)).toEqual([
+      "First release of the new year",
+    ]);
+  });
+
   it("waits through the configured window for a slowly rendered saved selection", async () => {
     const server = createServer((_request, response) => {
       response.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
@@ -366,17 +389,11 @@ describe("web-feed browser loading and network security", () => {
     });
     cleanups.push(() => service.close());
 
-    await service.extract({
-      ...savedArticleConfig(baseUrl),
-      minimumItemCount: 2,
-    });
+    await service.extract(savedArticleConfig(baseUrl));
     const firstBrowser = browsers[0];
     if (!firstBrowser) throw new Error("Expected the first browser to launch");
     await firstBrowser.close();
-    await service.extract({
-      ...savedArticleConfig(baseUrl),
-      minimumItemCount: 2,
-    });
+    await service.extract(savedArticleConfig(baseUrl));
 
     expect(launches).toBe(2);
   });
@@ -479,10 +496,7 @@ describe("web-feed browser loading and network security", () => {
     });
     cleanups.push(() => service.close());
 
-    const config = {
-      ...savedArticleConfig(baseUrl),
-      minimumItemCount: 2,
-    };
+    const config = savedArticleConfig(baseUrl);
     await service.extract(config);
     stalled = true;
 

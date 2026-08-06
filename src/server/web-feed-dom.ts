@@ -432,7 +432,6 @@ function rankedCandidate(
   const config: WebFeedConfig = {
     pageUrl,
     selectors,
-    minimumItemCount: Math.min(3, extracted.articles.length),
   };
   const fields = availableFields(extracted.articles);
   const score = groupScore(parent, elements, fields);
@@ -505,7 +504,7 @@ function candidateFromConfig(
 ): RankedWebFeedCandidate | null {
   try {
     const extracted = extractWebFeedSelection(document, pageUrl, savedConfig.selectors);
-    if (extracted.articles.length < savedConfig.minimumItemCount) return null;
+    if (extracted.articles.length === 0) return null;
     const config: WebFeedConfig = { ...savedConfig, pageUrl };
     const fields = availableFields(extracted.articles);
     return {

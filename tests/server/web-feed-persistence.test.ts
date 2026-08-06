@@ -32,7 +32,6 @@ function config(pageUrl: string, item = ".card"): WebFeedConfig {
       summary: "p",
       image: "img",
     },
-    minimumItemCount: 2,
   };
 }
 
