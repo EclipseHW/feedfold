@@ -44,7 +44,7 @@ export function PageHeader({
       >
         <Menu aria-hidden="true" size={19} />
       </button>
-      <div>
+      <div className="page-header-copy">
         <h1>{title}</h1>
         <p>{description}</p>
       </div>

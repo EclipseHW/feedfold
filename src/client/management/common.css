@@ -430,7 +430,38 @@
 
 @media (min-width: 1021px) {
   .app-shell.is-management-view .page-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: var(--toolbar-height) minmax(calc(90px - var(--toolbar-height) - 1px), auto);
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 0;
+    padding-block: 0;
     transition: padding-left var(--duration-surface) var(--ease-in-out);
+  }
+
+  .app-shell.is-management-view .page-header-copy {
+    display: contents;
+  }
+
+  .app-shell.is-management-view .page-header h1 {
+    grid-column: 1;
+    grid-row: 1;
+    align-self: center;
+    margin-bottom: 0;
+  }
+
+  .app-shell.is-management-view .page-header p {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    align-self: start;
+  }
+
+  .app-shell.is-management-view .page-header-actions {
+    grid-column: 2;
+    grid-row: 1;
+    align-self: center;
+    margin-left: 0;
   }
 
   .app-shell.is-sidebar-collapsed .page-header {
