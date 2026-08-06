@@ -3400,7 +3400,7 @@ kbd {
   }
 
   .app-shell.is-reading-article .sidebar.is-collapsed .sidebar-collapse-button {
-    top: 4px;
+    translate: 0 -5px;
   }
 
   .app-shell.is-sidebar-collapsed .reader-toolbar .reader-title-row {
@@ -3426,7 +3426,7 @@ kbd {
     width: var(--sidebar-width);
   }
 
-  .app-shell.is-management-view .sidebar-collapse-button {
+  .app-shell .sidebar-collapse-button {
     right: auto;
     left: 8px;
     translate: calc(var(--sidebar-width) - 52px) 0;
@@ -3435,7 +3435,7 @@ kbd {
       translate var(--duration-surface) var(--ease-in-out);
   }
 
-  .app-shell.is-management-view .sidebar.is-collapsed .sidebar-collapse-button {
+  .app-shell .sidebar.is-collapsed .sidebar-collapse-button {
     translate: 0 0;
   }
 
@@ -4169,7 +4169,7 @@ kbd {
 
 @media (prefers-reduced-motion: reduce) {
   .app-shell.is-management-view,
-  .app-shell.is-management-view .sidebar-collapse-button {
+  .app-shell .sidebar-collapse-button {
     transition-duration: 0s;
   }
 
