@@ -358,11 +358,15 @@ export function useArticleActions({
   const generateArticleSummary = useCallback(
     async (article: Article, promptId: string | null, regenerate: boolean) => {
       if (summaryLoadingIds.current.has(article.id)) return;
+      const isYouTubeVideo = article.media?.provider === "youtube";
       const feature = bootstrap?.aiSettings.features.articleSummary;
       const provider = feature
         ? bootstrap?.aiSettings.providers.find((option) => option.id === feature.provider)
         : null;
-      if (!bootstrap?.aiSettings.credentialStorageAvailable || !feature || !provider?.configured) {
+      if (
+        !isYouTubeVideo &&
+        (!bootstrap?.aiSettings.credentialStorageAvailable || !feature || !provider?.configured)
+      ) {
         patchArticleSummaryState(article.id, {
           visible: true,
           loading: false,

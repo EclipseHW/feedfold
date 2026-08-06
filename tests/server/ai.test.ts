@@ -13,6 +13,7 @@ import {
 import { CredentialCipher } from "../../src/server/ai/credential-cipher.js";
 import { AiError } from "../../src/server/ai/errors.js";
 import { createAiProviders } from "../../src/server/ai/providers.js";
+import { youtubeMediaFromUrl } from "../../src/server/article-media.js";
 import { AppDatabase, type ParsedFeed } from "../../src/server/database.js";
 import { AiService } from "../../src/server/features/ai/service.js";
 import { AuthService } from "../../src/server/features/auth/service.js";
@@ -67,6 +68,42 @@ function addArticle(database: AppDatabase, userId: number): { feedId: number; ar
   const articleId = database.articles.listArticles(userId, { state: "all" })[0]?.id;
   if (!articleId) throw new Error("Test article was not stored");
   return { feedId: feed.id, articleId };
+}
+
+function addYouTubeArticle(database: AppDatabase, userId: number): number {
+  const feed = database.feeds.createFeed(userId, {
+    title: "Videos",
+    feedUrl: `https://example.test/videos-${userId}`,
+  });
+  const videoUrl = "https://www.youtube.com/watch?v=9hE5-98ZeCg";
+  const media = youtubeMediaFromUrl(videoUrl);
+  if (!media) throw new Error("Test YouTube media could not be created");
+  database.feeds.completeRefresh(feed.id, {
+    httpStatus: 200,
+    etag: null,
+    lastModified: null,
+    pollIntervalMinutes: 20,
+    parsed: {
+      title: "Videos",
+      siteUrl: "https://www.youtube.com",
+      articles: [
+        {
+          externalId: "video",
+          title: "A useful video",
+          url: videoUrl,
+          author: "Ada Example",
+          publishedAt: "2026-07-18T08:00:00.000Z",
+          summary: "This feed description must not be summarized.",
+          imageUrl: media.thumbnailUrl,
+          media,
+          feedContentHtml: "<p>This feed description must not be summarized.</p>",
+        },
+      ],
+    },
+  });
+  const articleId = database.articles.listArticles(userId, { state: "all" })[0]?.id;
+  if (!articleId) throw new Error("Test YouTube article was not stored");
+  return articleId;
 }
 
 async function liveProviderEndpoint(
@@ -286,6 +323,7 @@ describe("AI article summaries", () => {
       title: "Long article",
       url: "https://example.test/long",
       author: null,
+      media: null,
       contentHtml: `<p>START-${"a".repeat(120_000)}-END</p>`,
       feedContentHtml: "<p>Feed fallback must not be selected.</p>",
       excerpt: "Excerpt fallback must not be selected.",
@@ -302,6 +340,76 @@ describe("AI article summaries", () => {
     expect(prepared.input).not.toContain("URL:");
   });
 
+  it("requires a Google Gemini key for YouTube summaries", async () => {
+    const { database, readerId } = databaseWithUsers();
+    const articleId = addYouTubeArticle(database, readerId);
+    const cipher = CredentialCipher.fromHex(CREDENTIAL_KEY);
+    if (!cipher) throw new Error("Credential cipher was not created");
+    const { providers, requests } = await liveGeminiProvider();
+    const service = new AiService(database, { credentialCipher: cipher, providers });
+    service.setApiKey(readerId, "openai", "openai-key");
+    service.setFeatureSetting(readerId, "article_summary", "openai");
+
+    await expect(service.summarizeArticle(readerId, articleId, null)).rejects.toMatchObject({
+      code: "AI_KEY_MISSING",
+      statusCode: 422,
+      message: "Add a Google Gemini API key in Settings to summarize YouTube videos.",
+    });
+    expect(requests).toHaveLength(0);
+    expect(database.articles.getArticle(readerId, articleId)?.aiSummary).toBeNull();
+  });
+
+  it("sends the native YouTube video to Gemini when its key is configured", async () => {
+    const { database, readerId } = databaseWithUsers();
+    const articleId = addYouTubeArticle(database, readerId);
+    const cipher = CredentialCipher.fromHex(CREDENTIAL_KEY);
+    if (!cipher) throw new Error("Credential cipher was not created");
+    const { providers, requests } = await liveGeminiProvider();
+    const service = new AiService(database, { credentialCipher: cipher, providers });
+    service.setApiKey(readerId, "gemini", "gemini-key");
+
+    const summary = await service.summarizeArticle(readerId, articleId, null);
+
+    expect(summary).toMatchObject({
+      provider: "gemini",
+      model: "gemini-3.6-flash",
+      sourceKind: "feed",
+      text: "The product was released in July 2026.",
+    });
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              fileData: {
+                fileUri: "https://www.youtube.com/watch?v=9hE5-98ZeCg",
+                mimeType: "video/*",
+              },
+            },
+            { text: expect.stringContaining("Source: Attached public YouTube video.") },
+          ],
+        },
+      ],
+      generationConfig: {
+        maxOutputTokens: 900,
+        thinkingConfig: { thinkingLevel: "minimal" },
+      },
+    });
+    expect(JSON.stringify(requests[0])).not.toContain("feed description must not be summarized");
+    const systemInstruction = requests[0]?.systemInstruction as
+      | { parts?: Array<{ text?: string }> }
+      | undefined;
+    expect(systemInstruction?.parts?.[0]?.text).toContain(
+      "You process YouTube videos for a personal feed reader.",
+    );
+    expect(database.articles.getArticle(readerId, articleId)?.aiSummary).toMatchObject({
+      provider: "gemini",
+      model: "gemini-3.6-flash",
+    });
+  });
+
   it("preserves links, images, and quotations while replacing only translated text", () => {
     const article = {
       id: 1,
@@ -309,6 +417,7 @@ describe("AI article summaries", () => {
       title: "Structured article",
       url: null,
       author: null,
+      media: null,
       contentHtml: null,
       feedContentHtml: `<p>Sales start: <a href="https://busy.app/" target="_blank" rel="noopener noreferrer">https://busy.app</a></p>
         <figure><img src="https://example.test/product.png" alt="Product"><figcaption>Product image.</figcaption></figure>

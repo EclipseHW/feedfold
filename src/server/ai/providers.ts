@@ -266,6 +266,13 @@ function geminiAdapter(baseUrl: string): AiProviderAdapter {
     defaultModel: "gemini-3.6-flash",
     models: [{ id: "gemini-3.6-flash", label: "Gemini 3.6 Flash" }],
     async generateText(request): Promise<AiGenerationResult> {
+      const requestParts: Array<Record<string, unknown>> = [];
+      if (request.videoUrl) {
+        requestParts.push({
+          fileData: { fileUri: request.videoUrl, mimeType: "video/*" },
+        });
+      }
+      requestParts.push({ text: request.input });
       const response = await postJson(
         label,
         endpoint(baseUrl, `/models/${encodeURIComponent(request.model)}:generateContent`),
@@ -273,7 +280,7 @@ function geminiAdapter(baseUrl: string): AiProviderAdapter {
         {
           store: false,
           systemInstruction: { parts: [{ text: request.system }] },
-          contents: [{ role: "user", parts: [{ text: request.input }] }],
+          contents: [{ role: "user", parts: requestParts }],
           generationConfig: {
             maxOutputTokens: request.maxOutputTokens,
             thinkingConfig: { thinkingLevel: request.webSearch ? "medium" : "minimal" },
