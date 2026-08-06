@@ -1910,6 +1910,7 @@ kbd {
 .reader-action-row {
   display: flex;
   width: min(100%, 820px);
+  min-height: var(--toolbar-height);
   min-width: 0;
   align-items: center;
   margin-inline: auto;
@@ -3397,10 +3398,6 @@ kbd {
     right: auto;
     left: 8px;
     pointer-events: auto;
-  }
-
-  .app-shell.is-reading-article .sidebar.is-collapsed .sidebar-collapse-button {
-    translate: 0 -5px;
   }
 
   .app-shell.is-sidebar-collapsed .reader-toolbar .reader-title-row {
