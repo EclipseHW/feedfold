@@ -66,6 +66,10 @@
   background: var(--bg);
 }
 
+.web-feed-confirmation-slot {
+  display: contents;
+}
+
 .web-feed-page-pane {
   min-width: 0;
   border-right: 1px solid var(--border);
