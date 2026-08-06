@@ -135,6 +135,7 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   onSelectState: (state: ArticleState) => void;
   onSelectScope: (feedId: number | null, folderId: number | null) => void;
+  onAddFeed: () => void;
   onNavigate: (view: AppView) => void;
   onFeedAction: (feed: Feed, action: FeedManagementAction) => void;
   onFolderAction: (folder: FolderType, action: FolderManagementAction) => void;
@@ -172,6 +173,7 @@ export function Sidebar({
   onToggleCollapse,
   onSelectState,
   onSelectScope,
+  onAddFeed,
   onNavigate,
   onFeedAction,
   onFolderAction,
@@ -328,19 +330,14 @@ export function Sidebar({
               >
                 <RefreshCw className={refreshing ? "spin" : ""} aria-hidden="true" size={14} />
               </button>
-              <button
-                type="button"
-                onClick={() => onNavigate("feeds")}
-                aria-label="Open feed management"
-                title="Open feed management"
-              >
+              <button type="button" onClick={onAddFeed} aria-label="Add feed" title="Add feed">
                 <Plus aria-hidden="true" size={15} />
               </button>
             </span>
           </div>
 
           {bootstrap.feeds.length === 0 ? (
-            <button className="sidebar-empty" type="button" onClick={() => onNavigate("feeds")}>
+            <button className="sidebar-empty" type="button" onClick={onAddFeed}>
               <Plus aria-hidden="true" size={15} />
               Add your first feed
             </button>

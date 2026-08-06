@@ -371,6 +371,11 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     [route],
   );
 
+  const openAddFeed = useCallback(() => {
+    route.navigate({ kind: "add-feed", sourceUrl: "" });
+    setNavOpen(false);
+  }, [route]);
+
   const submitSearch = useCallback(
     (event: FormEvent) => {
       event.preventDefault();
@@ -681,6 +686,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         onToggleCollapse={toggleDesktopSidebar}
         onSelectState={(state) => selectScope(null, null, state)}
         onSelectScope={selectScope}
+        onAddFeed={openAddFeed}
         onNavigate={navigateTo}
         onFeedAction={openFeedManagement}
         onFolderAction={openFolderManagement}
@@ -746,7 +752,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                   hasFeeds={bootstrap.feeds.length > 0}
                   search={route.readerRoute.search}
                   state={route.readerRoute.state}
-                  onAddFeed={() => navigateTo("feeds")}
+                  onAddFeed={openAddFeed}
                   onShowAll={() =>
                     route.navigate(
                       readerRouteForSelection(

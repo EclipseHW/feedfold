@@ -12,6 +12,7 @@ const BASE_PATH = "/echovale/";
 describe("application routes", () => {
   it.each([
     [{ kind: "feeds" }, "/feeds"],
+    [{ kind: "add-feed", sourceUrl: "" }, "/feeds/add"],
     [
       { kind: "add-feed", sourceUrl: "https://example.com/feed.xml?format=rss#latest" },
       "/feeds/add/https%3A%2F%2Fexample.com%2Ffeed.xml%3Fformat%3Drss%23latest",
