@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { FEED_PREVIEW_ARTICLE_LIMIT } from "../shared/feed-preview.js";
 import type {
   FeedPreviewArticle,
   WebFeedCandidate,
@@ -12,7 +13,6 @@ import { WebFeedError } from "./web-feed-error.js";
 const MAX_MATCHED_ITEMS = 2_000;
 const MAX_SUGGESTIONS = 8;
 const MAX_SELECTABLE_CANDIDATES = 100;
-const PREVIEW_ARTICLE_LIMIT = 5;
 const MIN_CANDIDATE_SCORE = 28;
 
 const REPEATED_ITEM_TAGS = new Set(["a", "article", "div", "li", "section", "tr"]);
@@ -442,7 +442,7 @@ function rankedCandidate(
     itemCount: extracted.articles.length,
     availableFields: fields,
     config,
-    articles: extracted.articles.slice(0, PREVIEW_ARTICLE_LIMIT).map(previewArticle),
+    articles: extracted.articles.slice(0, FEED_PREVIEW_ARTICLE_LIMIT).map(previewArticle),
   };
   return {
     candidate,
@@ -515,7 +515,7 @@ function candidateFromConfig(
         itemCount: extracted.articles.length,
         availableFields: fields,
         config,
-        articles: extracted.articles.slice(0, PREVIEW_ARTICLE_LIMIT).map(previewArticle),
+        articles: extracted.articles.slice(0, FEED_PREVIEW_ARTICLE_LIMIT).map(previewArticle),
       },
       elements: extracted.elements,
       articleUrls: extracted.articles.map((article) => article.url).filter((url) => url !== null),

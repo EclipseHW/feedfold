@@ -83,6 +83,29 @@ describe("web-feed DOM analysis", () => {
     expect(saved.candidates[0]?.candidate.label).toBe("Saved selection");
   });
 
+  it("keeps web feed previews to the same three recent entries as published feeds", () => {
+    const document = documentFor(`
+      <section aria-label="Latest updates">
+        ${Array.from(
+          { length: 5 },
+          (_, index) =>
+            `<article><h2><a href="/updates/${index + 1}">Update ${index + 1}</a></h2></article>`,
+        ).join("")}
+      </section>
+    `);
+
+    const preview = analyzeWebFeedDocument(document, PAGE_URL).candidates.find(
+      ({ candidate }) => candidate.label === "Latest updates",
+    )?.candidate;
+
+    expect(preview?.itemCount).toBe(5);
+    expect(preview?.articles.map((article) => article.title)).toEqual([
+      "Update 1",
+      "Update 2",
+      "Update 3",
+    ]);
+  });
+
   it("does not turn page headers into a feed when repeated content has no links", () => {
     const document = documentFor(`
       <div class="header-box row">

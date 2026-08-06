@@ -1,4 +1,5 @@
 import { JSDOM } from "jsdom";
+import { FEED_PREVIEW_ARTICLE_LIMIT } from "../shared/feed-preview.js";
 import type { FeedDiscoveryResult, FeedErrorKind, FeedPreview } from "../shared/types.js";
 import type { ParsedFeed } from "./features/shared.js";
 import { fetchFeed, nitterFeedUrl } from "./feed-http.js";
@@ -18,7 +19,6 @@ const FEED_MIME_TYPES = new Set([
   "text/xml",
 ]);
 const COMMON_FEED_PATHS = ["/feed", "/rss.xml", "/feed.xml", "/atom.xml", "/index.xml"];
-const PREVIEW_ARTICLE_LIMIT = 3;
 
 export class FeedDiscoveryError extends Error {
   constructor(
@@ -36,7 +36,7 @@ function preview(parsed: ParsedFeed, feedUrl: string): FeedPreview {
     title: parsed.title,
     siteUrl: parsed.siteUrl,
     totalArticles: parsed.articles.length,
-    articles: parsed.articles.slice(0, PREVIEW_ARTICLE_LIMIT).map((article) => ({
+    articles: parsed.articles.slice(0, FEED_PREVIEW_ARTICLE_LIMIT).map((article) => ({
       title: article.title,
       url: article.url,
       author: article.author,

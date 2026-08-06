@@ -1,19 +1,8 @@
-import {
-  ArrowLeft,
-  Check,
-  ExternalLink,
-  LoaderCircle,
-  LockKeyhole,
-  MousePointer2,
-} from "lucide-react";
+import { ArrowLeft, Check, LoaderCircle, LockKeyhole, MousePointer2 } from "lucide-react";
 import { useCallback, useEffect, useId, useMemo, useRef } from "react";
-import type {
-  FeedPreviewArticle,
-  WebFeedAnalysis,
-  WebFeedCandidate,
-  WebFeedField,
-} from "../shared/types";
+import type { WebFeedAnalysis, WebFeedCandidate, WebFeedField } from "../shared/types";
 import { appUrl } from "./api";
+import { FeedEntriesPreview } from "./feed-entries-preview";
 import { parseWebFeedSelectionMessage, webFeedHighlightMessage } from "./web-feed-selection";
 import "./web-feed-setup.css";
 
@@ -35,14 +24,6 @@ export interface WebFeedSetupProps {
   busyLabel?: string;
   onSelect: (candidateId: string | null) => void;
   onBack?: () => void;
-}
-
-function formatPreviewDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
-}
-
-function previewTitle(article: FeedPreviewArticle): string {
-  return article.title || article.summary || "Untitled entry";
 }
 
 function CandidateSuggestion({
@@ -97,39 +78,6 @@ function FieldAvailability({ candidate }: { candidate: WebFeedCandidate }) {
         );
       })}
     </ul>
-  );
-}
-
-function PreviewArticle({ article }: { article: FeedPreviewArticle }) {
-  return (
-    <li className={`feed-preview-article${article.imageUrl ? " has-image" : ""}`}>
-      {article.imageUrl ? <img src={article.imageUrl} alt="" loading="lazy" /> : null}
-      <div>
-        {article.url ? (
-          <a
-            className="feed-preview-article-title"
-            href={article.url}
-            target="_blank"
-            rel="noreferrer"
-          >
-            {previewTitle(article)}
-            <ExternalLink aria-hidden="true" size={12} />
-          </a>
-        ) : (
-          <strong className="feed-preview-article-title">{previewTitle(article)}</strong>
-        )}
-        {article.author || article.publishedAt ? (
-          <div className="feed-preview-article-meta">
-            {article.author ? <span>{article.author}</span> : null}
-            {article.author && article.publishedAt ? <span aria-hidden="true">·</span> : null}
-            {article.publishedAt ? (
-              <time dateTime={article.publishedAt}>{formatPreviewDate(article.publishedAt)}</time>
-            ) : null}
-          </div>
-        ) : null}
-        {article.summary ? <p>{article.summary}</p> : null}
-      </div>
-    </li>
   );
 }
 
@@ -297,25 +245,15 @@ export function WebFeedSetup({
           <div className="web-feed-preview-heading">
             <div>
               <h4 id={`${headingId}-preview`}>Preview this feed</h4>
-              <p>
-                {selectedCandidate.itemCount} currently matched{" "}
-                {selectedCandidate.itemCount === 1 ? "entry" : "entries"}
-              </p>
+              <p>Review the selected group before subscribing.</p>
             </div>
             <FieldAvailability candidate={selectedCandidate} />
           </div>
-          {selectedCandidate.articles.length > 0 ? (
-            <ol className="feed-preview-articles">
-              {selectedCandidate.articles.map((article) => (
-                <PreviewArticle
-                  key={`${article.url ?? ""}\u0000${article.publishedAt ?? ""}\u0000${article.title}`}
-                  article={article}
-                />
-              ))}
-            </ol>
-          ) : (
-            <p className="feed-preview-empty">This group has no entries that can be previewed.</p>
-          )}
+          <FeedEntriesPreview
+            articles={selectedCandidate.articles}
+            totalEntries={selectedCandidate.itemCount}
+            emptyMessage="This group has no entries that can be previewed."
+          />
         </section>
       ) : null}
     </section>
