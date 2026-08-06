@@ -75,6 +75,7 @@ export interface AiArticleRecord {
   title: string;
   url: string | null;
   author: string | null;
+  media: ArticleMedia | null;
   contentHtml: string | null;
   feedContentHtml: string | null;
   excerpt: string;

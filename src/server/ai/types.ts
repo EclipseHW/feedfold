@@ -5,6 +5,7 @@ export interface AiGenerationRequest {
   model: string;
   system: string;
   input: string;
+  videoUrl?: string;
   maxOutputTokens: number;
   webSearch: boolean;
   signal: AbortSignal;

@@ -19,6 +19,7 @@ import {
   articleSummaryNeedsWebSearch,
   articleSummarySystemPrompt,
   prepareArticleSummary,
+  prepareYouTubeVideoSummary,
 } from "../../ai/article-summary.js";
 import {
   ARTICLE_TRANSLATION_MAX_OUTPUT_TOKENS,
@@ -41,6 +42,11 @@ function promptVersion(prompt: string, defaultPrompt: string, defaultVersion: nu
   return -digest.readUIntBE(0, 6) - 1;
 }
 
+function youtubeSummaryVersion(prompt: string): number {
+  const digest = createHash("sha256").update(`youtube-video-summary-v1\0${prompt}`).digest();
+  return -digest.readUIntBE(0, 6) - 1;
+}
+
 export interface AiServiceOptions {
   credentialCipher: CredentialCipherLike | null;
   currentDate?: () => Date;
@@ -51,6 +57,7 @@ export interface AiServiceOptions {
 interface FeatureGenerationRequest {
   system: string;
   input: string;
+  videoUrl?: string;
   maxOutputTokens: number;
   webSearch: boolean;
 }
@@ -169,13 +176,26 @@ export class AiService {
         "Choose an AI provider and model in Settings, then try again.",
       );
     }
-    const provider = this.providers.get(setting.provider) as AiProviderAdapter;
-    const encryptedKey = this.database.ai.getEncryptedAiCredential(userId, setting.provider);
+    return this.generateWithProvider(userId, setting.provider, setting.model, request);
+  }
+
+  private async generateWithProvider(
+    userId: number,
+    providerId: AiProvider,
+    model: string,
+    request: FeatureGenerationRequest,
+    missingKeyMessage?: string,
+  ): Promise<FeatureGenerationResult> {
+    const provider = this.providers.get(providerId);
+    if (!provider) {
+      throw new AiError("AI_NOT_CONFIGURED", 422, "Choose an AI provider in Settings.");
+    }
+    const encryptedKey = this.database.ai.getEncryptedAiCredential(userId, providerId);
     if (!encryptedKey) {
       throw new AiError(
         "AI_KEY_MISSING",
         422,
-        `Add an API key for ${provider.label} in Settings, then try again.`,
+        missingKeyMessage ?? `Add an API key for ${provider.label} in Settings, then try again.`,
       );
     }
     const cipher = this.options.credentialCipher;
@@ -187,12 +207,31 @@ export class AiService {
       );
     }
     const result = await provider.generateText({
-      apiKey: cipher.decrypt(userId, setting.provider, encryptedKey),
-      model: setting.model,
+      apiKey: cipher.decrypt(userId, providerId, encryptedKey),
+      model,
       ...request,
       signal: AbortSignal.timeout(this.requestTimeoutMs),
     });
-    return { ...result, provider: setting.provider, model: setting.model };
+    return { ...result, provider: providerId, model };
+  }
+
+  private generateYouTubeSummary(
+    userId: number,
+    setting: AiFeatureSetting | null,
+    request: FeatureGenerationRequest,
+  ): Promise<FeatureGenerationResult> {
+    const gemini = this.providers.get("gemini");
+    if (!gemini) {
+      throw new AiError("AI_NOT_CONFIGURED", 422, "Google Gemini is unavailable.");
+    }
+    const model = setting?.provider === "gemini" ? setting.model : gemini.defaultModel;
+    return this.generateWithProvider(
+      userId,
+      "gemini",
+      model,
+      request,
+      "Add a Google Gemini API key in Settings to summarize YouTube videos.",
+    );
   }
 
   async summarizeArticle(
@@ -277,24 +316,38 @@ export class AiService {
     const setting = this.validFeatureSetting(
       this.database.ai.getAiFeatureSetting(userId, "article_summary"),
     );
-    const useWebSearch = setting !== null && articleSummaryNeedsWebSearch(prompt);
+    const videoUrl = article.media?.provider === "youtube" ? article.url : null;
+    const summaryVersion = videoUrl ? youtubeSummaryVersion(prompt) : version;
+    const useWebSearch =
+      articleSummaryNeedsWebSearch(prompt) && (videoUrl !== null || setting !== null);
     if (
       !useWebSearch &&
       !regenerate &&
-      article.currentSummary?.promptVersion === version &&
+      article.currentSummary?.promptVersion === summaryVersion &&
       article.currentSummary.promptId === promptId
     ) {
       return publicSummary(article.currentSummary);
     }
-    const prepared = prepareArticleSummary(article);
-    const generated = await this.generateText(userId, "article_summary", {
-      system: articleSummarySystemPrompt(prompt, this.currentDate(), useWebSearch),
+    const prepared = videoUrl
+      ? prepareYouTubeVideoSummary(article)
+      : prepareArticleSummary(article);
+    const request = {
+      system: articleSummarySystemPrompt(
+        prompt,
+        this.currentDate(),
+        useWebSearch,
+        videoUrl ? "youtube_video" : "article",
+      ),
       input: prepared.input,
+      ...(videoUrl ? { videoUrl } : {}),
       maxOutputTokens: useWebSearch
         ? ARTICLE_GROUNDED_MAX_OUTPUT_TOKENS
         : ARTICLE_SUMMARY_MAX_OUTPUT_TOKENS,
       webSearch: useWebSearch,
-    });
+    };
+    const generated = videoUrl
+      ? await this.generateYouTubeSummary(userId, setting, request)
+      : await this.generateText(userId, "article_summary", request);
     if (useWebSearch) {
       return {
         text: generated.text,
@@ -308,7 +361,7 @@ export class AiService {
       };
     }
     const saved = this.database.ai.saveArticleAiSummary(userId, articleId, article.revision, {
-      promptVersion: version,
+      promptVersion: summaryVersion,
       promptId,
       sourceKind: prepared.sourceKind,
       provider: generated.provider,
