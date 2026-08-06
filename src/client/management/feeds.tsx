@@ -41,6 +41,7 @@ import type {
 import { api, errorMessage } from "../api";
 import type { ReaderDataMutations } from "../data-resource";
 import { DropdownSelect } from "../dropdown";
+import { FeedEntriesPreview } from "../feed-entries-preview";
 import {
   type FeedStatusFilter,
   type FeedTypeFilter,
@@ -171,10 +172,6 @@ function handleFeedsTabKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
   event.preventDefault();
   tabs[nextIndex]?.focus();
   tabs[nextIndex]?.click();
-}
-
-function formatPreviewDate(value: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(value));
 }
 
 function feedHost(value: string): string {
@@ -983,64 +980,10 @@ function AddFeedForm({
                   </span>
                 </div>
 
-                <div className="feed-preview-list-heading">
-                  <h4>Recent entries</h4>
-                  <span>
-                    {displayedPreview.totalArticles}{" "}
-                    {displayedPreview.totalArticles === 1 ? "entry" : "entries"} in this feed
-                  </span>
-                </div>
-                {displayedPreview.articles.length > 0 ? (
-                  <ol className="feed-preview-articles">
-                    {displayedPreview.articles.map((article) => (
-                      <li
-                        className={
-                          article.imageUrl
-                            ? "feed-preview-article has-image"
-                            : "feed-preview-article"
-                        }
-                        key={`${article.url ?? ""}\u0000${article.publishedAt ?? ""}\u0000${article.title}`}
-                      >
-                        {article.imageUrl ? (
-                          <img src={article.imageUrl} alt="" loading="lazy" />
-                        ) : null}
-                        <div>
-                          {article.url ? (
-                            <a
-                              className="feed-preview-article-title"
-                              href={article.url}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              {article.title || article.summary || "Untitled article"}
-                              <ExternalLink aria-hidden="true" size={12} />
-                            </a>
-                          ) : (
-                            <strong className="feed-preview-article-title">
-                              {article.title || article.summary || "Untitled article"}
-                            </strong>
-                          )}
-                          {article.author || article.publishedAt ? (
-                            <div className="feed-preview-article-meta">
-                              {article.author ? <span>{article.author}</span> : null}
-                              {article.author && article.publishedAt ? (
-                                <span aria-hidden="true">·</span>
-                              ) : null}
-                              {article.publishedAt ? (
-                                <time dateTime={article.publishedAt}>
-                                  {formatPreviewDate(article.publishedAt)}
-                                </time>
-                              ) : null}
-                            </div>
-                          ) : null}
-                          {article.summary ? <p>{article.summary}</p> : null}
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <p className="feed-preview-empty">This feed has no entries to preview.</p>
-                )}
+                <FeedEntriesPreview
+                  articles={displayedPreview.articles}
+                  totalEntries={displayedPreview.totalArticles}
+                />
               </section>
 
               <FeedConfirmationSettings

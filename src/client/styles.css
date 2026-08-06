@@ -3623,19 +3623,6 @@ kbd {
     grid-column: 2;
     justify-self: start;
   }
-  .feed-preview-list-heading {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .feed-preview-article.has-image {
-    grid-template-columns: 86px minmax(0, 1fr);
-    gap: 10px;
-  }
-  .feed-preview-article img {
-    width: 86px;
-    height: 60px;
-  }
   .rule-condition-columns {
     display: none;
   }

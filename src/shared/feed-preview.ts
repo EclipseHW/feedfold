@@ -1,0 +1,1 @@
+export const FEED_PREVIEW_ARTICLE_LIMIT = 3;
