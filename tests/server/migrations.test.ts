@@ -22,6 +22,61 @@ afterEach(async () => {
 });
 
 describe("database migrations", () => {
+  it("removes obsolete match thresholds from existing web feed selections", () => {
+    const database = new AppDatabase(":memory:");
+    try {
+      const pageUrl = "https://example.test/releases";
+      const config = {
+        pageUrl,
+        selectors: {
+          item: "main > article",
+          title: "a[href]",
+          link: "a[href]",
+          date: null,
+          author: null,
+          summary: null,
+          image: null,
+        },
+      };
+      const feed = database.feeds.createWebFeed(1, {
+        title: "Current releases",
+        pageUrl,
+        folderId: null,
+        config,
+        parsed: {
+          title: "Current releases",
+          siteUrl: pageUrl,
+          articles: [
+            {
+              externalId: `${pageUrl}/one`,
+              title: "Release one",
+              url: `${pageUrl}/one`,
+              author: null,
+              publishedAt: null,
+              summary: "",
+              imageUrl: null,
+              feedContentHtml: null,
+            },
+          ],
+        },
+      });
+      database.connection
+        .prepare(
+          `UPDATE web_feed_configs
+           SET config_json = json_set(config_json, '$.minimumItemCount', 3)
+           WHERE feed_id = ?`,
+        )
+        .run(feed.id);
+      database.connection.prepare("DELETE FROM migrations WHERE version = 29").run();
+
+      migrateDatabase(database.connection, 180);
+
+      expect(database.feeds.getWebFeedConfig(1, feed.id)).toEqual(config);
+    } finally {
+      database.close();
+    }
+  });
+
   it("cuts stored summaries over to the date-aware grounded harness", () => {
     const database = new AppDatabase(":memory:");
     try {
@@ -462,7 +517,7 @@ Return only the summary in plain text.`,
         sortDirection: "newest",
       });
       expect(database.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
-        28,
+        29,
       );
       expect(
         database.connection
@@ -502,7 +557,7 @@ Return only the summary in plain text.`,
         username: "reader",
       });
       expect(reopened.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
-        28,
+        29,
       );
       expect(
         reopened.connection.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),

@@ -232,7 +232,7 @@ async function settleDom(
                   const url = new URL(rawHref, location.href);
                   if (url.protocol !== "http:" && url.protocol !== "https:") continue;
                   matches += 1;
-                  if (matches >= expectedConfig.minimumItemCount) {
+                  if (matches >= 1) {
                     expectedSelectionReady = true;
                     break;
                   }

@@ -797,6 +797,12 @@ const migrations: Migration[] = [
       );
     `,
   },
+  {
+    sql: `
+      UPDATE web_feed_configs
+      SET config_json = json_remove(config_json, '$.minimumItemCount');
+    `,
+  },
 ];
 
 export function migrateDatabase(

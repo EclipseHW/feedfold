@@ -212,7 +212,6 @@ export interface WebFeedSelectors {
 export interface WebFeedConfig {
   pageUrl: string;
   selectors: WebFeedSelectors;
-  minimumItemCount: number;
 }
 
 export interface WebFeedCandidate {
