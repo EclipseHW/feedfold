@@ -66,6 +66,10 @@ export function parseAppRoute(pathname: string, search: string, basePath: string
   const segments = relativePath ? relativePath.split("/") : [];
   const query = new URLSearchParams(search).get("q")?.trim() ?? "";
 
+  if (segments[0] === "feeds" && segments[1] === "add" && segments.length === 2) {
+    return { kind: "add-feed", sourceUrl: "" };
+  }
+
   if (segments[0] === "feeds" && segments[1] === "add" && segments.length >= 3) {
     try {
       const sourceUrl = decodeURIComponent(segments.slice(2).join("/"));
@@ -100,7 +104,9 @@ export function parseAppRoute(pathname: string, search: string, basePath: string
 
 export function appRoutePath(route: AppRoute): string {
   if (route.kind === "article") return `/articles/${route.articleId}`;
-  if (route.kind === "add-feed") return `/feeds/add/${encodeURIComponent(route.sourceUrl)}`;
+  if (route.kind === "add-feed") {
+    return route.sourceUrl ? `/feeds/add/${encodeURIComponent(route.sourceUrl)}` : "/feeds/add";
+  }
   if (route.kind !== "reader") return `/${route.kind}`;
 
   const path =
