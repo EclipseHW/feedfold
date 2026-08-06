@@ -66,7 +66,6 @@ interface SidebarLayoutSnapshot {
 
 function visibleSidebarMotionItems(main: HTMLElement | null): HTMLElement[] {
   if (!main) return [];
-  const toggle = document.querySelector<HTMLElement>(".sidebar-collapse-button");
   const content = main.querySelectorAll<HTMLElement>(
     [
       ".reader-title-row > *",
@@ -75,8 +74,7 @@ function visibleSidebarMotionItems(main: HTMLElement | null): HTMLElement[] {
       ".expanded-stream",
     ].join(","),
   );
-  return [toggle, ...content].filter((element): element is HTMLElement => {
-    if (!element) return false;
+  return [...content].filter((element) => {
     const bounds = element.getBoundingClientRect();
     return bounds.width > 0 && bounds.height > 0;
   });
