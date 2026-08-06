@@ -352,8 +352,7 @@
   margin-top: 25px;
 }
 
-.feed-discovery-error,
-.feed-existing-notice {
+.feed-discovery-error {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -443,7 +442,7 @@
 
 .feed-preview-header {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
+  grid-template-columns: 42px minmax(0, 1fr);
   align-items: center;
   gap: 11px;
 }
@@ -495,39 +494,86 @@
   text-decoration: none;
 }
 
-.feed-found-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 8px;
-  border-radius: 999px;
-  background: var(--accent-surface);
-  color: var(--accent);
-  font-size: var(--type-label);
-  font-weight: var(--weight-semibold);
-  white-space: nowrap;
-}
-
 .feed-confirmation-settings {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(180px, 1fr);
-  gap: 13px;
-  margin-top: 18px;
+  gap: 10px;
 }
 
-.feed-existing-notice {
-  border: 1px solid color-mix(in srgb, var(--accent) 36%, var(--border));
-  background: var(--accent-surface);
-  color: var(--text-secondary);
+.feed-confirmation-bar {
+  position: sticky;
+  top: 98px;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  column-gap: 16px;
+  row-gap: 12px;
+  margin: 16px 0 4px;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-raised);
 }
 
-.feed-existing-notice svg {
-  flex: 0 0 auto;
+.feed-confirmation-status {
+  grid-column: 1 / -1;
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--border);
   color: var(--accent);
 }
 
-.feed-existing-notice strong {
+.feed-confirmation-status > svg {
+  flex: 0 0 auto;
+}
+
+.feed-confirmation-status > span {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 8px;
+}
+
+.feed-confirmation-status strong {
   color: var(--text);
+  font-size: var(--type-supporting);
+}
+
+.feed-confirmation-status small {
+  color: var(--muted);
+  font-size: var(--type-label);
+  font-weight: var(--weight-regular);
+  line-height: var(--leading-compact);
+}
+
+.feed-confirmation-bar[data-blocked="true"] .feed-confirmation-status {
+  color: var(--muted);
+}
+
+.feed-confirmation-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  padding-bottom: 1px;
+  white-space: nowrap;
+}
+
+.feed-confirmation-actions .primary-button {
+  min-width: 126px;
+}
+
+.feed-confirmation-settings {
+  grid-column: 1;
+}
+
+.feed-confirmation-actions {
+  grid-column: 2;
 }
 
 .add-feed-initial-actions {
@@ -578,6 +624,17 @@
 }
 
 @media (max-width: 760px) {
+  .feed-confirmation-bar {
+    top: 68px;
+    grid-template-columns: 1fr;
+  }
+
+  .feed-confirmation-status,
+  .feed-confirmation-settings,
+  .feed-confirmation-actions {
+    grid-column: 1;
+  }
+
   .feed-discovery-form {
     grid-template-columns: 1fr;
   }
@@ -589,6 +646,38 @@
 }
 
 @media (max-width: 620px) {
+  .feed-confirmation-bar {
+    position: relative;
+    top: auto;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .feed-confirmation-status,
+  .feed-confirmation-settings,
+  .feed-confirmation-actions {
+    grid-column: 1;
+  }
+
+  .feed-confirmation-settings {
+    grid-template-columns: minmax(0, 1.5fr) minmax(120px, 1fr);
+  }
+
+  .feed-confirmation-actions > button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .feed-confirmation-actions .primary-button {
+    min-width: 0;
+  }
+
+  .feed-confirmation-actions {
+    display: grid;
+    width: 100%;
+    grid-template-columns: minmax(0, 0.65fr) minmax(0, 1.35fr);
+  }
+
   .feed-source-options {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -675,7 +764,8 @@
 
 @media (prefers-contrast: more) {
   .feed-source-options,
-  .field .feed-source-input.has-prefix {
+  .field .feed-source-input.has-prefix,
+  .feed-confirmation-bar {
     border-color: var(--border-strong);
   }
 }

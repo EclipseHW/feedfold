@@ -107,7 +107,6 @@ const ADD_FEED_INPUTS: Record<
     pattern?: string;
     action: string;
     loading: string;
-    found: string;
     add: string;
   }
 > = {
@@ -118,7 +117,6 @@ const ADD_FEED_INPUTS: Record<
     prefix: null,
     action: "Check feed",
     loading: "Checking feed",
-    found: "Published feed found",
     add: "Add feed",
   },
   web: {
@@ -128,18 +126,16 @@ const ADD_FEED_INPUTS: Record<
     prefix: null,
     action: "Find entries",
     loading: "Finding entries",
-    found: "Web feed ready",
     add: "Add web feed",
   },
   telegram: {
     label: "Telegram channel handle",
-    placeholder: "Example_Channel",
+    placeholder: "durov",
     help: "Enter the public channel handle, with or without @. Links aren't supported.",
     prefix: "t.me/",
     pattern: TELEGRAM_HANDLE_PATTERN,
     action: "Preview channel",
     loading: "Loading channel",
-    found: "Telegram channel found",
     add: "Add Telegram feed",
   },
   x: {
@@ -150,7 +146,6 @@ const ADD_FEED_INPUTS: Record<
     pattern: X_HANDLE_PATTERN,
     action: "Preview profile",
     loading: "Loading profile",
-    found: "Nitter RSS found",
     add: "Add X feed",
   },
 };
@@ -560,7 +555,6 @@ function FeedConfirmationSettings({
           disabled={disabled}
           onChange={(event) => onTitleChange(event.target.value)}
         />
-        <small>Use the detected name, or enter a name of your own.</small>
       </label>
       <div className="field">
         <span>Folder</span>
@@ -576,6 +570,92 @@ function FeedConfirmationSettings({
         />
       </div>
     </div>
+  );
+}
+
+function FeedConfirmationBar({
+  sourceType,
+  title,
+  folderId,
+  folders,
+  disabled,
+  existingFeed,
+  canSave,
+  onCancel,
+  onTitleChange,
+  onFolderChange,
+}: {
+  sourceType: AddFeedSourceType;
+  title: string;
+  folderId: number | null;
+  folders: Folder[];
+  disabled: boolean;
+  existingFeed?: Feed;
+  canSave: boolean;
+  onCancel: () => void;
+  onTitleChange: (title: string) => void;
+  onFolderChange: (folderId: number | null) => void;
+}) {
+  const inputConfig = ADD_FEED_INPUTS[sourceType];
+  const statusTitle = existingFeed ? "Already in your feeds" : "Choose an entry group";
+  const statusDescription = existingFeed
+    ? `You follow this as ${existingFeed.title}.`
+    : "Select a suggested group or an entry in the page preview.";
+  const actionLabel = disabled
+    ? `${inputConfig.add.replace(/^Add /, "Adding ")}…`
+    : existingFeed
+      ? "Already added"
+      : inputConfig.add;
+
+  return (
+    <section
+      className="feed-confirmation-bar"
+      aria-label="Confirm subscription"
+      data-blocked={!canSave || !!existingFeed || undefined}
+    >
+      {existingFeed || !canSave ? (
+        <div className="feed-confirmation-status" aria-live="polite">
+          {existingFeed ? (
+            <CheckCircle2 aria-hidden="true" size={18} />
+          ) : (
+            <MousePointer2 aria-hidden="true" size={18} />
+          )}
+          <span>
+            <strong>{statusTitle}</strong>
+            <small>{statusDescription}</small>
+          </span>
+        </div>
+      ) : null}
+
+      <FeedConfirmationSettings
+        title={title}
+        folderId={folderId}
+        folders={folders}
+        disabled={disabled || !!existingFeed}
+        onTitleChange={onTitleChange}
+        onFolderChange={onFolderChange}
+      />
+
+      <div className="feed-confirmation-actions">
+        <button className="secondary-button" type="button" onClick={onCancel} disabled={disabled}>
+          Cancel
+        </button>
+        <button
+          className="primary-button"
+          type="submit"
+          disabled={disabled || !canSave || !!existingFeed}
+        >
+          {disabled ? (
+            <LoaderCircle className="spin" aria-hidden="true" size={16} />
+          ) : existingFeed ? (
+            <Check aria-hidden="true" size={16} />
+          ) : (
+            <Plus aria-hidden="true" size={16} />
+          )}
+          {actionLabel}
+        </button>
+      </div>
+    </section>
   );
 }
 
@@ -626,7 +706,6 @@ function AddFeedForm({
   const displayedPreview = preview ?? retainedPreview.current;
   const sourceInput = sourceInputs[sourceType];
   const inputConfig = ADD_FEED_INPUTS[sourceType];
-  const previewInputConfig = ADD_FEED_INPUTS[previewSourceType];
   const SourcePreviewIcon =
     ADD_FEED_SOURCE_OPTIONS.find((option) => option.value === previewSourceType)?.icon ?? Rss;
   const showLoadingSurface = loadingPresence.present && error === null;
@@ -974,62 +1053,26 @@ function AddFeedForm({
                       </a>
                     </div>
                   </div>
-                  <span className="feed-found-badge">
-                    <CheckCircle2 aria-hidden="true" size={14} />
-                    {previewInputConfig.found}
-                  </span>
                 </div>
+
+                <FeedConfirmationBar
+                  sourceType={previewSourceType}
+                  title={title}
+                  folderId={folderId}
+                  folders={folders}
+                  disabled={saving}
+                  existingFeed={existingFeed}
+                  canSave
+                  onCancel={onCancel}
+                  onTitleChange={setTitle}
+                  onFolderChange={setFolderId}
+                />
 
                 <FeedEntriesPreview
                   articles={displayedPreview.articles}
                   totalEntries={displayedPreview.totalArticles}
                 />
               </section>
-
-              <FeedConfirmationSettings
-                title={title}
-                folderId={folderId}
-                folders={folders}
-                disabled={saving}
-                onTitleChange={setTitle}
-                onFolderChange={setFolderId}
-              />
-
-              {existingFeed ? (
-                <p className="feed-existing-notice" role="status">
-                  <CheckCircle2 aria-hidden="true" size={16} />
-                  You already follow this feed as <strong>{existingFeed.title}</strong>.
-                </p>
-              ) : null}
-
-              <div className="form-actions">
-                <button
-                  className="secondary-button"
-                  type="button"
-                  onClick={onCancel}
-                  disabled={saving}
-                >
-                  Cancel
-                </button>
-                <button
-                  className="primary-button"
-                  type="submit"
-                  disabled={saving || !!existingFeed}
-                >
-                  {saving ? (
-                    <LoaderCircle className="spin" aria-hidden="true" size={16} />
-                  ) : existingFeed ? (
-                    <Check aria-hidden="true" size={16} />
-                  ) : (
-                    <Plus aria-hidden="true" size={16} />
-                  )}
-                  {saving
-                    ? `Adding ${previewSourceType === "rss" ? "feed" : `${previewSourceType} feed`}`
-                    : existingFeed
-                      ? "Already added"
-                      : previewInputConfig.add}
-                </button>
-              </div>
             </form>
           ) : null}
         </div>
@@ -1047,50 +1090,29 @@ function AddFeedForm({
               setWebAnalysis(null);
               setSelectedCandidateId(null);
             }}
+            confirmation={
+              <>
+                <FeedConfirmationBar
+                  sourceType="web"
+                  title={title}
+                  folderId={folderId}
+                  folders={folders}
+                  disabled={saving}
+                  existingFeed={existingFeed}
+                  canSave={selectedCandidate !== null}
+                  onCancel={onCancel}
+                  onTitleChange={setTitle}
+                  onFolderChange={setFolderId}
+                />
+                {selectedCandidate && !selectedCandidate.availableFields.includes("date") ? (
+                  <p className="web-feed-date-fallback">
+                    These entries have no publication date. echovale will use the time it first
+                    discovers each one.
+                  </p>
+                ) : null}
+              </>
+            }
           />
-
-          {selectedCandidate && !selectedCandidate.availableFields.includes("date") ? (
-            <p className="web-feed-date-fallback">
-              These entries have no publication date. echovale will use the time it first discovers
-              each one.
-            </p>
-          ) : null}
-
-          <FeedConfirmationSettings
-            title={title}
-            folderId={folderId}
-            folders={folders}
-            disabled={saving}
-            onTitleChange={setTitle}
-            onFolderChange={setFolderId}
-          />
-
-          {existingFeed ? (
-            <p className="feed-existing-notice" role="status">
-              <CheckCircle2 aria-hidden="true" size={16} />
-              You already follow this feed as <strong>{existingFeed.title}</strong>.
-            </p>
-          ) : null}
-
-          <div className="form-actions">
-            <button className="secondary-button" type="button" onClick={onCancel} disabled={saving}>
-              Cancel
-            </button>
-            <button
-              className="primary-button"
-              type="submit"
-              disabled={saving || !selectedCandidate || !!existingFeed}
-            >
-              {saving ? (
-                <LoaderCircle className="spin" aria-hidden="true" size={16} />
-              ) : existingFeed ? (
-                <Check aria-hidden="true" size={16} />
-              ) : (
-                <Plus aria-hidden="true" size={16} />
-              )}
-              {saving ? "Adding web feed" : existingFeed ? "Already added" : "Add web feed"}
-            </button>
-          </div>
         </form>
       ) : null}
 

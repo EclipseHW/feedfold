@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, LoaderCircle, LockKeyhole, MousePointer2 } from "lucide-react";
-import { useCallback, useEffect, useId, useMemo, useRef } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef } from "react";
 import type { WebFeedAnalysis, WebFeedCandidate, WebFeedField } from "../shared/types";
 import { appUrl } from "./api";
 import { FeedEntriesPreview } from "./feed-entries-preview";
@@ -22,6 +22,7 @@ export interface WebFeedSetupProps {
   selectedCandidateId: string | null;
   disabled?: boolean;
   busyLabel?: string;
+  confirmation?: ReactNode;
   onSelect: (candidateId: string | null) => void;
   onBack?: () => void;
 }
@@ -86,6 +87,7 @@ export function WebFeedSetup({
   selectedCandidateId,
   disabled = false,
   busyLabel = "Saving selection…",
+  confirmation,
   onSelect,
   onBack,
 }: WebFeedSetupProps) {
@@ -161,11 +163,17 @@ export function WebFeedSetup({
           </h3>
           <p>Choose a suggested group, or select one representative entry on {analysis.title}.</p>
         </div>
-        <span className="web-feed-selection-badge">
-          <LockKeyhole aria-hidden="true" size={13} />
-          Choose entries
+        <span className="web-feed-selection-badge" aria-live="polite">
+          {selectedCandidate ? (
+            <Check aria-hidden="true" size={13} />
+          ) : (
+            <LockKeyhole aria-hidden="true" size={13} />
+          )}
+          {selectedCandidate ? `${selectedCandidate.itemCount} selected` : "Choose entries"}
         </span>
       </header>
+
+      {confirmation ? <div className="web-feed-confirmation-slot">{confirmation}</div> : null}
 
       <div className="web-feed-workspace">
         <div className="web-feed-page-pane">
