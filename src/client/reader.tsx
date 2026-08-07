@@ -1226,7 +1226,8 @@ function ArticleSummaryPanel({
   onRegenerate: (article: Article) => void;
   onOpenSettings: () => void;
 }) {
-  if (!state.visible) return null;
+  const summaryPresence = useMotionPresence(state.visible);
+  if (!summaryPresence.present) return null;
   const summary = article.aiSummary;
   const titleId = `article-${article.id}-ai-summary-title`;
   const displayedPromptId = summary ? summary.promptId : state.promptId;
@@ -1238,6 +1239,8 @@ function ArticleSummaryPanel({
     <section
       id={`article-${article.id}-ai-summary`}
       className="article-ai-summary"
+      data-motion-state={summaryPresence.state}
+      inert={summaryPresence.state === "closed" ? true : undefined}
       aria-labelledby={titleId}
       aria-live="polite"
       aria-busy={state.loading}

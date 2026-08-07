@@ -197,11 +197,14 @@ export function FeedsPage({
   );
   const [addFeedSession, setAddFeedSession] = useState(0);
   const [addFolderOpen, setAddFolderOpen] = useState(false);
+  const [addFolderSession, setAddFolderSession] = useState(0);
   const [activeTab, setActiveTab] = useState<FeedsPageTab>("subscriptions");
   const [feedTypeFilter, setFeedTypeFilter] = useState<FeedTypeFilter>("all");
   const [feedStatusFilter, setFeedStatusFilter] = useState<FeedStatusFilter>("all");
   const addFeedPresence = useMotionPresence(addFeedOpen);
+  const addFolderPresence = useMotionPresence(addFolderOpen);
   const addFeedTriggerRef = useRef<HTMLButtonElement>(null);
+  const addFolderTriggerRef = useRef<HTMLButtonElement>(null);
   const previousAddFeedSourceUrl = useRef(addFeedSourceUrl);
   const filteredFeeds = filterFeeds(bootstrap.feeds, feedTypeFilter, feedStatusFilter);
   const filtersActive = feedTypeFilter !== "all" || feedStatusFilter !== "all";
@@ -232,6 +235,11 @@ export function FeedsPage({
     addFeedTriggerRef.current?.focus();
     setAddFeedOpen(false);
     if (addFeedSourceUrl !== null) onCloseAddFeedRoute();
+  };
+
+  const closeAddFolder = () => {
+    addFolderTriggerRef.current?.focus();
+    setAddFolderOpen(false);
   };
 
   const selectTab = (tab: FeedsPageTab) => {
@@ -279,9 +287,17 @@ export function FeedsPage({
             </>
           ) : (
             <button
+              ref={addFolderTriggerRef}
               className="primary-button"
               type="button"
-              onClick={() => setAddFolderOpen((current) => !current)}
+              onClick={() => {
+                if (addFolderOpen) {
+                  closeAddFolder();
+                  return;
+                }
+                setAddFolderSession((current) => current + 1);
+                setAddFolderOpen(true);
+              }}
             >
               <FolderPlus aria-hidden="true" size={16} />
               Add folder
@@ -485,14 +501,16 @@ export function FeedsPage({
               {bootstrap.folders.length === 1 ? "folder" : "folders"}
             </p>
           </div>
-          {addFolderOpen ? (
+          {addFolderPresence.present ? (
             <FolderForm
+              key={addFolderSession}
               folders={bootstrap.folders}
+              motionState={addFolderPresence.state}
               mutations={mutations}
-              onCancel={() => setAddFolderOpen(false)}
+              onCancel={closeAddFolder}
               onSaved={(folder) => {
                 showToast(`Created ${folder.name}`);
-                setAddFolderOpen(false);
+                closeAddFolder();
               }}
               showToast={showToast}
             />
@@ -1387,6 +1405,7 @@ export function FolderForm({
   folders,
   initial,
   defaultParentId = null,
+  motionState,
   mutations,
   onCancel,
   onSaved,
@@ -1395,6 +1414,7 @@ export function FolderForm({
   folders: Folder[];
   initial?: Folder;
   defaultParentId?: number | null;
+  motionState?: MotionState;
   mutations: ReaderDataMutations;
   onCancel: () => void;
   onSaved: (folder: Folder) => Promise<void> | void;
@@ -1441,7 +1461,12 @@ export function FolderForm({
   };
 
   return (
-    <form className="compact-form" onSubmit={(event) => void submit(event)}>
+    <form
+      className={`compact-form${motionState ? " add-folder-form" : ""}`}
+      data-motion-state={motionState}
+      inert={motionState === "closed" ? true : undefined}
+      onSubmit={(event) => void submit(event)}
+    >
       <label className="field">
         <span>Folder name</span>
         <input

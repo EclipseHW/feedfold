@@ -78,6 +78,25 @@
 .rule-condition-row {
   align-items: center;
   padding: 8px;
+  opacity: 1;
+  transform: translateY(0);
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    transform var(--duration-surface) var(--ease-out);
+}
+
+.rule-condition-row[data-motion-state="closed"] {
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition-duration: var(--duration-fast);
+}
+
+@starting-style {
+  .rule-condition-row[data-motion-state="open"] {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 
 .rule-condition-row + .rule-condition-row {

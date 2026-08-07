@@ -370,6 +370,29 @@
   background: var(--surface);
 }
 
+.add-folder-form {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  transform-origin: top right;
+  transition:
+    opacity var(--duration-surface) var(--ease-out),
+    transform var(--duration-surface) var(--ease-out);
+}
+
+.add-folder-form[data-motion-state="closed"] {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.97);
+  pointer-events: none;
+  transition-duration: var(--duration-fast);
+}
+
+@starting-style {
+  .add-folder-form[data-motion-state="open"] {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.97);
+  }
+}
+
 .compact-form .form-actions {
   margin: 0;
 }

@@ -1,16 +1,24 @@
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { RefreshCw, X } from "lucide-react";
+import { useMotionPresence } from "./motion";
 
 export function PwaUpdate() {
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW();
+  const presence = useMotionPresence(needRefresh);
 
-  if (!needRefresh) return null;
+  if (!presence.present) return null;
 
   return (
-    <aside className="pwa-update" aria-live="polite" aria-label="echovale update available">
+    <aside
+      className="pwa-update"
+      data-motion-state={presence.state}
+      inert={presence.state === "closed" ? true : undefined}
+      aria-live="polite"
+      aria-label="echovale update available"
+    >
       <span>An echovale update is ready.</span>
       <div className="pwa-update-actions">
         <button

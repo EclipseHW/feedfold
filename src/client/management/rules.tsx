@@ -10,7 +10,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { type FormEvent, useRef, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import type {
   Article,
   BootstrapData,
@@ -23,7 +23,7 @@ import type {
 import { errorMessage, type RuleInput } from "../api";
 import type { ReaderDataMutations } from "../data-resource";
 import { DropdownSelect } from "../dropdown";
-import { type MotionState, useMotionPresence } from "../motion";
+import { type MotionState, motionExitDuration, useMotionPresence } from "../motion";
 import { PageHeader } from "./shared";
 import "./rules.css";
 
@@ -59,6 +59,7 @@ const RULE_ACTION_COPY: Record<
 
 interface EditableRuleCondition extends RuleCondition {
   id: number;
+  animatePresence?: boolean;
 }
 
 export interface RuleFormDraft {
@@ -307,6 +308,7 @@ export function RuleForm({
   );
   const nextConditionId = useRef(initial?.conditions.length ?? 1);
   const conditionInputRefs = useRef(new Map<number, HTMLInputElement>());
+  const conditionRemovalTimers = useRef(new Map<number, number>());
   const addConditionButtonRef = useRef<HTMLButtonElement>(null);
   const [conditions, setConditions] = useState<EditableRuleCondition[]>(() => {
     const values = initial?.conditions ?? [
@@ -317,9 +319,19 @@ export function RuleForm({
   const [conditionOperator, setConditionOperator] = useState<RuleConditionOperator>(
     initial?.conditionOperator ?? "or",
   );
+  const [removingConditionIds, setRemovingConditionIds] = useState<ReadonlySet<number>>(
+    () => new Set(),
+  );
   const [action, setAction] = useState<RuleAction>(initial?.action ?? "hide");
   const [enabled, setEnabled] = useState(initial?.enabled ?? true);
   const [saving, setSaving] = useState(false);
+
+  useEffect(
+    () => () => {
+      for (const timer of conditionRemovalTimers.current.values()) window.clearTimeout(timer);
+    },
+    [],
+  );
 
   const addCondition = () => {
     const id = nextConditionId.current;
@@ -330,19 +342,39 @@ export function RuleForm({
         id,
         field: current[current.length - 1]?.field ?? "title",
         pattern: "",
+        animatePresence: true,
       },
     ]);
     window.requestAnimationFrame(() => conditionInputRefs.current.get(id)?.focus());
   };
 
   const removeCondition = (id: number) => {
-    const index = conditions.findIndex((condition) => condition.id === id);
-    const focusId = conditions[index - 1]?.id ?? conditions[index + 1]?.id;
-    setConditions((current) => current.filter((condition) => condition.id !== id));
+    if (conditionRemovalTimers.current.has(id)) return;
+    const activeConditions = conditions.filter(
+      (condition) => !removingConditionIds.has(condition.id),
+    );
+    if (activeConditions.length <= 1) return;
+    const index = activeConditions.findIndex((condition) => condition.id === id);
+    const focusId = activeConditions[index - 1]?.id ?? activeConditions[index + 1]?.id;
+    const finishRemoval = () => {
+      conditionRemovalTimers.current.delete(id);
+      setConditions((current) => current.filter((condition) => condition.id !== id));
+      setRemovingConditionIds((current) => {
+        const next = new Set(current);
+        next.delete(id);
+        return next;
+      });
+      conditionInputRefs.current.delete(id);
+    };
+    const duration = motionExitDuration();
+    if (duration === 0) finishRemoval();
+    else {
+      setRemovingConditionIds((current) => new Set(current).add(id));
+      conditionRemovalTimers.current.set(id, window.setTimeout(finishRemoval, duration));
+    }
     window.requestAnimationFrame(() => {
       if (focusId === undefined) addConditionButtonRef.current?.focus();
       else conditionInputRefs.current.get(focusId)?.focus();
-      conditionInputRefs.current.delete(id);
     });
   };
 
@@ -353,7 +385,9 @@ export function RuleForm({
       name: name.trim(),
       feedId: scopeType === "feed" ? Number(rawId) : null,
       folderId: scopeType === "folder" ? Number(rawId) : null,
-      conditions: conditions.map(({ field, pattern }) => ({ field, pattern: pattern.trim() })),
+      conditions: conditions
+        .filter((condition) => !removingConditionIds.has(condition.id))
+        .map(({ field, pattern }) => ({ field, pattern: pattern.trim() })),
       conditionOperator,
       action,
       enabled,
@@ -457,7 +491,18 @@ export function RuleForm({
                 const valueId = `rule-condition-value-${condition.id}`;
                 const connector = conditionOperator === "and" ? "And" : "Or";
                 return (
-                  <li className="rule-condition-row" key={condition.id}>
+                  <li
+                    className="rule-condition-row"
+                    key={condition.id}
+                    data-motion-state={
+                      removingConditionIds.has(condition.id)
+                        ? "closed"
+                        : condition.animatePresence
+                          ? "open"
+                          : undefined
+                    }
+                    inert={removingConditionIds.has(condition.id) ? true : undefined}
+                  >
                     {index === 0 ? (
                       <span className="rule-condition-connector">If</span>
                     ) : index === 1 ? (
@@ -528,7 +573,8 @@ export function RuleForm({
                       />
                     </div>
 
-                    {conditions.length > 1 ? (
+                    {conditions.length - removingConditionIds.size > 1 &&
+                    !removingConditionIds.has(condition.id) ? (
                       <button
                         className="icon-button rule-condition-remove"
                         type="button"
