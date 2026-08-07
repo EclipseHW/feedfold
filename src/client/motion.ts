@@ -24,7 +24,11 @@ function dialogExitDuration(): number {
   return Number.parseFloat(styles.getPropertyValue(property));
 }
 
-export function useAnimatedDialog(onClosed: () => void): {
+export function useAnimatedDialog(
+  onClosed: () => void,
+  { autoOpen = true }: { autoOpen?: boolean } = {},
+): {
+  open: () => void;
   close: () => void;
   closing: boolean;
   dialogRef: React.RefObject<HTMLDialogElement | null>;
@@ -35,13 +39,19 @@ export function useAnimatedDialog(onClosed: () => void): {
   const closeTimer = useRef<number | null>(null);
   const [closing, setClosing] = useState(false);
 
-  useEffect(() => {
+  const open = useCallback(() => {
     const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
+    if (!dialog || dialog.open) return;
+    setClosing(false);
+    dialog.showModal();
+  }, []);
+
+  useEffect(() => {
+    if (autoOpen) open();
     return () => {
       if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
     };
-  }, []);
+  }, [autoOpen, open]);
 
   const handleClose = useCallback(() => {
     if (closeTimer.current !== null) window.clearTimeout(closeTimer.current);
@@ -73,6 +83,7 @@ export function useAnimatedDialog(onClosed: () => void): {
   );
 
   return {
+    open,
     close,
     closing,
     dialogRef,

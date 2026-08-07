@@ -262,8 +262,8 @@
   font-weight: var(--weight-semibold);
   white-space: nowrap;
   transition:
-    color var(--duration-fast) var(--ease-out),
-    background-color var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) ease,
+    background-color var(--duration-fast) ease,
     transform var(--duration-fast) var(--ease-out);
 }
 

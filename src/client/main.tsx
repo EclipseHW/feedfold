@@ -10,6 +10,9 @@ import "./styles.css";
 const root = document.getElementById("root");
 if (!root) throw new Error("The echovale root element is missing.");
 
+const POINTER_MOVE_THRESHOLD = 4;
+let lastMousePosition: { x: number; y: number } | null = null;
+
 window.addEventListener(
   "keydown",
   () => {
@@ -23,6 +26,23 @@ window.addEventListener(
     document.documentElement.dataset.inputModality = "pointer";
   },
   { capture: true },
+);
+window.addEventListener(
+  "pointermove",
+  (event) => {
+    if (event.pointerType !== "mouse") return;
+    const previousPosition = lastMousePosition;
+    const deltaX = previousPosition ? event.clientX - previousPosition.x : event.movementX;
+    const deltaY = previousPosition ? event.clientY - previousPosition.y : event.movementY;
+    lastMousePosition = { x: event.clientX, y: event.clientY };
+    if (
+      document.documentElement.dataset.inputModality === "keyboard" &&
+      Math.hypot(deltaX, deltaY) >= POINTER_MOVE_THRESHOLD
+    ) {
+      document.documentElement.dataset.inputModality = "pointer";
+    }
+  },
+  { capture: true, passive: true },
 );
 
 createRoot(root).render(

@@ -1227,10 +1227,13 @@ function ArticleSummaryPanel({
   onOpenSettings: () => void;
 }) {
   const summaryPresence = useMotionPresence(state.visible);
+  const retainedState = useRef(state);
+  if (state.visible) retainedState.current = state;
+  const displayedState = state.visible ? state : retainedState.current;
   if (!summaryPresence.present) return null;
   const summary = article.aiSummary;
   const titleId = `article-${article.id}-ai-summary-title`;
-  const displayedPromptId = summary ? summary.promptId : state.promptId;
+  const displayedPromptId = summary ? summary.promptId : displayedState.promptId;
   const customPromptName = displayedPromptId
     ? customPrompts.find((prompt) => prompt.id === displayedPromptId)?.name
     : null;
@@ -1242,8 +1245,9 @@ function ArticleSummaryPanel({
       data-motion-state={summaryPresence.state}
       inert={summaryPresence.state === "closed" ? true : undefined}
       aria-labelledby={titleId}
+      aria-hidden={summaryPresence.state === "closed"}
       aria-live="polite"
-      aria-busy={state.loading}
+      aria-busy={displayedState.loading}
     >
       <div className="article-ai-summary-heading">
         <div>
@@ -1254,20 +1258,20 @@ function ArticleSummaryPanel({
           <button
             className="quiet-button article-summary-regenerate"
             type="button"
-            disabled={state.loading}
+            disabled={displayedState.loading}
             onClick={() => onRegenerate(article)}
           >
-            {state.loading ? (
+            {displayedState.loading ? (
               <LoaderCircle className="spin" aria-hidden="true" size={14} />
             ) : (
               <RefreshCw aria-hidden="true" size={14} />
             )}
-            {state.loading ? "Updating summary" : "Update summary"}
+            {displayedState.loading ? "Updating summary" : "Update summary"}
           </button>
         ) : null}
       </div>
 
-      {state.loading && !summary ? (
+      {displayedState.loading && !summary ? (
         <div className="article-summary-loading" role="status">
           <span>Generating summary</span>
           <div className="article-summary-skeleton" aria-hidden="true">
@@ -1276,7 +1280,7 @@ function ArticleSummaryPanel({
             <span />
           </div>
         </div>
-      ) : state.configurationMissing ? (
+      ) : displayedState.configurationMissing ? (
         <div className="article-summary-message">
           <strong>Set up summaries first</strong>
           <p>In Settings, choose an AI provider and save its API key.</p>
@@ -1288,7 +1292,7 @@ function ArticleSummaryPanel({
         <div className="article-summary-text">
           <AiMarkdown text={summary.text} grounding={summary.grounding} />
         </div>
-      ) : !state.error ? (
+      ) : !displayedState.error ? (
         <div className="article-summary-message">
           <strong>This summary is out of date</strong>
           <p>The article text has changed. Create a summary from the current text.</p>
@@ -1299,18 +1303,18 @@ function ArticleSummaryPanel({
         </div>
       ) : null}
 
-      {state.error ? (
+      {displayedState.error ? (
         <div className="article-summary-error" role="alert">
           <AlertTriangle aria-hidden="true" size={16} />
           <div>
             <strong>Could not create the summary</strong>
-            <p>{state.error}</p>
+            <p>{displayedState.error}</p>
           </div>
           {!summary ? (
             <button
               className="secondary-button"
               type="button"
-              disabled={state.loading}
+              disabled={displayedState.loading}
               onClick={() => onRegenerate(article)}
             >
               <RefreshCw aria-hidden="true" size={14} />
@@ -1410,12 +1414,60 @@ function ArticleDocument({
   onFilterSelection: (article: Article, text: string) => void;
 }) {
   const documentRef = useRef<HTMLDivElement>(null);
+  const readingFlowRef = useRef<HTMLDivElement>(null);
+  const readingFlowTop = useRef<number | null>(null);
+  const readingFlowAnimation = useRef<Animation | null>(null);
+  const previousSummaryVisibility = useRef(summaryState.visible);
   const menuRef = useRef<HTMLDivElement>(null);
   const [selectionMenu, setSelectionMenu] = useState<SelectionMenuState | null>(null);
   const selectionMenuPresence = useMotionPresence(selectionMenu !== null);
   const retainedSelectionMenu = useRef<SelectionMenuState | null>(selectionMenu);
   if (selectionMenu) retainedSelectionMenu.current = selectionMenu;
   const displayedSelectionMenu = selectionMenu ?? retainedSelectionMenu.current;
+
+  useLayoutEffect(() => {
+    const flow = readingFlowRef.current;
+    if (!flow) return;
+    const visibilityChanged = previousSummaryVisibility.current !== summaryState.visible;
+    previousSummaryVisibility.current = summaryState.visible;
+    const nextTop = flow.getBoundingClientRect().top;
+    const previousTop = readingFlowTop.current;
+    readingFlowTop.current = nextTop;
+    if (!visibilityChanged) return;
+    readingFlowAnimation.current?.cancel();
+    readingFlowAnimation.current = null;
+    if (previousTop === null) return;
+
+    const delta = previousTop - nextTop;
+    const styles = window.getComputedStyle(document.documentElement);
+    const duration = Number.parseFloat(styles.getPropertyValue("--duration-surface"));
+    if (
+      Math.abs(delta) < 0.5 ||
+      duration === 0 ||
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ) {
+      return;
+    }
+
+    const animation = flow.animate(
+      [{ transform: `translate3d(0, ${delta}px, 0)` }, { transform: "translate3d(0, 0, 0)" }],
+      {
+        duration,
+        easing: styles.getPropertyValue("--ease-in-out").trim(),
+      },
+    );
+    readingFlowAnimation.current = animation;
+    animation.onfinish = () => {
+      if (readingFlowAnimation.current === animation) readingFlowAnimation.current = null;
+    };
+  }, [summaryState.visible]);
+
+  useEffect(
+    () => () => {
+      readingFlowAnimation.current?.cancel();
+    },
+    [],
+  );
 
   const showSelectionMenu = useCallback(() => {
     const root = documentRef.current;
@@ -1503,25 +1555,29 @@ function ArticleDocument({
     <>
       <div ref={documentRef} className="article-document">
         <ArticleHeader article={article} id={titleId} onFeedAction={onFeedAction} />
-        <ArticleSummaryPanel
-          article={article}
-          state={summaryState}
-          customPrompts={customPrompts}
-          onRegenerate={onRegenerateSummary}
-          onOpenSettings={onOpenAiSettings}
-        />
-        <ArticleTranslationNotice
-          state={translationState}
-          language={translationLanguage}
-          onOpenSettings={onOpenAiSettings}
-        />
-        <ArticleBody
-          article={article}
-          fullContentVisible={fullContentVisible}
-          translationState={translationState}
-          showYouTubeDescriptions={showYouTubeDescriptions}
-          onToggleFullContent={onToggleFullContent}
-        />
+        <div className="article-document-flow">
+          <ArticleSummaryPanel
+            article={article}
+            state={summaryState}
+            customPrompts={customPrompts}
+            onRegenerate={onRegenerateSummary}
+            onOpenSettings={onOpenAiSettings}
+          />
+          <div ref={readingFlowRef} className="article-reading-flow">
+            <ArticleTranslationNotice
+              state={translationState}
+              language={translationLanguage}
+              onOpenSettings={onOpenAiSettings}
+            />
+            <ArticleBody
+              article={article}
+              fullContentVisible={fullContentVisible}
+              translationState={translationState}
+              showYouTubeDescriptions={showYouTubeDescriptions}
+              onToggleFullContent={onToggleFullContent}
+            />
+          </div>
+        </div>
       </div>
       {selectionMenuPresence.present && displayedSelectionMenu
         ? createPortal(
@@ -2396,21 +2452,43 @@ function ArticleBody({
   onToggleFullContent: (article: Article) => void;
 }) {
   const xPostId = nitterVideoPostId(article.url, article.feedContentHtml);
+  const translation = shouldShowArticleDescription(article, showYouTubeDescriptions)
+    ? translationState.translation
+    : null;
+  const translationVisible = Boolean(translationState.visible && translation);
+
   return (
     <>
       {article.media ? <ArticleMediaPlayer article={article} /> : null}
-      {translationState.visible && translationState.translation ? (
-        shouldShowArticleDescription(article, showYouTubeDescriptions) ? (
-          <ArticleTranslationText translation={translationState.translation} />
-        ) : null
-      ) : (
-        <ArticleText
-          article={article}
-          fullContentVisible={fullContentVisible}
-          showYouTubeDescriptions={showYouTubeDescriptions}
-          onToggleFullContent={onToggleFullContent}
-        />
-      )}
+      <div
+        className="article-content-stage"
+        data-translation-ready={translation !== null}
+        data-translation-visible={translationVisible}
+      >
+        <div
+          className="article-content-layer is-original"
+          data-state={translationVisible ? "inactive" : "active"}
+          aria-hidden={translationVisible}
+          inert={translationVisible}
+        >
+          <ArticleText
+            article={article}
+            fullContentVisible={fullContentVisible}
+            showYouTubeDescriptions={showYouTubeDescriptions}
+            onToggleFullContent={onToggleFullContent}
+          />
+        </div>
+        {translation ? (
+          <div
+            className="article-content-layer is-translation"
+            data-state={translationVisible ? "active" : "inactive"}
+            aria-hidden={!translationVisible}
+            inert={!translationVisible}
+          >
+            <ArticleTranslationText translation={translation} />
+          </div>
+        ) : null}
+      </div>
       {telegramPostIdentity(article.url) ? <TelegramPostMedia article={article} /> : null}
       {xPostId ? <XPostVideo article={article} postId={xPostId} /> : null}
     </>

@@ -13,7 +13,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   AI_PROMPT_MAX_LENGTH,
   DEFAULT_ARTICLE_SUMMARY_PROMPT,
@@ -31,6 +31,7 @@ import { api, errorMessage } from "../api";
 import type { ReaderDataMutations } from "../data-resource";
 import { isDesktopApp } from "../desktop";
 import { DropdownCombobox, DropdownSelect } from "../dropdown";
+import { useAnimatedDialog } from "../motion";
 import type { Theme } from "../reader-preferences";
 import { ExportOpmlLink, formatRefreshInterval, ImportOpmlButton, Kbd, PageHeader } from "./shared";
 import { ShortcutReference } from "./shortcut-help";
@@ -75,10 +76,18 @@ function AiSettingsSection({
   const [customPromptError, setCustomPromptError] = useState<string | null>(null);
   const modelInputRef = useRef<HTMLInputElement>(null);
   const keyInputRef = useRef<HTMLInputElement>(null);
-  const promptDialogRef = useRef<HTMLDialogElement>(null);
   const summaryPromptRef = useRef<HTMLTextAreaElement>(null);
-  const customPromptDialogRef = useRef<HTMLDialogElement>(null);
   const customPromptNameRef = useRef<HTMLInputElement>(null);
+
+  const resetPromptDraft = useCallback(() => {
+    setSummaryPrompt(settings.summaryPrompt);
+    setTranslationPrompt(settings.translationPrompt);
+    setPromptError(null);
+  }, [settings.summaryPrompt, settings.translationPrompt]);
+  const promptDialog = useAnimatedDialog(resetPromptDraft, { autoOpen: false });
+  const customPromptDialog = useAnimatedDialog(() => setCustomPromptError(null), {
+    autoOpen: false,
+  });
 
   useEffect(() => {
     const feature = aiSettings.features.articleSummary;
@@ -198,18 +207,12 @@ function AiSettingsSection({
     setSummaryPrompt(settings.summaryPrompt);
     setTranslationPrompt(settings.translationPrompt);
     setPromptError(null);
-    promptDialogRef.current?.showModal();
+    promptDialog.open();
     window.requestAnimationFrame(() => summaryPromptRef.current?.focus());
   };
 
   const closePromptDialog = () => {
-    if (!savingPrompts) promptDialogRef.current?.close();
-  };
-
-  const resetPromptDraft = () => {
-    setSummaryPrompt(settings.summaryPrompt);
-    setTranslationPrompt(settings.translationPrompt);
-    setPromptError(null);
+    if (!savingPrompts) promptDialog.close();
   };
 
   const savePrompts = async (event: FormEvent) => {
@@ -228,7 +231,7 @@ function AiSettingsSection({
         }),
       );
       showToast("Default AI prompts saved");
-      promptDialogRef.current?.close();
+      promptDialog.close();
     } catch (caught) {
       setPromptError(errorMessage(caught));
     } finally {
@@ -241,12 +244,12 @@ function AiSettingsSection({
     setCustomPromptName(prompt?.name ?? "");
     setCustomPromptText(prompt?.prompt ?? "");
     setCustomPromptError(null);
-    customPromptDialogRef.current?.showModal();
+    customPromptDialog.open();
     window.requestAnimationFrame(() => customPromptNameRef.current?.focus());
   };
 
   const closeCustomPromptDialog = () => {
-    if (!savingCustomPrompt) customPromptDialogRef.current?.close();
+    if (!savingCustomPrompt) customPromptDialog.close();
   };
 
   const saveCustomPrompt = async (event: FormEvent) => {
@@ -269,7 +272,7 @@ function AiSettingsSection({
     try {
       onSettings(await api.updateSettings({ customPrompts }));
       showToast(editingCustomPrompt ? "Custom prompt updated" : "Custom prompt added");
-      customPromptDialogRef.current?.close();
+      customPromptDialog.close();
     } catch (caught) {
       setCustomPromptError(errorMessage(caught));
     } finally {
@@ -535,12 +538,18 @@ function AiSettingsSection({
       </div>
 
       <dialog
-        ref={promptDialogRef}
+        ref={promptDialog.dialogRef}
         className="management-dialog is-wide ai-prompt-dialog"
         aria-labelledby="ai-prompt-dialog-title"
-        onClose={resetPromptDraft}
+        data-state={promptDialog.closing ? "closing" : "open"}
+        inert={promptDialog.closing}
+        onClose={promptDialog.handleClose}
         onCancel={(event) => {
-          if (savingPrompts) event.preventDefault();
+          if (savingPrompts) {
+            event.preventDefault();
+            return;
+          }
+          promptDialog.handleCancel(event);
         }}
       >
         <form className="ai-prompt-dialog-form" onSubmit={(event) => void savePrompts(event)}>
@@ -656,12 +665,18 @@ function AiSettingsSection({
       </dialog>
 
       <dialog
-        ref={customPromptDialogRef}
+        ref={customPromptDialog.dialogRef}
         className="management-dialog custom-prompt-dialog"
         aria-labelledby="custom-prompt-dialog-title"
-        onClose={() => setCustomPromptError(null)}
+        data-state={customPromptDialog.closing ? "closing" : "open"}
+        inert={customPromptDialog.closing}
+        onClose={customPromptDialog.handleClose}
         onCancel={(event) => {
-          if (savingCustomPrompt) event.preventDefault();
+          if (savingCustomPrompt) {
+            event.preventDefault();
+            return;
+          }
+          customPromptDialog.handleCancel(event);
         }}
       >
         <form className="custom-prompt-form" onSubmit={(event) => void saveCustomPrompt(event)}>
