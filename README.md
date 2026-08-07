@@ -1,6 +1,6 @@
 # echovale
 
-echovale is my RSS reader for a hand-picked web. It preserves that choice instead of ranking items for engagement or inserting ads and recommendations to keep me scrolling. It gives me new things to look forward to and a place to read without staying on guard. Subscriptions and reading data stay under your control. The same is true of the software itself: you—or your coding agent—can fork it, change it locally, and shape it around the way you read.
+echovale is an opinionated feed reader built because I couldn't find one that met my requirements.
 
 ## See echovale
 
@@ -10,17 +10,15 @@ echovale is my RSS reader for a hand-picked web. It preserves that choice instea
 | **YouTube article** | **Nitter / X article** |
 | [![A 3Blue1Brown YouTube video open in echovale](docs/screenshots/article-youtube.png)](docs/screenshots/article-youtube.png) | [![An Andrej Karpathy post from Nitter open in echovale](docs/screenshots/article-nitter.png)](docs/screenshots/article-nitter.png) |
 
-## What echovale does
+## Features
 
-- Organizes chosen sources into a focused reading queue with unread, read, and starred views.
-- Supports the complete reading workflow from the keyboard.
-- Follows RSS, Atom, JSON Feed, and public webpages with repeated entries, including pages rendered by JavaScript.
-- Keeps wanted articles, hides noise, or marks matches as read with rules.
-- Extracts full article text while keeping feed text available as a fallback.
-- Generates article summaries and translations on demand through Google Gemini, OpenAI, or Anthropic.
+- Supports websites without RSS, Atom, or JSON feeds by extracting repeated entries from webpages, including pages rendered by JavaScript.
+- Filters feeds by removing YouTube Shorts or matching words.
+- Extracts full article text.
 - Installs as a Progressive Web App with a standalone window, home-screen shortcuts, and an offline application shell.
-- Imports and exports OPML with feed folders.
-- Sorts each feed or folder from newest to oldest or oldest to newest. The aggregate view preserves each feed's configured order.
+- Supports OpenAI, Anthropic, and Gemini models for custom workflows such as summaries and article fact-checking.
+- OPML import/export.
+- Preserves separate sorting settings for each feed or folder in the aggregate view. For example, you can configure X.com posts to always display chronologically from oldest to newest without affecting the sorting method for other feeds.
 
 ## Run the macOS desktop app
 
@@ -46,7 +44,7 @@ npm run desktop:package
 
 Local packages receive an ad-hoc macOS signature. Set `CSC_LINK` or `CSC_NAME` when producing a Developer ID-signed release for distribution; notarization still requires the corresponding Apple credentials.
 
-Desktop data is stored at `~/Library/Application Support/echovale/echovale.db`. Provider API keys are encrypted with macOS secure storage before they enter SQLite. Feed refreshes continue while the app is running; use **echovale → Quit echovale** or <kbd>⌘Q</kbd> to stop it completely.
+Desktop data is stored at `~/Library/Application Support/echovale/echovale.db`. Provider API keys are encrypted using secure storage in macOS before they enter SQLite. Feed refreshes continue while the app is running; use **echovale → Quit echovale** or <kbd>⌘Q</kbd> to stop it completely.
 
 ## Start echovale with Docker Compose
 
