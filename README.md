@@ -4,11 +4,11 @@ echovale is my RSS reader for a hand-picked web. It preserves that choice instea
 
 ## See echovale
 
-| Reader | Feed health |
+| Reader | Filters |
 | :---: | :---: |
-| [![echovale magazine view populated with public demo feeds](docs/screenshots/reader-desktop.jpg)](docs/screenshots/reader-desktop.jpg) | [![Healthy YouTube, Telegram, Nitter, and RSS feeds in echovale](docs/screenshots/feed-sources-desktop.jpg)](docs/screenshots/feed-sources-desktop.jpg) |
+| [![echovale magazine view populated with public demo feeds](docs/screenshots/reader-desktop.png)](docs/screenshots/reader-desktop.png) | [![An echovale rule that hides YouTube Shorts from a feed](docs/screenshots/filters-desktop.png)](docs/screenshots/filters-desktop.png) |
 | **YouTube article** | **Nitter / X article** |
-| [![A 3Blue1Brown YouTube video open in echovale](docs/screenshots/article-youtube.jpg)](docs/screenshots/article-youtube.jpg) | [![An Andrej Karpathy post from Nitter open in echovale](docs/screenshots/article-nitter.jpg)](docs/screenshots/article-nitter.jpg) |
+| [![A 3Blue1Brown YouTube video open in echovale](docs/screenshots/article-youtube.png)](docs/screenshots/article-youtube.png) | [![An Andrej Karpathy post from Nitter open in echovale](docs/screenshots/article-nitter.png)](docs/screenshots/article-nitter.png) |
 
 ## What echovale does
 
