@@ -1472,6 +1472,32 @@ kbd {
   white-space: nowrap;
 }
 
+.reader-options-trigger {
+  display: none;
+}
+
+.reader-options-trigger[aria-expanded="true"] {
+  border-color: var(--border-strong);
+  background: var(--surface-active);
+  color: var(--text);
+}
+
+.reader-options-menu {
+  width: min(204px, calc(100vw - 16px));
+  min-width: 0;
+}
+
+.reader-options-menu .dropdown-select-group + .dropdown-select-group {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.reader-options-menu .dropdown-select-option[aria-checked="true"] {
+  background: var(--accent-surface);
+  color: var(--text);
+}
+
 .reader-title-row > .view-switcher button {
   width: 29px;
   min-height: 29px;
@@ -4065,15 +4091,10 @@ kbd {
   }
   .reader-title-row {
     display: grid;
-    grid-template-areas: "menu title modes";
-    grid-template-columns: 40px minmax(0, 1fr) auto;
+    grid-template-areas: "menu title options";
+    grid-template-columns: 40px minmax(0, 1fr) 40px;
     gap: 8px;
     padding: 6px 9px 7px;
-  }
-  .reader-toolbar.has-state-switcher .reader-title-row {
-    grid-template-areas:
-      "menu title modes"
-      "state state state";
   }
   :where(.reader-toolbar.is-reading-article) .reader-title-row {
     grid-template-areas: "menu title";
@@ -4095,20 +4116,20 @@ kbd {
     display: none;
   }
   .reader-title-row > .view-switcher {
-    grid-area: modes;
-    justify-self: end;
-  }
-  .reader-title-row > .view-switcher button {
-    width: 40px;
-    min-height: 40px;
+    display: none;
   }
   .reader-title-row > .article-state-switcher {
-    grid-area: state;
-    width: 100%;
+    display: none;
   }
-  .article-state-switcher button {
+  .reader-title-row > .reader-options-trigger {
+    display: inline-flex;
+    width: 40px;
+    min-width: 40px;
     min-height: 40px;
-    flex: 1;
+    grid-area: options;
+  }
+  .reader-options-menu .dropdown-select-option {
+    min-height: 44px;
   }
   .article-actions {
     padding-inline: 7px;

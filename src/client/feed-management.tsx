@@ -120,7 +120,9 @@ export function handleActionMenuKeyDown(
   if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
   event.preventDefault();
   const items = Array.from(
-    event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)'),
+    event.currentTarget.querySelectorAll<HTMLButtonElement>(
+      ':is([role="menuitem"], [role="menuitemradio"], [role="menuitemcheckbox"]):not(:disabled)',
+    ),
   );
   if (items.length === 0) return;
   const current = items.indexOf(document.activeElement as HTMLButtonElement);

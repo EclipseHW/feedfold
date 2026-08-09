@@ -25,6 +25,7 @@ import {
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
+  type SyntheticEvent,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -731,9 +732,7 @@ export function ReaderToolbar({
     !readingArticle && (articleState === "unread" || articleState === "all");
 
   return (
-    <header
-      className={`reader-toolbar${readingArticle ? " is-reading-article" : ""}${showArticleStateSwitcher ? " has-state-switcher" : ""}`}
-    >
+    <header className={`reader-toolbar${readingArticle ? " is-reading-article" : ""}`}>
       <div className="reader-title-row">
         <IconButton
           label={navOpen ? "Close navigation" : "Open navigation"}
@@ -807,6 +806,16 @@ export function ReaderToolbar({
             <FileText aria-hidden="true" size={16} />
           </button>
         </fieldset>
+        {!readingArticle ? (
+          <ReaderOptionsMenu
+            articleState={articleState}
+            unreadCount={unreadCount}
+            showArticleFilters={showArticleStateSwitcher}
+            mode={mode}
+            onArticleStateChange={onArticleStateChange}
+            onModeChange={onModeChange}
+          />
+        ) : null}
         <div className="toolbar-actions">
           <IconButton
             label="Refresh this view (R)"
@@ -841,6 +850,164 @@ export function ReaderToolbar({
         </div>
       </div>
     </header>
+  );
+}
+
+const READER_OPTIONS_MENU_ID = "reader-options-menu";
+const READER_OPTIONS_ANCHOR = "--reader-options-anchor";
+
+function ReaderOptionsMenu({
+  articleState,
+  unreadCount,
+  showArticleFilters,
+  mode,
+  onArticleStateChange,
+  onModeChange,
+}: {
+  articleState: ArticleState;
+  unreadCount: number;
+  showArticleFilters: boolean;
+  mode: ReadingMode;
+  onArticleStateChange: (state: "unread" | "all") => void;
+  onModeChange: (mode: ReadingMode) => void;
+}) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const pendingFocus = useRef<"current" | "first" | "last">("current");
+  const [open, setOpen] = useState(false);
+
+  const optionButtons = () =>
+    Array.from(
+      menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? [],
+    );
+
+  const focusOption = (target: "current" | "first" | "last") => {
+    const options = optionButtons();
+    const current = options.find((option) => option.getAttribute("aria-checked") === "true");
+    const next = target === "first" ? options[0] : target === "last" ? options.at(-1) : current;
+    next?.focus({ preventScroll: true });
+  };
+
+  const closeMenu = useCallback((restoreFocus = true) => {
+    const menu = menuRef.current;
+    if (menu?.matches(":popover-open")) menu.hidePopover();
+    if (restoreFocus) triggerRef.current?.focus({ preventScroll: true });
+  }, []);
+
+  const openMenu = (target: "current" | "first" | "last") => {
+    pendingFocus.current = target;
+    const menu = menuRef.current;
+    if (menu && !menu.matches(":popover-open")) menu.showPopover();
+  };
+
+  const handleToggle = (event: SyntheticEvent<HTMLDivElement>) => {
+    const nextOpen = event.currentTarget.matches(":popover-open");
+    setOpen(nextOpen);
+    if (nextOpen) window.requestAnimationFrame(() => focusOption(pendingFocus.current));
+  };
+
+  const chooseArticleState = (state: "unread" | "all") => {
+    closeMenu();
+    onArticleStateChange(state);
+  };
+
+  const chooseMode = (nextMode: ReadingMode) => {
+    closeMenu();
+    onModeChange(nextMode);
+  };
+
+  const menu = (
+    <div
+      ref={menuRef}
+      id={READER_OPTIONS_MENU_ID}
+      className="reader-options-menu dropdown-select-menu dropdown-menu-surface"
+      popover="auto"
+      role="menu"
+      aria-label="Reader options"
+      style={{ positionAnchor: READER_OPTIONS_ANCHOR }}
+      onToggle={handleToggle}
+      onKeyDown={(event) => handleActionMenuKeyDown(event, closeMenu)}
+    >
+      {showArticleFilters ? (
+        <fieldset className="dropdown-select-group" aria-labelledby="article-options-label">
+          <legend id="article-options-label" className="dropdown-select-group-label">
+            Articles
+          </legend>
+          <button
+            className="dropdown-select-option"
+            type="button"
+            role="menuitemradio"
+            aria-checked={articleState === "unread"}
+            onClick={() => chooseArticleState("unread")}
+          >
+            <span>{unreadCount} Unread</span>
+            {articleState === "unread" ? <Check aria-hidden="true" size={15} /> : null}
+          </button>
+          <button
+            className="dropdown-select-option"
+            type="button"
+            role="menuitemradio"
+            aria-checked={articleState === "all"}
+            onClick={() => chooseArticleState("all")}
+          >
+            <span>All articles</span>
+            {articleState === "all" ? <Check aria-hidden="true" size={15} /> : null}
+          </button>
+        </fieldset>
+      ) : null}
+      <fieldset className="dropdown-select-group" aria-labelledby="view-options-label">
+        <legend id="view-options-label" className="dropdown-select-group-label">
+          Reading view
+        </legend>
+        <button
+          className="dropdown-select-option"
+          type="button"
+          role="menuitemradio"
+          aria-checked={mode === "magazine"}
+          onClick={() => chooseMode("magazine")}
+        >
+          <span>Magazine</span>
+          {mode === "magazine" ? <Check aria-hidden="true" size={15} /> : null}
+        </button>
+        <button
+          className="dropdown-select-option"
+          type="button"
+          role="menuitemradio"
+          aria-checked={mode === "expanded"}
+          onClick={() => chooseMode("expanded")}
+        >
+          <span>Expanded</span>
+          {mode === "expanded" ? <Check aria-hidden="true" size={15} /> : null}
+        </button>
+      </fieldset>
+    </div>
+  );
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        className="icon-button reader-options-trigger"
+        type="button"
+        aria-label="Reader options"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={READER_OPTIONS_MENU_ID}
+        popoverTarget={READER_OPTIONS_MENU_ID}
+        style={{ anchorName: READER_OPTIONS_ANCHOR }}
+        onPointerDown={() => {
+          pendingFocus.current = "current";
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+          event.preventDefault();
+          openMenu(event.key === "ArrowDown" ? "first" : "last");
+        }}
+      >
+        <Ellipsis aria-hidden="true" size={18} />
+      </button>
+      {typeof document === "undefined" ? null : createPortal(menu, document.body)}
+    </>
   );
 }
 
