@@ -2705,6 +2705,47 @@ kbd {
   height: 100%;
 }
 
+.x-media-state {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  max-width: 70ch;
+  min-height: 40px;
+  gap: 8px;
+  margin-top: 24px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+  font-size: var(--type-supporting);
+}
+
+.x-media-state.x-media-error {
+  color: var(--warning);
+}
+
+.x-media-state .secondary-button {
+  min-height: 30px;
+  margin-inline-start: 4px;
+  padding-block: 4px;
+}
+
+.x-media-state a {
+  margin-inline-start: auto;
+}
+
+.x-video-player {
+  display: block;
+  width: min(100%, 520px);
+  max-height: min(75vh, 760px);
+  margin: 24px auto 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #000;
+  object-fit: contain;
+}
+
 @media (max-width: 760px), (hover: none) and (pointer: coarse) {
   .article-media-swipe-surface {
     position: absolute;

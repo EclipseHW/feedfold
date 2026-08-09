@@ -130,6 +130,12 @@ export interface TelegramArticleMedia {
   items: TelegramArticleMediaItem[];
 }
 
+export interface XArticleMedia {
+  sourceUrl: string;
+  posterUrl: string | null;
+  aspectRatio: number | null;
+}
+
 export interface SessionUser {
   id: number;
   username: string;

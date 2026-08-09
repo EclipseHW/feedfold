@@ -27,6 +27,7 @@ import type {
   TelegramArticleMedia,
   WebFeedAnalysis,
   WebFeedConfig,
+  XArticleMedia,
 } from "../shared/types.js";
 import { invokeDesktop, isDesktopApp } from "./desktop.js";
 
@@ -200,6 +201,9 @@ export const api = {
       `/api/articles/${id}/telegram-media`,
       { signal },
     ),
+
+  xArticleMedia: (id: number, signal?: AbortSignal) =>
+    request<XArticleMedia>("xArticleMedia", { id }, `/api/articles/${id}/x-media`, { signal }),
 
   loadFullContent: (id: number) =>
     request<Article>("loadFullContent", { id }, `/api/articles/${id}/extract`, {

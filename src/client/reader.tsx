@@ -47,7 +47,9 @@ import type {
   ArticleState,
   ReadingMode,
   TelegramArticleMedia,
+  XArticleMedia,
 } from "../shared/types";
+import { nitterVideoPostId, withoutNitterVideoPreview } from "../shared/x";
 import { AiMarkdown } from "./ai-markdown";
 import { api, appUrl, errorMessage } from "./api";
 import { articleContentView, shouldShowArticleDescription } from "./article-content";
@@ -2390,6 +2392,7 @@ function ArticleBody({
   showYouTubeDescriptions: boolean;
   onToggleFullContent: (article: Article) => void;
 }) {
+  const xPostId = nitterVideoPostId(article.url, article.feedContentHtml);
   return (
     <>
       {article.media ? <ArticleMediaPlayer article={article} /> : null}
@@ -2406,7 +2409,68 @@ function ArticleBody({
         />
       )}
       {telegramPostIdentity(article.url) ? <TelegramPostMedia article={article} /> : null}
+      {xPostId ? <XPostVideo article={article} postId={xPostId} /> : null}
     </>
+  );
+}
+
+type XMediaViewState =
+  | { status: "loading" }
+  | { status: "ready"; media: XArticleMedia }
+  | { status: "error"; message: string };
+
+function XPostVideo({ article, postId }: { article: Article; postId: string }) {
+  const [state, setState] = useState<XMediaViewState>({ status: "loading" });
+  const requestController = useRef<AbortController | null>(null);
+
+  const loadMedia = useCallback(() => {
+    requestController.current?.abort();
+    const controller = new AbortController();
+    requestController.current = controller;
+    setState({ status: "loading" });
+    void api
+      .xArticleMedia(article.id, controller.signal)
+      .then((media) => setState({ status: "ready", media }))
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setState({ status: "error", message: errorMessage(error) });
+        }
+      });
+  }, [article.id]);
+
+  useEffect(() => {
+    loadMedia();
+    return () => requestController.current?.abort();
+  }, [loadMedia]);
+
+  if (state.status === "loading") return null;
+  if (state.status === "error") {
+    return (
+      <div className="x-media-state x-media-error" role="alert">
+        <AlertTriangle aria-hidden="true" size={16} />
+        <span>{state.message}</span>
+        <button className="secondary-button" type="button" onClick={loadMedia}>
+          Try again
+        </button>
+        <a href={`https://x.com/i/status/${postId}`} target="_blank" rel="noreferrer">
+          Open on X
+        </a>
+      </div>
+    );
+  }
+
+  return (
+    // biome-ignore lint/a11y/useMediaCaption: X's public media metadata does not expose caption tracks.
+    <video
+      className="x-video-player"
+      src={articleImageUrl(state.media.sourceUrl)}
+      poster={state.media.posterUrl ? articleImageUrl(state.media.posterUrl) : undefined}
+      aria-label={`X video from ${article.author ?? "this post"}`}
+      style={state.media.aspectRatio ? { aspectRatio: state.media.aspectRatio } : undefined}
+      controls
+      playsInline
+      preload="metadata"
+    />
   );
 }
 
@@ -2623,7 +2687,11 @@ function FeedArticleText({
 }) {
   if (!shouldShowArticleDescription(article, showYouTubeDescriptions)) return null;
   if (article.feedContentHtml) {
-    return <ArticleHtml sanitizedHtml={article.feedContentHtml} />;
+    const xPostId = nitterVideoPostId(article.url, article.feedContentHtml);
+    const html = xPostId
+      ? withoutNitterVideoPreview(article.feedContentHtml, xPostId)
+      : article.feedContentHtml;
+    return <ArticleHtml sanitizedHtml={html} />;
   }
   return article.summary ? (
     <div className="article-content">

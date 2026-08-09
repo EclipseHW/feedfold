@@ -8,8 +8,10 @@ import type {
   MarkReadRequest,
 } from "../../../shared/types.js";
 import { MARK_READ_AGE_DAYS } from "../../../shared/types.js";
+import { nitterVideoPostId } from "../../../shared/x.js";
 import type { ExtractionQueue } from "../../extraction.js";
 import type { TelegramMediaService } from "../../telegram-media.js";
+import type { XMediaService } from "../../x-media.js";
 import type { AiService } from "../ai/service.js";
 import type { ExtractionService } from "../extraction/service.js";
 import { idParams, missing, type UserId } from "../routes.js";
@@ -31,6 +33,7 @@ export async function articleRoutes(
     extractionQueue,
     ai,
     telegramMedia,
+    xMedia,
     userId,
   }: {
     articles: ArticleRepository;
@@ -38,6 +41,7 @@ export async function articleRoutes(
     extractionQueue: ExtractionQueue;
     ai: AiService;
     telegramMedia: TelegramMediaService;
+    xMedia: XMediaService;
     userId: UserId;
   },
 ): Promise<void> {
@@ -55,6 +59,21 @@ export async function articleRoutes(
       return await telegramMedia.mediaForPost(article.url);
     } catch {
       reply.code(502).send({ error: "Telegram media is temporarily unavailable. Try again." });
+      return null;
+    }
+  };
+
+  const resolveXMedia = async (accountId: number, articleId: number, reply: FastifyReply) => {
+    const article = articles.getArticle(accountId, articleId);
+    const postId = article ? nitterVideoPostId(article.url, article.feedContentHtml) : null;
+    if (!postId) {
+      missing(reply, "X video");
+      return null;
+    }
+    try {
+      return await xMedia.mediaForPost(postId);
+    } catch {
+      reply.code(502).send({ error: "X video is temporarily unavailable. Try again." });
       return null;
     }
   };
@@ -129,6 +148,29 @@ export async function articleRoutes(
     if (!items) return reply;
     const posterUrl = items[index]?.posterUrl;
     return posterUrl ? reply.redirect(posterUrl) : missing(reply, "Telegram media poster");
+  });
+
+  app.get("/api/articles/:id/x-media", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const media = await resolveXMedia(userId(request), id, reply);
+    if (!media) return reply;
+    return {
+      sourceUrl: `/api/articles/${id}/x-media/source`,
+      posterUrl: media.posterUrl ? `/api/articles/${id}/x-media/poster` : null,
+      aspectRatio: media.aspectRatio,
+    };
+  });
+
+  app.get("/api/articles/:id/x-media/source", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const media = await resolveXMedia(userId(request), id, reply);
+    return media ? reply.redirect(media.url) : reply;
+  });
+
+  app.get("/api/articles/:id/x-media/poster", async (request, reply) => {
+    const { id } = idParams.parse(request.params);
+    const media = await resolveXMedia(userId(request), id, reply);
+    return media?.posterUrl ? reply.redirect(media.posterUrl) : missing(reply, "X video poster");
   });
 
   app.patch("/api/articles/:id/state", async (request, reply) => {
