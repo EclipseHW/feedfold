@@ -2460,7 +2460,6 @@ function TelegramPostMedia({ article }: { article: Article }) {
     .map((item, index, images) => ({
       src: articleImageUrl(item.sourceUrl),
       alt: `Telegram post image ${index + 1} of ${images.length}`,
-      linkedUrl: article.url,
     }));
   return (
     <>

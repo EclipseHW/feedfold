@@ -5,7 +5,6 @@ import { useAnimatedDialog } from "./motion.js";
 export interface ImageLightboxItem {
   src: string;
   alt: string;
-  linkedUrl: string | null;
 }
 
 export interface ImageLightboxState {
@@ -100,8 +99,6 @@ export function ImageLightbox({
 
   if (!image) return null;
   const imageUrl = externalHttpUrl(image.src);
-  const linkedUrl = externalHttpUrl(image.linkedUrl);
-  const distinctLinkedUrl = linkedUrl && linkedUrl !== imageUrl ? linkedUrl : null;
   const imageStyle =
     zoom !== null && naturalSize
       ? {
@@ -120,6 +117,12 @@ export function ImageLightbox({
       aria-labelledby={titleId}
       onCancel={dialog.handleCancel}
       onClose={dialog.handleClose}
+      onKeyDownCapture={(event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        dialog.close();
+      }}
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) dialog.close();
       }}
@@ -152,12 +155,6 @@ export function ImageLightbox({
               <a href={imageUrl} target="_blank" rel="noopener noreferrer">
                 <ExternalLink aria-hidden="true" size={16} />
                 <span>Open image</span>
-              </a>
-            ) : null}
-            {distinctLinkedUrl ? (
-              <a href={distinctLinkedUrl} target="_blank" rel="noopener noreferrer">
-                <ExternalLink aria-hidden="true" size={16} />
-                <span>Open link</span>
               </a>
             ) : null}
             <button

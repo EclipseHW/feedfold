@@ -10,12 +10,17 @@ describe("article HTML", () => {
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
     const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    let articleEscapeCount = 0;
+    const quitArticleOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") articleEscapeCount += 1;
+    };
     Object.defineProperty(globalThis, "window", { configurable: true, value: dom.window });
     Object.defineProperty(globalThis, "document", {
       configurable: true,
       value: dom.window.document,
     });
     Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+    dom.window.addEventListener("keydown", quitArticleOnEscape);
     Object.defineProperty(dom.window.HTMLDialogElement.prototype, "showModal", {
       configurable: true,
       value(this: HTMLDialogElement) {
@@ -95,16 +100,25 @@ describe("article HTML", () => {
       expect(dialog?.querySelector<HTMLAnchorElement>("a")?.href).toBe(
         "https://images.test/chart.png",
       );
-      expect(Array.from(dialog?.querySelectorAll("a") ?? []).at(-1)?.textContent).toContain(
-        "Open link",
-      );
+      expect(dialog?.querySelectorAll("a")).toHaveLength(1);
+      expect(dialog?.textContent).toContain("Open image");
+      expect(dialog?.textContent).not.toContain("Open link");
 
-      const close = dialog?.querySelector<HTMLButtonElement>('[aria-label="Close image viewer"]');
       dom.window.document.documentElement.dataset.inputModality = "keyboard";
-      await act(async () => close?.click());
+      await act(async () => {
+        dialog?.dispatchEvent(
+          new dom.window.KeyboardEvent("keydown", {
+            key: "Escape",
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+      });
       expect(container.querySelector("dialog.image-lightbox")).toBeNull();
+      expect(articleEscapeCount).toBe(0);
       expect(dom.window.document.activeElement).toBe(images[0]);
     } finally {
+      dom.window.removeEventListener("keydown", quitArticleOnEscape);
       await act(async () => root.unmount());
       Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow });
       Object.defineProperty(globalThis, "document", {

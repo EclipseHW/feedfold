@@ -29,11 +29,9 @@ function imageLabel(image: HTMLImageElement): string {
 }
 
 function imageItem(image: HTMLImageElement): ImageLightboxItem {
-  const link = image.closest<HTMLAnchorElement>("a[href]");
   return {
     src: image.currentSrc || image.src,
     alt: imageLabel(image),
-    linkedUrl: link?.href ?? null,
   };
 }
 
