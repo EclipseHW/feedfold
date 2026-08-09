@@ -11,8 +11,12 @@ describe("article HTML", () => {
     const previousDocument = globalThis.document;
     const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");
     let articleEscapeCount = 0;
-    const quitArticleOnEscape = (event: KeyboardEvent) => {
+    let articleNavigationCount = 0;
+    const handleArticleShortcuts = (event: KeyboardEvent) => {
       if (event.key === "Escape") articleEscapeCount += 1;
+      if (["arrowleft", "arrowright", "j", "k"].includes(event.key.toLowerCase())) {
+        articleNavigationCount += 1;
+      }
     };
     Object.defineProperty(globalThis, "window", { configurable: true, value: dom.window });
     Object.defineProperty(globalThis, "document", {
@@ -20,7 +24,7 @@ describe("article HTML", () => {
       value: dom.window.document,
     });
     Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-    dom.window.addEventListener("keydown", quitArticleOnEscape);
+    dom.window.addEventListener("keydown", handleArticleShortcuts);
     Object.defineProperty(dom.window.HTMLDialogElement.prototype, "showModal", {
       configurable: true,
       value(this: HTMLDialogElement) {
@@ -69,6 +73,12 @@ describe("article HTML", () => {
       });
 
       const dialog = container.querySelector<HTMLDialogElement>("dialog.image-lightbox");
+      const pressViewerKey = (key: string) =>
+        act(async () => {
+          dialog?.dispatchEvent(
+            new dom.window.KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }),
+          );
+        });
       expect(dialog?.hasAttribute("open")).toBe(true);
       expect(dialog?.textContent).toContain("Detailed diagram");
       expect(dialog?.textContent).toContain("1 of 2");
@@ -83,42 +93,51 @@ describe("article HTML", () => {
       expect(dialog?.querySelector('[aria-label="Fit image to window"]')).toBeNull();
 
       const zoomOut = dialog?.querySelector<HTMLButtonElement>('[aria-label="Zoom out"]');
-      const zoomIn = dialog?.querySelector<HTMLButtonElement>('[aria-label="Zoom in"]');
+      const stage = dialog?.querySelector<HTMLDivElement>(".image-lightbox-stage");
+      const scrollViewer = (deltaY: number) =>
+        act(async () => {
+          const wheel = new dom.window.WheelEvent("wheel", {
+            deltaY,
+            bubbles: true,
+            cancelable: true,
+          });
+          expect(stage?.dispatchEvent(wheel)).toBe(false);
+        });
       expect(zoomOut?.disabled).toBe(true);
-      await act(async () => zoomIn?.click());
+      await scrollViewer(-100);
       expect(dialog?.textContent).toContain("100%");
       expect(zoomOut?.disabled).toBe(false);
-      await act(async () => zoomOut?.click());
+      await scrollViewer(100);
+      expect(dialog?.textContent).toContain("75%");
       await act(async () => zoomOut?.click());
       await act(async () => zoomOut?.click());
       expect(zoomOut?.disabled).toBe(true);
 
-      const next = dialog?.querySelector<HTMLButtonElement>('[aria-label="Next image"]');
-      await act(async () => next?.click());
+      await pressViewerKey("ArrowRight");
       expect(dialog?.textContent).toContain("Chart");
       expect(dialog?.textContent).toContain("2 of 2");
+      expect(articleNavigationCount).toBe(0);
       expect(dialog?.querySelector<HTMLAnchorElement>("a")?.href).toBe(
         "https://images.test/chart.png",
       );
+      await pressViewerKey("k");
+      expect(dialog?.textContent).toContain("Detailed diagram");
+      expect(dialog?.textContent).toContain("1 of 2");
+      await pressViewerKey("j");
+      expect(dialog?.textContent).toContain("Chart");
+      expect(dialog?.textContent).toContain("2 of 2");
+      expect(articleNavigationCount).toBe(0);
       expect(dialog?.querySelectorAll("a")).toHaveLength(1);
       expect(dialog?.textContent).toContain("Open image");
       expect(dialog?.textContent).not.toContain("Open link");
 
       dom.window.document.documentElement.dataset.inputModality = "keyboard";
-      await act(async () => {
-        dialog?.dispatchEvent(
-          new dom.window.KeyboardEvent("keydown", {
-            key: "Escape",
-            bubbles: true,
-            cancelable: true,
-          }),
-        );
-      });
+      await pressViewerKey("Escape");
       expect(container.querySelector("dialog.image-lightbox")).toBeNull();
       expect(articleEscapeCount).toBe(0);
       expect(dom.window.document.activeElement).toBe(images[0]);
     } finally {
-      dom.window.removeEventListener("keydown", quitArticleOnEscape);
+      dom.window.removeEventListener("keydown", handleArticleShortcuts);
       await act(async () => root.unmount());
       Object.defineProperty(globalThis, "window", { configurable: true, value: previousWindow });
       Object.defineProperty(globalThis, "document", {

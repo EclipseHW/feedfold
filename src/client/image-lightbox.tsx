@@ -14,6 +14,9 @@ export interface ImageLightboxState {
 }
 
 const ZOOM_STEPS = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4] as const;
+const WHEEL_ZOOM_THRESHOLD = 40;
+const WHEEL_DELTA_LINE = 1;
+const WHEEL_DELTA_PAGE = 2;
 
 function externalHttpUrl(value: string | null): string | null {
   if (!value) return null;
@@ -36,6 +39,7 @@ export function ImageLightbox({
   const [zoom, setZoom] = useState<number | null>(null);
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
+  const wheelDelta = useRef(0);
   const titleId = useId();
   const finishClose = useCallback(() => {
     onClose();
@@ -48,6 +52,7 @@ export function ImageLightbox({
   const resetView = useCallback(() => {
     setZoom(null);
     setNaturalSize(null);
+    wheelDelta.current = 0;
     if (typeof stageRef.current?.scrollTo === "function") {
       stageRef.current.scrollTo({ top: 0, left: 0 });
     }
@@ -78,24 +83,27 @@ export function ImageLightbox({
   }, []);
 
   useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "ArrowLeft" && multiple) {
-        event.preventDefault();
-        showImage(index - 1);
-      } else if (event.key === "ArrowRight" && multiple) {
-        event.preventDefault();
-        showImage(index + 1);
-      } else if (event.key === "+" || event.key === "=") {
-        event.preventDefault();
-        zoomIn();
-      } else if (event.key === "-") {
-        event.preventDefault();
-        zoomOut();
-      }
+    const stage = stageRef.current;
+    if (!stage) return;
+    const handleWheel = (event: WheelEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey || event.deltaY === 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const delta =
+        event.deltaMode === WHEEL_DELTA_LINE
+          ? event.deltaY * 16
+          : event.deltaMode === WHEEL_DELTA_PAGE
+            ? event.deltaY * stage.clientHeight
+            : event.deltaY;
+      wheelDelta.current += delta;
+      if (Math.abs(wheelDelta.current) < WHEEL_ZOOM_THRESHOLD) return;
+      if (wheelDelta.current < 0) zoomIn();
+      else zoomOut();
+      wheelDelta.current = 0;
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [index, multiple, showImage, zoomIn, zoomOut]);
+    stage.addEventListener("wheel", handleWheel, { passive: false });
+    return () => stage.removeEventListener("wheel", handleWheel);
+  }, [zoomIn, zoomOut]);
 
   if (!image) return null;
   const imageUrl = externalHttpUrl(image.src);
@@ -118,10 +126,27 @@ export function ImageLightbox({
       onCancel={dialog.handleCancel}
       onClose={dialog.handleClose}
       onKeyDownCapture={(event) => {
-        if (event.key !== "Escape") return;
+        const key = event.key.toLowerCase();
+        if (key === "escape") {
+          event.preventDefault();
+          event.stopPropagation();
+          dialog.close();
+          return;
+        }
+        if (event.metaKey || event.ctrlKey || event.altKey) return;
+        if (key === "arrowleft" || key === "k") {
+          if (multiple) showImage(index - 1);
+        } else if (key === "arrowright" || key === "j") {
+          if (multiple) showImage(index + 1);
+        } else if (key === "+" || key === "=") {
+          zoomIn();
+        } else if (key === "-") {
+          zoomOut();
+        } else {
+          return;
+        }
         event.preventDefault();
         event.stopPropagation();
-        dialog.close();
       }}
       onPointerDown={(event) => {
         if (event.target === event.currentTarget) dialog.close();
