@@ -7,6 +7,7 @@ export const DESKTOP_OPERATIONS = [
   "articles",
   "article",
   "telegramArticleMedia",
+  "xArticleMedia",
   "loadFullContent",
   "summarizeArticle",
   "translateArticle",

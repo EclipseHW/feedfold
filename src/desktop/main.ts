@@ -28,12 +28,14 @@ import { closePublicNetwork } from "../server/public-network.js";
 import { FeedRefreshService } from "../server/refresh.js";
 import { TelegramMediaService } from "../server/telegram-media.js";
 import { WebFeedError, WebFeedService } from "../server/web-feed.js";
+import { XMediaService } from "../server/x-media.js";
 import {
   DESKTOP_OPERATIONS,
   type DesktopRequest,
   type DesktopResponse,
 } from "../shared/desktop.js";
 import { DesktopCredentialCipher } from "./credential-cipher.js";
+import { youtubeEmbedRequestHeaders } from "./youtube-player.js";
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -168,6 +170,7 @@ class DesktopRuntime {
       webFeedService: this.webFeedService,
       aiService,
       telegramMediaService: new TelegramMediaService(feedFetchTimeoutMs),
+      xMediaService: new XMediaService(feedFetchTimeoutMs),
       feedDiscoveryTimeoutMs: feedFetchTimeoutMs,
     });
   }
@@ -500,6 +503,14 @@ async function createWindow(): Promise<void> {
     }
     return { action: "deny" };
   });
+  window.webContents.session.webRequest.onBeforeSendHeaders(
+    { urls: ["https://www.youtube.com/embed/*"] },
+    (details, callback) => {
+      callback({
+        requestHeaders: youtubeEmbedRequestHeaders(details, window.webContents.id),
+      });
+    },
+  );
   window.webContents.on("will-navigate", (event, url) => {
     if (trustedRenderer(url)) return;
     event.preventDefault();

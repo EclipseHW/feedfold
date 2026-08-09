@@ -23,6 +23,7 @@ import { settingsRoutes } from "./features/settings/routes.js";
 import type { FeedRefreshService } from "./refresh.js";
 import { TelegramMediaService } from "./telegram-media.js";
 import { WebFeedError, type WebFeedService } from "./web-feed.js";
+import { XMediaService } from "./x-media.js";
 
 export interface AppServices {
   database: AppDatabase;
@@ -32,6 +33,7 @@ export interface AppServices {
   webFeedService?: WebFeedService;
   aiService?: AiService;
   telegramMediaService?: TelegramMediaService;
+  xMediaService?: XMediaService;
   feedDiscoveryTimeoutMs?: number;
   staticDir?: string;
   logger?: boolean;
@@ -58,6 +60,8 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
   const telegramMedia =
     services.telegramMediaService ??
     new TelegramMediaService(services.feedDiscoveryTimeoutMs ?? 15_000);
+  const xMedia =
+    services.xMediaService ?? new XMediaService(services.feedDiscoveryTimeoutMs ?? 15_000);
   const requestUsers = new WeakMap<FastifyRequest, { id: number; username: string }>();
   const userId = (request: FastifyRequest): number => {
     const user = requestUsers.get(request);
@@ -129,6 +133,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
     extractionQueue: services.extractionQueue,
     ai,
     telegramMedia,
+    xMedia,
     userId,
   });
   await app.register(feedRoutes, {

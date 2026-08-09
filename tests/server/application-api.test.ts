@@ -9,6 +9,7 @@ import { AiService } from "../../src/server/features/ai/service.js";
 import { FeedRefreshService } from "../../src/server/refresh.js";
 import { TelegramMediaService } from "../../src/server/telegram-media.js";
 import { WebFeedService } from "../../src/server/web-feed.js";
+import { XMediaService } from "../../src/server/x-media.js";
 import type { ArticlePage, BootstrapData, Folder, Rule } from "../../src/shared/types.js";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -31,6 +32,7 @@ describe("local application API", () => {
       webFeedService: webFeeds,
       aiService: new AiService(database, { credentialCipher: null }),
       telegramMediaService: new TelegramMediaService(1_000),
+      xMediaService: new XMediaService(1_000),
     });
     cleanups.push(
       () => rm(directory, { recursive: true, force: true }),

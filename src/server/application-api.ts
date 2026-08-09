@@ -14,6 +14,7 @@ import {
   type MarkReadRequest,
   type WebFeedConfig,
 } from "../shared/types.js";
+import { nitterVideoPostId } from "../shared/x.js";
 import type { AppDatabase } from "./database.js";
 import type { ExtractionQueue } from "./extraction.js";
 import type { AiService } from "./features/ai/service.js";
@@ -21,6 +22,7 @@ import { discoverFeed } from "./feed-discovery.js";
 import type { FeedRefreshService } from "./refresh.js";
 import type { TelegramMediaService } from "./telegram-media.js";
 import type { WebFeedService } from "./web-feed.js";
+import type { XMediaService } from "./x-media.js";
 
 const LOCAL_USER = { id: 1, username: "On this Mac" } as const;
 
@@ -127,6 +129,7 @@ export interface ApplicationApiServices {
   webFeedService: WebFeedService;
   aiService: AiService;
   telegramMediaService: TelegramMediaService;
+  xMediaService: XMediaService;
   feedDiscoveryTimeoutMs?: number;
 }
 
@@ -141,6 +144,7 @@ export class ApplicationApi {
   readonly #webFeedService: WebFeedService;
   readonly #ai: AiService;
   readonly #telegramMedia: TelegramMediaService;
+  readonly #xMedia: XMediaService;
   readonly #feedDiscoveryTimeoutMs: number | undefined;
   readonly #userId = LOCAL_USER.id;
 
@@ -151,6 +155,7 @@ export class ApplicationApi {
     this.#webFeedService = services.webFeedService;
     this.#ai = services.aiService;
     this.#telegramMedia = services.telegramMediaService;
+    this.#xMedia = services.xMediaService;
     this.#feedDiscoveryTimeoutMs = services.feedDiscoveryTimeoutMs;
   }
 
@@ -186,6 +191,15 @@ export class ApplicationApi {
             posterUrl: item.kind === "video" ? item.posterUrl : null,
             aspectRatio: item.aspectRatio,
           })),
+        };
+      }
+      case "xArticleMedia": {
+        const body = input(z.object({ id }).strict(), request.payload);
+        const media = await this.#xMediaForArticle(body.id);
+        return {
+          sourceUrl: media.url,
+          posterUrl: media.posterUrl,
+          aspectRatio: media.aspectRatio,
         };
       }
       case "loadFullContent": {
@@ -550,6 +564,17 @@ export class ApplicationApi {
       return await this.#telegramMedia.mediaForPost(article.url);
     } catch {
       throw new ApplicationApiError(502, "Telegram media is temporarily unavailable. Try again.");
+    }
+  }
+
+  async #xMediaForArticle(articleId: number) {
+    const article = this.#database.articles.getArticle(this.#userId, articleId);
+    const postId = article ? nitterVideoPostId(article.url, article.feedContentHtml) : null;
+    if (!postId) throw new ApplicationApiError(404, "X video was not found.");
+    try {
+      return await this.#xMedia.mediaForPost(postId);
+    } catch {
+      throw new ApplicationApiError(502, "X video is temporarily unavailable. Try again.");
     }
   }
 
