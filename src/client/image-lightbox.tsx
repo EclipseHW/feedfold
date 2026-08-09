@@ -76,11 +76,30 @@ export function ImageLightbox({
   }, []);
 
   const zoomOut = useCallback(() => {
+    const stage = stageRef.current;
+    let fitZoom = 1;
+    if (stage && naturalSize) {
+      const styles = window.getComputedStyle(stage);
+      const availableWidth =
+        stage.clientWidth -
+        Number.parseFloat(styles.paddingLeft) -
+        Number.parseFloat(styles.paddingRight);
+      const availableHeight =
+        stage.clientHeight -
+        Number.parseFloat(styles.paddingTop) -
+        Number.parseFloat(styles.paddingBottom);
+      fitZoom = Math.min(
+        1,
+        availableWidth / naturalSize.width,
+        availableHeight / naturalSize.height,
+      );
+    }
     setZoom((current) => {
       if (current === null) return null;
-      return [...ZOOM_STEPS].reverse().find((step) => step < current) ?? null;
+      const next = [...ZOOM_STEPS].reverse().find((step) => step < current);
+      return next !== undefined && next > fitZoom ? next : null;
     });
-  }, []);
+  }, [naturalSize]);
 
   useEffect(() => {
     const stage = stageRef.current;

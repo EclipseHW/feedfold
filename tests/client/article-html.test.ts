@@ -93,6 +93,7 @@ describe("article HTML", () => {
       expect(dialog?.querySelector('[aria-label="Fit image to window"]')).toBeNull();
 
       const zoomOut = dialog?.querySelector<HTMLButtonElement>('[aria-label="Zoom out"]');
+      const zoomIn = dialog?.querySelector<HTMLButtonElement>('[aria-label="Zoom in"]');
       const stage = dialog?.querySelector<HTMLDivElement>(".image-lightbox-stage");
       const scrollViewer = (deltaY: number) =>
         act(async () => {
@@ -108,9 +109,12 @@ describe("article HTML", () => {
       expect(dialog?.textContent).toContain("100%");
       expect(zoomOut?.disabled).toBe(false);
       await scrollViewer(100);
-      expect(dialog?.textContent).toContain("75%");
+      expect(dialog?.textContent).not.toContain("%");
+      expect(zoomOut?.disabled).toBe(true);
+      await act(async () => zoomIn?.click());
+      expect(dialog?.textContent).toContain("100%");
       await act(async () => zoomOut?.click());
-      await act(async () => zoomOut?.click());
+      expect(dialog?.textContent).not.toContain("%");
       expect(zoomOut?.disabled).toBe(true);
 
       await pressViewerKey("ArrowRight");
