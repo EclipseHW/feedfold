@@ -49,6 +49,7 @@ import {
   filterRuleName,
   readerRouteForSelection,
   readerScopeLabel,
+  readerScopeUnreadCount,
   refreshFeedIds,
 } from "./reader-state";
 import { appRoutePath, DEFAULT_READER_ROUTE, type ReaderRoute } from "./routes";
@@ -699,6 +700,8 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           <>
             <ReaderToolbar
               title={title}
+              articleState={route.readerRoute.state}
+              unreadCount={readerScopeUnreadCount(bootstrap, selectedFeedId, selectedFolderId)}
               searchInput={route.searchInput}
               searchActive={Boolean(route.readerRoute.search)}
               mode={preferences.readingMode}
@@ -707,6 +710,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               navOpen={navOpen}
               readingArticle={readerOpen && preferences.readingMode === "magazine"}
               onToggleNav={() => setNavOpen((current) => !current)}
+              onArticleStateChange={(state) => selectScope(selectedFeedId, selectedFolderId, state)}
               onSearchInput={route.setSearchInput}
               onSearch={submitSearch}
               onClearSearch={() => {

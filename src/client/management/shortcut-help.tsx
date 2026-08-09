@@ -49,7 +49,7 @@ export function ShortcutReference({ compact = false }: { compact?: boolean }) {
             <dt>
               <Kbd>g s</Kbd>
             </dt>
-            <dd>Starred</dd>
+            <dd>Saved</dd>
           </div>
           <div>
             <dt>

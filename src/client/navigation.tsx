@@ -245,26 +245,7 @@ export function Sidebar({
               className="nav-item"
               aria-current={
                 currentView === "reader" &&
-                currentState === "unread" &&
-                selectedFeedId === null &&
-                selectedFolderId === null
-                  ? "page"
-                  : undefined
-              }
-              type="button"
-              onClick={() => onSelectState("unread")}
-            >
-              <span>Unread</span>
-              <ArticleCount count={bootstrap.counts.unread} />
-              <Kbd>g u</Kbd>
-            </button>
-          </li>
-          <li>
-            <button
-              className="nav-item"
-              aria-current={
-                currentView === "reader" &&
-                currentState === "all" &&
+                currentState !== "starred" &&
                 selectedFeedId === null &&
                 selectedFolderId === null
                   ? "page"
@@ -273,27 +254,9 @@ export function Sidebar({
               type="button"
               onClick={() => onSelectState("all")}
             >
-              <span>All</span>
+              <span>Feed</span>
               <ArticleCount count={bootstrap.counts.all} />
               <Kbd>g a</Kbd>
-            </button>
-          </li>
-          <li>
-            <button
-              className="nav-item"
-              aria-current={
-                currentView === "reader" &&
-                currentState === "read" &&
-                selectedFeedId === null &&
-                selectedFolderId === null
-                  ? "page"
-                  : undefined
-              }
-              type="button"
-              onClick={() => onSelectState("read")}
-            >
-              <span>Read</span>
-              <ArticleCount count={bootstrap.counts.all - bootstrap.counts.unread} />
             </button>
           </li>
           <li>
@@ -310,7 +273,7 @@ export function Sidebar({
               type="button"
               onClick={() => onSelectState("starred")}
             >
-              <span>Starred</span>
+              <span>Saved</span>
               <ArticleCount count={bootstrap.counts.starred} />
               <Kbd>g s</Kbd>
             </button>
@@ -319,7 +282,7 @@ export function Sidebar({
 
         <div className="sidebar-scroll">
           <div className="sidebar-section-heading">
-            <span>Feeds</span>
+            <span>Subscriptions</span>
             <span className="sidebar-section-actions">
               <button
                 type="button"
@@ -719,6 +682,8 @@ function SidebarFeed({
 
 interface ReaderToolbarProps {
   title: string;
+  articleState: ArticleState;
+  unreadCount: number;
   searchInput: string;
   searchActive: boolean;
   mode: ReadingMode;
@@ -727,6 +692,7 @@ interface ReaderToolbarProps {
   navOpen: boolean;
   readingArticle: boolean;
   onToggleNav: () => void;
+  onArticleStateChange: (state: "unread" | "all") => void;
   onSearchInput: (value: string) => void;
   onSearch: (event: FormEvent) => void;
   onClearSearch: () => void;
@@ -740,6 +706,8 @@ interface ReaderToolbarProps {
 
 export function ReaderToolbar({
   title,
+  articleState,
+  unreadCount,
   searchInput,
   searchActive,
   mode,
@@ -748,6 +716,7 @@ export function ReaderToolbar({
   navOpen,
   readingArticle,
   onToggleNav,
+  onArticleStateChange,
   onSearchInput,
   onSearch,
   onClearSearch,
@@ -758,8 +727,13 @@ export function ReaderToolbar({
   onMarkReadByAge,
   onHelp,
 }: ReaderToolbarProps) {
+  const showArticleStateSwitcher =
+    !readingArticle && (articleState === "unread" || articleState === "all");
+
   return (
-    <header className={`reader-toolbar${readingArticle ? " is-reading-article" : ""}`}>
+    <header
+      className={`reader-toolbar${readingArticle ? " is-reading-article" : ""}${showArticleStateSwitcher ? " has-state-switcher" : ""}`}
+    >
       <div className="reader-title-row">
         <IconButton
           label={navOpen ? "Close navigation" : "Open navigation"}
@@ -772,6 +746,25 @@ export function ReaderToolbar({
         <div className="scope-title">
           <h1>{title}</h1>
         </div>
+        {showArticleStateSwitcher ? (
+          <fieldset className="segmented-control article-state-switcher">
+            <legend className="sr-only">Article filter</legend>
+            <button
+              type="button"
+              aria-pressed={articleState === "unread"}
+              onClick={() => onArticleStateChange("unread")}
+            >
+              {unreadCount} Unread
+            </button>
+            <button
+              type="button"
+              aria-pressed={articleState === "all"}
+              onClick={() => onArticleStateChange("all")}
+            >
+              All articles
+            </button>
+          </fieldset>
+        ) : null}
         <form className="search-form" aria-label="Article search" onSubmit={onSearch}>
           <Search aria-hidden="true" size={16} />
           <label className="sr-only" htmlFor="article-search">

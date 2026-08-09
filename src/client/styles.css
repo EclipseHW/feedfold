@@ -918,7 +918,7 @@ kbd {
   max-width: 240px;
   align-items: baseline;
   gap: 8px;
-  margin-right: auto;
+  margin-right: 0;
 }
 
 .scope-title h1 {
@@ -948,7 +948,7 @@ kbd {
   flex: 0 1 280px;
   align-items: center;
   gap: 7px;
-  margin-left: 0;
+  margin-left: auto;
   padding-left: 10px;
   border: 1px solid var(--border);
   border-radius: 9px;
@@ -1458,6 +1458,18 @@ kbd {
 .reader-title-row > .view-switcher {
   flex: 0 0 auto;
   background: var(--surface);
+}
+
+.article-state-switcher {
+  min-inline-size: 0;
+  flex: 0 0 auto;
+  margin: 0;
+  background: var(--surface);
+}
+
+.article-state-switcher button {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .reader-title-row > .view-switcher button {
@@ -4058,6 +4070,11 @@ kbd {
     gap: 8px;
     padding: 6px 9px 7px;
   }
+  .reader-toolbar.has-state-switcher .reader-title-row {
+    grid-template-areas:
+      "menu title modes"
+      "state state state";
+  }
   :where(.reader-toolbar.is-reading-article) .reader-title-row {
     grid-template-areas: "menu title";
     grid-template-columns: 40px minmax(0, 1fr);
@@ -4084,6 +4101,14 @@ kbd {
   .reader-title-row > .view-switcher button {
     width: 40px;
     min-height: 40px;
+  }
+  .reader-title-row > .article-state-switcher {
+    grid-area: state;
+    width: 100%;
+  }
+  .article-state-switcher button {
+    min-height: 40px;
+    flex: 1;
   }
   .article-actions {
     padding-inline: 7px;

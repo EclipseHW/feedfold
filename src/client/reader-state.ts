@@ -91,10 +91,23 @@ export function readerScopeLabel(
   if (folderId !== null) {
     return bootstrap.folders.find((folder) => folder.id === folderId)?.name ?? "Folder";
   }
-  if (state === "unread") return "Unread";
   if (state === "read") return "Read";
-  if (state === "starred") return "Starred";
-  return "All articles";
+  if (state === "starred") return "Saved";
+  return "Feed";
+}
+
+export function readerScopeUnreadCount(
+  bootstrap: BootstrapData,
+  feedId: number | null,
+  folderId: number | null,
+): number {
+  if (feedId !== null) {
+    return bootstrap.feeds.find((feed) => feed.id === feedId)?.unreadCount ?? 0;
+  }
+  if (folderId !== null) {
+    return bootstrap.folders.find((folder) => folder.id === folderId)?.unreadCount ?? 0;
+  }
+  return bootstrap.counts.unread;
 }
 
 function folderTreeIds(folders: Folder[], rootId: number): Set<number> {

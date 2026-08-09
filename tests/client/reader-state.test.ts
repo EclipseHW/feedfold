@@ -7,6 +7,7 @@ import {
   invalidateArticleSummaries,
   readerRouteForSelection,
   readerScopeLabel,
+  readerScopeUnreadCount,
   refreshFeedIds,
   shouldAutoMarkRoutedArticleRead,
   updateBootstrapCounts,
@@ -234,11 +235,22 @@ describe("reader state", () => {
     const data = bootstrap();
     expect(readerScopeLabel(data, 11, null, "unread")).toBe("Interfaces");
     expect(readerScopeLabel(data, null, 1, "starred")).toBe("Engineering");
-    expect(readerScopeLabel(data, null, null, "unread")).toBe("Unread");
-    expect(readerScopeLabel(data, null, null, "all")).toBe("All articles");
+    expect(readerScopeLabel(data, null, null, "unread")).toBe("Feed");
+    expect(readerScopeLabel(data, null, null, "all")).toBe("Feed");
     expect(readerScopeLabel(data, null, null, "read")).toBe("Read");
-    expect(readerScopeLabel(data, null, null, "starred")).toBe("Starred");
+    expect(readerScopeLabel(data, null, null, "starred")).toBe("Saved");
     expect(readerScopeLabel(data, 999, null, "all")).toBe("Feed");
     expect(filterRuleName("x".repeat(100))).toBe(`Filter: ${"x".repeat(71)}…`);
+  });
+
+  it("reports unread counts for the active reader scope", () => {
+    const data = bootstrap();
+    data.counts.unread = 9;
+    data.feeds[1] = { ...data.feeds[1], unreadCount: 4 };
+    data.folders[0] = { ...data.folders[0], unreadCount: 7 };
+
+    expect(readerScopeUnreadCount(data, null, null)).toBe(9);
+    expect(readerScopeUnreadCount(data, 11, null)).toBe(4);
+    expect(readerScopeUnreadCount(data, null, 1)).toBe(7);
   });
 });
