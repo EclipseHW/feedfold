@@ -9,6 +9,7 @@ import {
   readerScopeLabel,
   refreshFeedIds,
   shouldAutoMarkRoutedArticleRead,
+  toggledReadArticleState,
   updateBootstrapCounts,
 } from "../../src/client/reader-state.js";
 import type { Article, BootstrapData, Feed, Folder } from "../../src/shared/types.js";
@@ -120,6 +121,13 @@ function summarizedArticle(id: number, promptId: string | null): Article {
 }
 
 describe("reader state", () => {
+  it("toggles read-article visibility in both directions", () => {
+    expect(toggledReadArticleState("unread")).toBe("all");
+    expect(toggledReadArticleState("all")).toBe("unread");
+    expect(toggledReadArticleState("read")).toBeNull();
+    expect(toggledReadArticleState("starred")).toBeNull();
+  });
+
   it("builds one canonical route and API query for each reader scope", () => {
     const route = readerRouteForSelection("starred", null, 2, "design systems");
     expect(route).toEqual({

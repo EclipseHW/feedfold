@@ -5,6 +5,8 @@ import {
   ChevronRight,
   CircleHelp,
   Ellipsis,
+  Eye,
+  EyeOff,
   FileText,
   Folder,
   LayoutList,
@@ -719,6 +721,7 @@ function SidebarFeed({
 
 interface ReaderToolbarProps {
   title: string;
+  articleState: ArticleState;
   searchInput: string;
   searchActive: boolean;
   mode: ReadingMode;
@@ -735,11 +738,13 @@ interface ReaderToolbarProps {
   onRefreshAll: () => void;
   onMarkRead: () => void;
   onMarkReadByAge: (days: MarkReadAgeDays) => void;
+  onToggleReadArticles: () => void;
   onHelp: () => void;
 }
 
 export function ReaderToolbar({
   title,
+  articleState,
   searchInput,
   searchActive,
   mode,
@@ -756,6 +761,7 @@ export function ReaderToolbar({
   onRefreshAll,
   onMarkRead,
   onMarkReadByAge,
+  onToggleReadArticles,
   onHelp,
 }: ReaderToolbarProps) {
   return (
@@ -815,6 +821,24 @@ export function ReaderToolbar({
           </button>
         </fieldset>
         <div className="toolbar-actions">
+          {articleState === "unread" || articleState === "all" ? (
+            <IconButton
+              label={articleState === "all" ? "Hide read articles" : "Show read articles"}
+              pressed={articleState === "all"}
+              onClick={onToggleReadArticles}
+              className="read-visibility-action"
+              tooltip
+            >
+              {articleState === "all" ? (
+                <EyeOff aria-hidden="true" size={17} />
+              ) : (
+                <Eye aria-hidden="true" size={17} />
+              )}
+              <span className="read-visibility-label">
+                {articleState === "all" ? "Hide read" : "Show read"}
+              </span>
+            </IconButton>
+          ) : null}
           <IconButton
             label="Refresh this view (R)"
             onClick={onRefresh}

@@ -31,6 +31,12 @@ export function readerRouteForSelection(
   return { kind: "reader", scope: "all", scopeId: null, state, search };
 }
 
+export function toggledReadArticleState(state: ArticleState): "all" | "unread" | null {
+  if (state === "unread") return "all";
+  if (state === "all") return "unread";
+  return null;
+}
+
 export function articleQueryForReaderRoute(
   route: ReaderRoute,
   options: {

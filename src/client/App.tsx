@@ -50,6 +50,7 @@ import {
   readerRouteForSelection,
   readerScopeLabel,
   refreshFeedIds,
+  toggledReadArticleState,
 } from "./reader-state";
 import { appRoutePath, DEFAULT_READER_ROUTE, type ReaderRoute } from "./routes";
 
@@ -699,6 +700,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           <>
             <ReaderToolbar
               title={title}
+              articleState={route.readerRoute.state}
               searchInput={route.searchInput}
               searchActive={Boolean(route.readerRoute.search)}
               mode={preferences.readingMode}
@@ -724,6 +726,18 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               onRefreshAll={() => void refresh(undefined, true)}
               onMarkRead={() => void articleActions.markVisibleRead()}
               onMarkReadByAge={(days) => void articleActions.markOlderArticlesRead(days)}
+              onToggleReadArticles={() => {
+                const state = toggledReadArticleState(route.readerRoute.state);
+                if (!state) return;
+                route.navigate(
+                  readerRouteForSelection(
+                    state,
+                    selectedFeedId,
+                    selectedFolderId,
+                    route.readerRoute.search,
+                  ),
+                );
+              }}
               onHelp={() => setShortcutHelpOpen(true)}
             />
 

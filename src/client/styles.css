@@ -1006,6 +1006,18 @@ kbd {
   flex: 0 0 auto;
 }
 
+.toolbar-actions .read-visibility-action {
+  padding-inline: 9px;
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.toolbar-actions .read-visibility-action[aria-pressed="true"] {
+  border-color: var(--border-strong);
+  background: var(--surface-raised);
+  color: var(--text);
+}
+
 .check-check {
   display: inline-flex;
   width: 20px;
@@ -3442,6 +3454,12 @@ kbd {
 }
 
 @media (max-width: 1180px) {
+  .toolbar-actions .read-visibility-action {
+    padding-inline: 6px;
+  }
+  .read-visibility-label {
+    display: none;
+  }
   .toolbar-actions .icon-button kbd {
     display: none;
   }
