@@ -24,6 +24,12 @@ echovale is an opinionated feed reader built because I couldn't find one that me
 
 The Electron app is fully local. It opens no HTTP port, needs no account or hosted backend, and sends application requests through a narrow IPC bridge. SQLite, background refreshes, article extraction, and the bundled headless browser all run inside the app. The hosted version remains available separately.
 
+Install the Apple silicon release with Homebrew:
+
+```sh
+brew install --cask egornomic/tap/echovale
+```
+
 For local development:
 
 ```sh
