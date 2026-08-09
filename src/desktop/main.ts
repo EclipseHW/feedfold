@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, readdirSync } from "node:fs";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, rename, writeFile } from "node:fs/promises";
 import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SqliteError } from "better-sqlite3";
@@ -12,7 +12,9 @@ import {
   Menu,
   net,
   protocol,
+  type Rectangle,
   safeStorage,
+  screen,
   shell,
 } from "electron";
 import { chromium } from "playwright";
@@ -52,9 +54,18 @@ protocol.registerSchemesAsPrivileged([
 
 const DESKTOP_ORIGIN = "echovale://app";
 const APP_URL = `${DESKTOP_ORIGIN}/echovale/`;
+const DEFAULT_WINDOW_BOUNDS = { width: 1440, height: 940 };
+const MIN_WINDOW_WIDTH = 900;
+const MIN_WINDOW_HEIGHT = 620;
+const WINDOW_STATE_SAVE_DELAY_MS = 250;
 const developmentUrl = process.env.ECHOVALE_DESKTOP_DEV_URL;
 const smokeTest = process.env.ECHOVALE_DESKTOP_SMOKE === "1";
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
+
+type WindowState = {
+  bounds: Rectangle;
+  mode: "normal" | "maximized" | "fullscreen";
+};
 
 if (process.env.ECHOVALE_DESKTOP_USER_DATA) {
   app.setPath("userData", resolve(process.env.ECHOVALE_DESKTOP_USER_DATA));
@@ -190,7 +201,86 @@ class DesktopRuntime {
 
 let runtime: DesktopRuntime | null = null;
 let mainWindow: BrowserWindow | null = null;
+let flushWindowState: (() => Promise<void>) | null = null;
 let shuttingDown = false;
+
+function windowStatePath(): string {
+  return join(app.getPath("userData"), "window-state.json");
+}
+
+async function readWindowState(): Promise<WindowState | null> {
+  try {
+    return JSON.parse(await readFile(windowStatePath(), "utf8")) as WindowState;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+function restoreWindowBounds(bounds: Rectangle): Rectangle {
+  const { workArea } = screen.getDisplayMatching(bounds);
+  const width = Math.min(Math.max(bounds.width, MIN_WINDOW_WIDTH), workArea.width);
+  const height = Math.min(Math.max(bounds.height, MIN_WINDOW_HEIGHT), workArea.height);
+  return {
+    x: Math.min(Math.max(bounds.x, workArea.x), workArea.x + workArea.width - width),
+    y: Math.min(Math.max(bounds.y, workArea.y), workArea.y + workArea.height - height),
+    width,
+    height,
+  };
+}
+
+function trackWindowState(window: BrowserWindow, initialState: WindowState): () => Promise<void> {
+  let latestState = initialState;
+  let saveTimer: NodeJS.Timeout | null = null;
+  let pendingWrite = Promise.resolve();
+
+  const capture = () => {
+    const mode = window.isFullScreen()
+      ? "fullscreen"
+      : window.isMaximized()
+        ? "maximized"
+        : "normal";
+    latestState = {
+      bounds: mode === "normal" ? window.getBounds() : latestState.bounds,
+      mode,
+    };
+  };
+  const persist = () => {
+    const path = windowStatePath();
+    const temporaryPath = `${path}.tmp`;
+    const contents = `${JSON.stringify(latestState, null, 2)}\n`;
+    pendingWrite = pendingWrite.then(async () => {
+      await writeFile(temporaryPath, contents, "utf8");
+      await rename(temporaryPath, path);
+    });
+    return pendingWrite;
+  };
+  const scheduleSave = () => {
+    capture();
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      saveTimer = null;
+      void persist().catch((error) => console.error(error));
+    }, WINDOW_STATE_SAVE_DELAY_MS);
+  };
+
+  window.on("move", scheduleSave);
+  window.on("resize", scheduleSave);
+  window.on("maximize", scheduleSave);
+  window.on("unmaximize", scheduleSave);
+  window.on("enter-full-screen", scheduleSave);
+  window.on("leave-full-screen", scheduleSave);
+  window.on("close", scheduleSave);
+
+  return async () => {
+    if (!window.isDestroyed()) capture();
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
+    }
+    await persist();
+  };
+}
 
 function errorResponse(error: unknown): DesktopResponse {
   if (error instanceof ApplicationApiError) {
@@ -478,11 +568,12 @@ function installMenu(): void {
 }
 
 async function createWindow(): Promise<void> {
+  await flushWindowState?.();
+  const savedState = await readWindowState();
   const window = new BrowserWindow({
-    width: 1440,
-    height: 940,
-    minWidth: 900,
-    minHeight: 620,
+    ...(savedState ? restoreWindowBounds(savedState.bounds) : DEFAULT_WINDOW_BOUNDS),
+    minWidth: MIN_WINDOW_WIDTH,
+    minHeight: MIN_WINDOW_HEIGHT,
     show: false,
     backgroundColor: "#121312",
     title: "echovale",
@@ -494,6 +585,10 @@ async function createWindow(): Promise<void> {
     },
   });
   mainWindow = window;
+  flushWindowState = trackWindowState(window, {
+    bounds: window.getBounds(),
+    mode: savedState?.mode ?? "normal",
+  });
   window.on("closed", () => {
     if (mainWindow === window) mainWindow = null;
   });
@@ -519,6 +614,8 @@ async function createWindow(): Promise<void> {
     }
   });
   window.once("ready-to-show", () => {
+    if (savedState?.mode === "maximized") window.maximize();
+    if (savedState?.mode === "fullscreen") window.setFullScreen(true);
     if (!smokeTest) window.show();
   });
   await window.loadURL(developmentUrl ?? APP_URL);
@@ -581,8 +678,7 @@ if (!hasInstanceLock) {
     shuttingDown = true;
     const closing = runtime;
     runtime = null;
-    void closing
-      .close()
+    void Promise.all([closing.close(), flushWindowState?.() ?? Promise.resolve()])
       .catch((error) => console.error(error))
       .finally(() => app.quit());
   });
