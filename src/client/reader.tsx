@@ -67,6 +67,7 @@ import {
   type FeedManagementAction,
   handleActionMenuKeyDown,
 } from "./feed-management";
+import { ImageLightbox, type ImageLightboxItem, type ImageLightboxState } from "./image-lightbox";
 import { interactionMotionIsInstant, useMotionPresence } from "./motion";
 import { animateHorizontalSpring, type HorizontalSpringController } from "./swipe-motion";
 import {
@@ -76,7 +77,7 @@ import {
 } from "./text-selection";
 
 const ARTICLE_SWIPE_TARGETS =
-  "a, button, input, select, textarea, summary, video, audio, iframe, pre, .article-table-scroll, [contenteditable]";
+  "a, button, input, select, textarea, summary, video, audio, iframe, pre, .article-table-scroll, [contenteditable], [data-image-lightbox-trigger]";
 const ARTICLE_SWIPE_SURFACE = "[data-article-swipe-surface]";
 const SWIPE_SAMPLE_WINDOW = 100;
 const SWIPE_SAMPLE_LIMIT = 5;
@@ -2416,6 +2417,7 @@ type TelegramMediaViewState =
 
 function TelegramPostMedia({ article }: { article: Article }) {
   const [state, setState] = useState<TelegramMediaViewState>({ status: "loading" });
+  const [lightbox, setLightbox] = useState<ImageLightboxState | null>(null);
   const requestController = useRef<AbortController | null>(null);
 
   const loadMedia = useCallback(() => {
@@ -2453,37 +2455,67 @@ function TelegramPostMedia({ article }: { article: Article }) {
   if (state.media.items.length === 0) return null;
 
   const multiple = state.media.items.length > 1;
+  const galleryImages: ImageLightboxItem[] = state.media.items
+    .filter((item) => item.kind === "image")
+    .map((item, index, images) => ({
+      src: articleImageUrl(item.sourceUrl),
+      alt: `Telegram post image ${index + 1} of ${images.length}`,
+    }));
   return (
-    <section
-      className={`telegram-media-gallery${multiple ? " is-grouped" : ""}`}
-      aria-label="Telegram post media"
-    >
-      {state.media.items.map((item, index) => {
-        const label = `Telegram post ${item.kind} ${index + 1} of ${state.media.items.length}`;
-        const style = item.aspectRatio ? { aspectRatio: item.aspectRatio } : undefined;
-        return item.kind === "image" ? (
-          <img
-            key={item.sourceUrl}
-            src={articleImageUrl(item.sourceUrl)}
-            alt={label}
-            loading="lazy"
-            decoding="async"
-          />
-        ) : (
-          // biome-ignore lint/a11y/useMediaCaption: Telegram embeds do not expose caption tracks.
-          <video
-            key={item.sourceUrl}
-            src={articleImageUrl(item.sourceUrl)}
-            poster={item.posterUrl ? articleImageUrl(item.posterUrl) : undefined}
-            aria-label={label}
-            style={style}
-            controls
-            playsInline
-            preload="metadata"
-          />
-        );
-      })}
-    </section>
+    <>
+      <section
+        className={`telegram-media-gallery${multiple ? " is-grouped" : ""}`}
+        aria-label="Telegram post media"
+      >
+        {state.media.items.map((item, index) => {
+          const label = `Telegram post ${item.kind} ${index + 1} of ${state.media.items.length}`;
+          const style = item.aspectRatio ? { aspectRatio: item.aspectRatio } : undefined;
+          if (item.kind === "image") {
+            const galleryIndex = state.media.items
+              .slice(0, index)
+              .filter((candidate) => candidate.kind === "image").length;
+            return (
+              <button
+                key={item.sourceUrl}
+                className="telegram-image-lightbox-trigger"
+                type="button"
+                data-image-lightbox-trigger
+                aria-label={`Enlarge image: ${label}`}
+                onClick={(event) =>
+                  setLightbox({
+                    images: galleryImages,
+                    index: galleryIndex,
+                    returnFocus: event.currentTarget,
+                  })
+                }
+              >
+                <img
+                  src={articleImageUrl(item.sourceUrl)}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  data-image-lightbox-trigger
+                />
+              </button>
+            );
+          }
+          return (
+            // biome-ignore lint/a11y/useMediaCaption: Telegram embeds do not expose caption tracks.
+            <video
+              key={item.sourceUrl}
+              src={articleImageUrl(item.sourceUrl)}
+              poster={item.posterUrl ? articleImageUrl(item.posterUrl) : undefined}
+              aria-label={label}
+              style={style}
+              controls
+              playsInline
+              preload="metadata"
+            />
+          );
+        })}
+      </section>
+      {lightbox ? <ImageLightbox state={lightbox} onClose={() => setLightbox(null)} /> : null}
+    </>
   );
 }
 
