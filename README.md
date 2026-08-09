@@ -42,8 +42,6 @@ To create distributable DMG and ZIP artifacts in `release/`:
 npm run desktop:package
 ```
 
-Local packages receive an ad-hoc macOS signature. Set `CSC_LINK` or `CSC_NAME` when producing a Developer ID-signed release for distribution; notarization still requires the corresponding Apple credentials.
-
 Desktop data is stored at `~/Library/Application Support/echovale/echovale.db`. Provider API keys are encrypted using secure storage in macOS before they enter SQLite. Feed refreshes continue while the app is running; use **echovale → Quit echovale** or <kbd>⌘Q</kbd> to stop it completely.
 
 ## Start echovale with Docker Compose

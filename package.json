@@ -23,6 +23,7 @@
     "desktop": "node scripts/run-desktop.mjs",
     "desktop:prepare-browser": "node scripts/prepare-desktop-browser.mjs",
     "desktop:package": "node scripts/package-desktop.mjs",
+    "desktop:package:local": "ECHOVALE_LOCAL_SIGNING_IDENTITY='echovale Local Code Signing' node scripts/package-desktop.mjs",
     "desktop:package:dir": "node scripts/package-desktop.mjs --dir",
     "desktop:smoke:packaged": "node scripts/smoke-packaged-desktop.mjs",
     "build:desktop": "npm run build:client && npm run build:desktop:runtime",
