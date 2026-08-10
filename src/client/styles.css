@@ -4128,6 +4128,11 @@ kbd {
     min-height: 40px;
     grid-area: options;
   }
+  .reader-options-menu {
+    position-area: none;
+    inset: 52px 9px auto auto;
+    margin: 0;
+  }
   .reader-options-menu .dropdown-select-option {
     min-height: 44px;
   }

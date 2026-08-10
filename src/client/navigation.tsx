@@ -854,7 +854,6 @@ export function ReaderToolbar({
 }
 
 const READER_OPTIONS_MENU_ID = "reader-options-menu";
-const READER_OPTIONS_ANCHOR = "--reader-options-anchor";
 
 function ReaderOptionsMenu({
   articleState,
@@ -924,7 +923,6 @@ function ReaderOptionsMenu({
       popover="auto"
       role="menu"
       aria-label="Reader options"
-      style={{ positionAnchor: READER_OPTIONS_ANCHOR }}
       onToggle={handleToggle}
       onKeyDown={(event) => handleActionMenuKeyDown(event, closeMenu)}
     >
@@ -994,7 +992,6 @@ function ReaderOptionsMenu({
         aria-expanded={open}
         aria-controls={READER_OPTIONS_MENU_ID}
         popoverTarget={READER_OPTIONS_MENU_ID}
-        style={{ anchorName: READER_OPTIONS_ANCHOR }}
         onPointerDown={() => {
           pendingFocus.current = "current";
         }}
