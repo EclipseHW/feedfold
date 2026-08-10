@@ -85,15 +85,9 @@
   font-weight: var(--weight-semibold);
 }
 
-.web-feed-compact-picker select {
+.web-feed-compact-select .dropdown-select-trigger {
   width: 100%;
-  min-height: 44px;
-  padding: 9px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
+  height: 44px;
 }
 
 .web-feed-compact-picker p {
@@ -483,8 +477,7 @@
 
 @media (forced-colors: active) {
   .web-feed-suggestion.is-selected,
-  .web-feed-frame:focus-visible,
-  .web-feed-compact-picker select:focus-visible {
+  .web-feed-frame:focus-visible {
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }

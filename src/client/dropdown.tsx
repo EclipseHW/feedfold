@@ -1,6 +1,5 @@
 import { Check, ChevronDown } from "lucide-react";
 import { type KeyboardEvent, type SyntheticEvent, useEffect, useId, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 
 export interface DropdownOption {
   value: string;
@@ -349,7 +348,7 @@ export function DropdownSelect({
         <span>{selectedOption?.label ?? value}</span>
         <ChevronDown aria-hidden="true" size={16} />
       </button>
-      {typeof document === "undefined" ? null : createPortal(menu, document.body)}
+      {menu}
     </div>
   );
 }
@@ -465,7 +464,7 @@ export function DropdownCombobox({
         }}
       />
       <ChevronDown aria-hidden="true" size={16} />
-      {typeof document === "undefined" ? null : createPortal(menu, document.body)}
+      {menu}
     </div>
   );
 }

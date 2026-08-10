@@ -2,6 +2,7 @@ import { ArrowLeft, Check, LoaderCircle, LockKeyhole, MousePointer2 } from "luci
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { WebFeedAnalysis, WebFeedCandidate, WebFeedField } from "../shared/types";
 import { appUrl } from "./api";
+import { type DropdownOption, DropdownSelect } from "./dropdown";
 import { FeedEntriesPreview } from "./feed-entries-preview";
 import { groupWebFeedCandidates, webFeedCandidateOptionLabel } from "./web-feed-candidate-options";
 import { parseWebFeedSelectionMessage, webFeedHighlightMessage } from "./web-feed-selection";
@@ -121,7 +122,9 @@ export function WebFeedSetup({
   const headingRef = useRef<HTMLHeadingElement>(null);
   const headingId = useId();
   const suggestionsHeadingId = useId();
-  const compactPickerId = useId();
+  const compactPickerId = useId().replace(/:/g, "");
+  const compactPickerLabelId = `${compactPickerId}-label`;
+  const compactPickerDescriptionId = `${compactPickerId}-description`;
   const candidateIds = useMemo(
     () => new Set(analysis.candidates.map((candidate) => candidate.id)),
     [analysis.candidates],
@@ -129,6 +132,22 @@ export function WebFeedSetup({
   const { suggested: suggestedCandidates, other: otherCandidates } = useMemo(
     () => groupWebFeedCandidates(analysis.candidates, analysis.suggestedCandidateIds),
     [analysis.candidates, analysis.suggestedCandidateIds],
+  );
+  const compactPickerOptions = useMemo<DropdownOption[]>(
+    () => [
+      { value: "", label: "Choose an entry group", disabled: true },
+      ...suggestedCandidates.map((candidate) => ({
+        value: candidate.id,
+        label: webFeedCandidateOptionLabel(candidate),
+        group: "Suggested groups",
+      })),
+      ...otherCandidates.map((candidate) => ({
+        value: candidate.id,
+        label: webFeedCandidateOptionLabel(candidate),
+        group: suggestedCandidates.length > 0 ? "Other detected groups" : "Detected groups",
+      })),
+    ],
+    [otherCandidates, suggestedCandidates],
   );
   const selectedCandidate =
     analysis.candidates.find((candidate) => candidate.id === selectedCandidateId) ?? null;
@@ -204,38 +223,22 @@ export function WebFeedSetup({
 
       {compact ? (
         <div className="web-feed-compact-picker">
-          <label htmlFor={compactPickerId}>Entry group</label>
-          <select
+          <label id={compactPickerLabelId} htmlFor={compactPickerId}>
+            Entry group
+          </label>
+          <DropdownSelect
             id={compactPickerId}
+            className="web-feed-compact-select"
             value={selectedCandidate?.id ?? ""}
+            options={compactPickerOptions}
             disabled={disabled}
-            onChange={(event) => onSelect(event.currentTarget.value || null)}
-          >
-            <option value="" disabled>
-              Choose an entry group
-            </option>
-            {suggestedCandidates.length > 0 ? (
-              <optgroup label="Suggested groups">
-                {suggestedCandidates.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {webFeedCandidateOptionLabel(candidate)}
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-            {otherCandidates.length > 0 ? (
-              <optgroup
-                label={suggestedCandidates.length > 0 ? "Other detected groups" : "Detected groups"}
-              >
-                {otherCandidates.map((candidate) => (
-                  <option key={candidate.id} value={candidate.id}>
-                    {webFeedCandidateOptionLabel(candidate)}
-                  </option>
-                ))}
-              </optgroup>
-            ) : null}
-          </select>
-          <p>Choose a group, then review its fields and recent entries below.</p>
+            ariaLabelledBy={compactPickerLabelId}
+            ariaDescribedBy={compactPickerDescriptionId}
+            onChange={(value) => onSelect(value || null)}
+          />
+          <p id={compactPickerDescriptionId}>
+            Choose a group, then review its fields and recent entries below.
+          </p>
         </div>
       ) : (
         <div className="web-feed-workspace">
