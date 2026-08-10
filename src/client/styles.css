@@ -4554,6 +4554,24 @@ kbd {
   }
 }
 
+@media (max-width: 370px) {
+  .pwa-update {
+    right: 9px;
+    max-width: calc(100vw - 18px);
+    gap: 8px;
+    padding-inline: 10px 8px;
+  }
+  .pwa-update-actions {
+    gap: 3px;
+  }
+  .pwa-update .secondary-button {
+    padding-inline: 7px;
+  }
+  .pwa-update .secondary-button svg {
+    display: none;
+  }
+}
+
 .check-check svg + svg {
   margin-left: -9px;
 }
