@@ -444,6 +444,36 @@
   }
 }
 
+@media (max-width: 620px) {
+  .management-page {
+    padding-inline: 13px;
+  }
+
+  .page-header {
+    margin-inline: -13px;
+    padding: 13px;
+  }
+
+  .page-header-actions {
+    gap: 5px;
+  }
+
+  .page-header-actions :is(.secondary-button, .primary-button) {
+    min-height: 44px;
+    flex: 1 1 auto;
+    gap: 5px;
+    padding-inline: 7px;
+    font-size: var(--type-supporting);
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 370px) {
+  .page-header-actions :is(.secondary-button, .primary-button) svg {
+    display: none;
+  }
+}
+
 .visually-hidden-input {
   position: fixed;
   left: -100vw;
