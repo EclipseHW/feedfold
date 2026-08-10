@@ -1,8 +1,9 @@
 import { ArrowLeft, Check, LoaderCircle, LockKeyhole, MousePointer2 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef } from "react";
+import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { WebFeedAnalysis, WebFeedCandidate, WebFeedField } from "../shared/types";
 import { appUrl } from "./api";
 import { FeedEntriesPreview } from "./feed-entries-preview";
+import { groupWebFeedCandidates, webFeedCandidateOptionLabel } from "./web-feed-candidate-options";
 import { parseWebFeedSelectionMessage, webFeedHighlightMessage } from "./web-feed-selection";
 import "./web-feed-setup.css";
 
@@ -16,6 +17,30 @@ const WEB_FEED_FIELD_LABELS: Record<WebFeedField, string> = {
   summary: "Summary",
   image: "Image",
 };
+
+const COMPACT_WEB_FEED_QUERY = "(max-width: 620px)";
+
+function compactWebFeedLayout(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia(COMPACT_WEB_FEED_QUERY).matches
+  );
+}
+
+function useCompactWebFeedLayout(): boolean {
+  const [compact, setCompact] = useState(compactWebFeedLayout);
+
+  useEffect(() => {
+    const media = window.matchMedia(COMPACT_WEB_FEED_QUERY);
+    const update = () => setCompact(media.matches);
+    media.addEventListener("change", update);
+    update();
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  return compact;
+}
 
 export interface WebFeedSetupProps {
   analysis: WebFeedAnalysis;
@@ -91,22 +116,20 @@ export function WebFeedSetup({
   onSelect,
   onBack,
 }: WebFeedSetupProps) {
+  const compact = useCompactWebFeedLayout();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const headingId = useId();
   const suggestionsHeadingId = useId();
+  const compactPickerId = useId();
   const candidateIds = useMemo(
     () => new Set(analysis.candidates.map((candidate) => candidate.id)),
     [analysis.candidates],
   );
-  const suggestedCandidates = useMemo(() => {
-    const candidatesById = new Map(
-      analysis.candidates.map((candidate) => [candidate.id, candidate] as const),
-    );
-    return analysis.suggestedCandidateIds
-      .map((candidateId) => candidatesById.get(candidateId))
-      .filter((candidate): candidate is WebFeedCandidate => candidate !== undefined);
-  }, [analysis.candidates, analysis.suggestedCandidateIds]);
+  const { suggested: suggestedCandidates, other: otherCandidates } = useMemo(
+    () => groupWebFeedCandidates(analysis.candidates, analysis.suggestedCandidateIds),
+    [analysis.candidates, analysis.suggestedCandidateIds],
+  );
   const selectedCandidate =
     analysis.candidates.find((candidate) => candidate.id === selectedCandidateId) ?? null;
 
@@ -161,7 +184,11 @@ export function WebFeedSetup({
           <h3 ref={headingRef} id={headingId} tabIndex={-1}>
             Choose which entries to follow
           </h3>
-          <p>Choose a suggested group, or select one representative entry on {analysis.title}.</p>
+          <p>
+            {compact
+              ? `Choose an entry group found on ${analysis.title}, then review its recent entries.`
+              : `Choose a suggested group, or select one representative entry on ${analysis.title}.`}
+          </p>
         </div>
         <span className="web-feed-selection-badge" aria-live="polite">
           {selectedCandidate ? (
@@ -175,74 +202,111 @@ export function WebFeedSetup({
 
       {confirmation ? <div className="web-feed-confirmation-slot">{confirmation}</div> : null}
 
-      <div className="web-feed-workspace">
-        <div className="web-feed-page-pane">
-          <div className="web-feed-page-toolbar">
-            <div>
-              <strong>Page preview</strong>
-              <span>
-                Scroll the page, then select one representative entry. Page controls are disabled.
+      {compact ? (
+        <div className="web-feed-compact-picker">
+          <label htmlFor={compactPickerId}>Entry group</label>
+          <select
+            id={compactPickerId}
+            value={selectedCandidate?.id ?? ""}
+            disabled={disabled}
+            onChange={(event) => onSelect(event.currentTarget.value || null)}
+          >
+            <option value="" disabled>
+              Choose an entry group
+            </option>
+            {suggestedCandidates.length > 0 ? (
+              <optgroup label="Suggested groups">
+                {suggestedCandidates.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {webFeedCandidateOptionLabel(candidate)}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {otherCandidates.length > 0 ? (
+              <optgroup
+                label={suggestedCandidates.length > 0 ? "Other detected groups" : "Detected groups"}
+              >
+                {otherCandidates.map((candidate) => (
+                  <option key={candidate.id} value={candidate.id}>
+                    {webFeedCandidateOptionLabel(candidate)}
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+          </select>
+          <p>Choose a group, then review its fields and recent entries below.</p>
+        </div>
+      ) : (
+        <div className="web-feed-workspace">
+          <div className="web-feed-page-pane">
+            <div className="web-feed-page-toolbar">
+              <div>
+                <strong>Page preview</strong>
+                <span>
+                  Scroll the page, then select one representative entry. Page controls are disabled.
+                </span>
+              </div>
+              <span className="web-feed-match-count" aria-hidden="true">
+                <MousePointer2 aria-hidden="true" size={14} />
+                {selectedCandidate ? `${selectedCandidate.itemCount} matched` : "Select an entry"}
               </span>
             </div>
-            <span className="web-feed-match-count" aria-hidden="true">
-              <MousePointer2 aria-hidden="true" size={14} />
-              {selectedCandidate ? `${selectedCandidate.itemCount} matched` : "Select an entry"}
-            </span>
-          </div>
-          <div className="web-feed-frame-wrap" data-disabled={disabled || undefined}>
-            <iframe
-              ref={iframeRef}
-              key={`${analysis.snapshotId}:${analysis.messageToken}`}
-              className="web-feed-frame"
-              src={appUrl(`/api/web-feed-snapshots/${encodeURIComponent(analysis.snapshotId)}`)}
-              title={`Select repeating items on ${analysis.title}`}
-              sandbox="allow-scripts"
-              referrerPolicy="no-referrer"
-              tabIndex={disabled ? -1 : 0}
-              onLoad={highlightSelection}
-            />
-            {disabled ? (
-              <div className="web-feed-frame-busy" role="status">
-                <LoaderCircle className="spin" aria-hidden="true" size={16} />
-                <span>{busyLabel}</span>
-              </div>
-            ) : null}
-          </div>
-        </div>
-
-        <aside className="web-feed-suggestions" aria-labelledby={suggestionsHeadingId}>
-          <div className="web-feed-suggestions-heading">
-            <h4 id={suggestionsHeadingId}>Suggested entry groups</h4>
-            <p>Choose the group that should become this feed.</p>
-          </div>
-          {suggestedCandidates.length > 0 ? (
-            <div className="web-feed-suggestion-list">
-              {suggestedCandidates.map((candidate) => (
-                <CandidateSuggestion
-                  key={candidate.id}
-                  candidate={candidate}
-                  selected={candidate.id === selectedCandidate?.id}
-                  disabled={disabled}
-                  onSelect={() => onSelect(candidate.id)}
-                />
-              ))}
-            </div>
-          ) : (
-            <div className="web-feed-suggestions-empty" role="status">
-              <p>
-                {analysis.candidates.length > 0
-                  ? "No group could be recommended. Select one representative entry in the page preview."
-                  : "This page has no repeated entry groups that echovale can follow."}
-              </p>
-              {analysis.candidates.length === 0 && onBack ? (
-                <button className="secondary-button" type="button" onClick={onBack}>
-                  Choose another page
-                </button>
+            <div className="web-feed-frame-wrap" data-disabled={disabled || undefined}>
+              <iframe
+                ref={iframeRef}
+                key={`${analysis.snapshotId}:${analysis.messageToken}`}
+                className="web-feed-frame"
+                src={appUrl(`/api/web-feed-snapshots/${encodeURIComponent(analysis.snapshotId)}`)}
+                title={`Select repeating items on ${analysis.title}`}
+                sandbox="allow-scripts"
+                referrerPolicy="no-referrer"
+                tabIndex={disabled ? -1 : 0}
+                onLoad={highlightSelection}
+              />
+              {disabled ? (
+                <div className="web-feed-frame-busy" role="status">
+                  <LoaderCircle className="spin" aria-hidden="true" size={16} />
+                  <span>{busyLabel}</span>
+                </div>
               ) : null}
             </div>
-          )}
-        </aside>
-      </div>
+          </div>
+
+          <aside className="web-feed-suggestions" aria-labelledby={suggestionsHeadingId}>
+            <div className="web-feed-suggestions-heading">
+              <h4 id={suggestionsHeadingId}>Suggested entry groups</h4>
+              <p>Choose the group that should become this feed.</p>
+            </div>
+            {suggestedCandidates.length > 0 ? (
+              <div className="web-feed-suggestion-list">
+                {suggestedCandidates.map((candidate) => (
+                  <CandidateSuggestion
+                    key={candidate.id}
+                    candidate={candidate}
+                    selected={candidate.id === selectedCandidate?.id}
+                    disabled={disabled}
+                    onSelect={() => onSelect(candidate.id)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="web-feed-suggestions-empty" role="status">
+                <p>
+                  {analysis.candidates.length > 0
+                    ? "No group could be recommended. Select one representative entry in the page preview."
+                    : "This page has no repeated entry groups that echovale can follow."}
+                </p>
+                {analysis.candidates.length === 0 && onBack ? (
+                  <button className="secondary-button" type="button" onClick={onBack}>
+                    Choose another page
+                  </button>
+                ) : null}
+              </div>
+            )}
+          </aside>
+        </div>
+      )}
 
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {matchAnnouncement}

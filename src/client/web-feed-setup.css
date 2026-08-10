@@ -70,6 +70,38 @@
   display: contents;
 }
 
+.web-feed-compact-picker {
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.web-feed-compact-picker label {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--text-secondary);
+  font-size: var(--type-supporting);
+  font-weight: var(--weight-semibold);
+}
+
+.web-feed-compact-picker select {
+  width: 100%;
+  min-height: 44px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+
+.web-feed-compact-picker p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: var(--type-label);
+}
+
 .web-feed-page-pane {
   min-width: 0;
   border-right: 1px solid var(--border);
@@ -373,6 +405,11 @@
     grid-template-columns: auto minmax(0, 1fr);
   }
 
+  .web-feed-setup-title:first-child,
+  .web-feed-setup-title:first-child + .web-feed-selection-badge {
+    grid-column: 1 / -1;
+  }
+
   .web-feed-selection-badge {
     grid-column: 2;
     justify-self: start;
@@ -446,7 +483,8 @@
 
 @media (forced-colors: active) {
   .web-feed-suggestion.is-selected,
-  .web-feed-frame:focus-visible {
+  .web-feed-frame:focus-visible,
+  .web-feed-compact-picker select:focus-visible {
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }

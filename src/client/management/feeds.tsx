@@ -618,7 +618,7 @@ function FeedConfirmationBar({
   const statusTitle = existingFeed ? "Already in your feeds" : "Choose an entry group";
   const statusDescription = existingFeed
     ? `You follow this as ${existingFeed.title}.`
-    : "Select a suggested group or an entry in the page preview.";
+    : "Select an entry group to review its recent entries.";
   const actionLabel = disabled
     ? `${inputConfig.add.replace(/^Add /, "Adding ")}…`
     : existingFeed
