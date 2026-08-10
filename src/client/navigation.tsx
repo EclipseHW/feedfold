@@ -256,7 +256,7 @@ export function Sidebar({
               onClick={() => onSelectState("all")}
             >
               <span>Feed</span>
-              <ArticleCount count={bootstrap.counts.all} />
+              <ArticleCount count={bootstrap.counts.unread} />
               <Kbd>g a</Kbd>
             </button>
           </li>
