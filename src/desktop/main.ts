@@ -171,7 +171,8 @@ class DesktopRuntime {
       this.webFeedService,
     );
     const aiService = new AiService(this.database, {
-      credentialCipher: safeStorage.isEncryptionAvailable() ? new DesktopCredentialCipher() : null,
+      credentialCipher:
+        !smokeTest && safeStorage.isEncryptionAvailable() ? new DesktopCredentialCipher() : null,
       requestTimeoutMs: aiRequestTimeoutMs,
     });
     this.application = new ApplicationApi({
