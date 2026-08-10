@@ -3634,49 +3634,15 @@ kbd {
   }
 }
 
-.toast {
-  position: fixed;
-  right: 18px;
-  bottom: 18px;
-  z-index: var(--z-toast);
-  min-height: 0;
-  pointer-events: none;
-}
-
-.toast > span {
-  display: flex;
-  max-width: min(430px, calc(100vw - 36px));
-  align-items: center;
-  gap: 8px;
-  padding: 10px 13px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-md);
-  background: var(--surface-raised);
-  color: var(--text);
-  box-shadow: 0 4px 8px oklch(0 0 0 / 0.28);
+[data-sonner-toaster] [data-sonner-toast][data-styled="true"] .sonner-toast-title {
   font-weight: var(--weight-semibold);
-  opacity: 0;
-  transform: translateY(6px) scale(0.97);
-  transition:
-    opacity var(--duration-fast) var(--ease-out),
-    transform var(--duration-fast) var(--ease-out);
 }
 
-.toast > span[data-state="open"] {
-  opacity: 1;
-  transform: translateY(0) scale(1);
-  transition-duration: var(--duration-surface);
-}
-
-@starting-style {
-  .toast > span[data-state="open"] {
-    opacity: 0;
-    transform: translateY(8px) scale(0.97);
+@media (min-width: 601px) {
+  [data-sonner-toaster] [data-sonner-toast][data-styled="true"] {
+    width: fit-content;
+    max-width: min(430px, calc(100vw - 36px));
   }
-}
-
-.toast svg {
-  color: var(--accent);
 }
 
 .pwa-update {
@@ -4680,8 +4646,6 @@ kbd {
   .mark-read-menu,
   .sidebar-context-menu,
   .dropdown-select-menu,
-  .toast > span,
-  .toast > span[data-state="open"],
   .pwa-update,
   .pwa-update[data-motion-state="closed"] {
     transition: opacity var(--duration-reduced) ease;
@@ -4716,8 +4680,6 @@ kbd {
   .feed-preview-loading[data-motion-state="closed"],
   .feed-confirmation-form,
   .feed-confirmation-form[data-motion-state="closed"],
-  .toast > span,
-  .toast > span[data-state="open"],
   .shortcut-dialog,
   .shortcut-dialog[open],
   .management-dialog,

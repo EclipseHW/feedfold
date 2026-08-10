@@ -1,4 +1,3 @@
-import { Check } from "lucide-react";
 import {
   type FormEvent,
   lazy,
@@ -9,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { toast as showToast } from "sonner";
 import type {
   Article,
   BootstrapData,
@@ -30,7 +30,6 @@ import type {
   ManagementRequest,
 } from "./feed-management";
 import type { RuleFormDraft } from "./management/rules";
-import { motionExitDuration } from "./motion";
 import { type AppView, ReaderToolbar, Sidebar } from "./navigation";
 import {
   AppSkeleton,
@@ -202,9 +201,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   const [managementRequest, setManagementRequest] = useState<ManagementRequest | null>(null);
   const [shortcutHelpOpen, setShortcutHelpOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
-  const [toast, setToast] = useState<{ message: string; visible: boolean } | null>(null);
-  const toastTimer = useRef<number | null>(null);
-  const toastExitTimer = useRef<number | null>(null);
   const sequence = useRef<{ startedAt: number } | null>(null);
   const ruleDraftId = useRef(0);
   const ruleReturnRoute = useRef<ReaderRoute | null>(null);
@@ -275,24 +271,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       for (const animation of animations) animation.cancel();
     };
   }, [desktopSidebarCollapsed]);
-
-  const showToast = useCallback((message: string) => {
-    if (toastTimer.current) window.clearTimeout(toastTimer.current);
-    if (toastExitTimer.current) window.clearTimeout(toastExitTimer.current);
-    setToast({ message, visible: true });
-    toastTimer.current = window.setTimeout(() => {
-      setToast((current) => (current ? { ...current, visible: false } : current));
-      toastExitTimer.current = window.setTimeout(() => setToast(null), motionExitDuration());
-    }, 2800);
-  }, []);
-
-  useEffect(
-    () => () => {
-      if (toastTimer.current) window.clearTimeout(toastTimer.current);
-      if (toastExitTimer.current) window.clearTimeout(toastExitTimer.current);
-    },
-    [],
-  );
 
   const queue = useArticleQueue({
     route,
@@ -475,7 +453,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         return false;
       }
     },
-    [dataResource, queue, route, showToast],
+    [dataResource, queue, route],
   );
 
   const refresh = useCallback(
@@ -499,7 +477,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         showToast(`Could not refresh feeds: ${errorMessage(error)}`);
       }
     },
-    [bootstrap, dataResource, route.readerRoute, showToast],
+    [bootstrap, dataResource, route.readerRoute],
   );
 
   const changeReadingMode = useCallback(
@@ -645,7 +623,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     scrollArticlePage,
     selectScope,
     shortcutHelpOpen,
-    showToast,
   ]);
 
   if (!bootstrap) {
@@ -976,14 +953,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         aria-label="Close navigation"
         onClick={() => setNavOpen(false)}
       />
-      <div className="toast" role="status" aria-live="polite" aria-atomic="true">
-        {toast ? (
-          <span data-state={toast.visible ? "open" : "closed"}>
-            <Check aria-hidden="true" size={16} />
-            {toast.message}
-          </span>
-        ) : null}
-      </div>
     </div>
   );
 }

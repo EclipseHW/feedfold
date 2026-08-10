@@ -1,5 +1,6 @@
-import { StrictMode } from "react";
+import { type CSSProperties, StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { Toaster } from "sonner";
 import "@fontsource-variable/ibm-plex-sans/wght.css";
 import "@fontsource-variable/ibm-plex-sans/wght-italic.css";
 import { App } from "./App";
@@ -11,6 +12,27 @@ const root = document.getElementById("root");
 if (!root) throw new Error("The echovale root element is missing.");
 
 const POINTER_MOVE_THRESHOLD = 4;
+const TOASTER_STYLE = {
+  "--width": "min(430px, calc(100vw - 36px))",
+  "--border-radius": "var(--radius-md)",
+  zIndex: "var(--z-toast)",
+  fontFamily: "var(--font-ui)",
+} as CSSProperties;
+const TOAST_STYLE: CSSProperties = {
+  minHeight: 0,
+  gap: 8,
+  padding: "10px 13px",
+  border: "1px solid var(--border-strong)",
+  borderRadius: "var(--radius-md)",
+  background: "var(--surface-raised)",
+  color: "var(--text)",
+  boxShadow: "0 4px 8px oklch(0 0 0 / 0.28)",
+  fontFamily: "var(--font-ui)",
+  fontSize: "var(--type-body)",
+  fontWeight: "var(--weight-semibold)",
+  transition:
+    "transform var(--duration-surface) var(--ease-out), opacity var(--duration-surface) var(--ease-out), height var(--duration-surface) var(--ease-out), box-shadow var(--duration-fast) var(--ease-out)",
+};
 let lastMousePosition: { x: number; y: number } | null = null;
 
 window.addEventListener(
@@ -49,5 +71,18 @@ createRoot(root).render(
   <StrictMode>
     <App />
     {isDesktopApp() ? null : <PwaUpdate />}
+    <Toaster
+      theme="system"
+      position="bottom-right"
+      offset={18}
+      mobileOffset={18}
+      duration={2800}
+      gap={8}
+      style={TOASTER_STYLE}
+      toastOptions={{
+        classNames: { title: "sonner-toast-title" },
+        style: TOAST_STYLE,
+      }}
+    />
   </StrictMode>,
 );
