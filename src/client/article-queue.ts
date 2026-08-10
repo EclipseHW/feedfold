@@ -82,6 +82,7 @@ export function useArticleQueue({
   const articlesRef = useRef(articles);
   const requestId = useRef(0);
   const loadedReaderRequestKey = useRef<string | null>(null);
+  const articleListNeedsReload = useRef(false);
   const contextArticleReturn = useRef<ContextArticleReturn | null>(null);
   const contextArticleReturnRoute = useRef<ReaderRoute | null>(null);
   const fullContentLoadedIds = useRef(new Set<number>());
@@ -130,6 +131,7 @@ export function useArticleQueue({
         }
 
         const nextArticles = articlesWithContextReturn(page.articles, returnTarget);
+        articleListNeedsReload.current = false;
         loadedReaderRequestKey.current = requestKey;
         setArticles(nextArticles);
         setNextCursor(page.nextCursor);
@@ -308,9 +310,18 @@ export function useArticleQueue({
     dataResource.cancelArticles();
     requestId.current += 1;
     setLoadingMore(false);
-    if (!bootstrapReady || nextRoute.kind !== "reader") return;
+    if (!bootstrapReady) return;
+    if (nextRoute.kind === "article") {
+      articleListNeedsReload.current = true;
+      return;
+    }
+    if (nextRoute.kind !== "reader") return;
     const requestKey = `${appRoutePath(nextRoute)}:${readingMode}`;
-    if (contextArticleReturn.current || loadedReaderRequestKey.current !== requestKey) {
+    if (
+      articleListNeedsReload.current ||
+      contextArticleReturn.current ||
+      loadedReaderRequestKey.current !== requestKey
+    ) {
       void loadArticles();
     }
   }, [appRoute, bootstrapReady, dataResource, loadArticles, readingMode]);
