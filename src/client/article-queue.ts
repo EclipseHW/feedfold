@@ -447,11 +447,17 @@ export function useArticleQueue({
     loadedReaderRequestKey.current = null;
   }, []);
 
+  const articleListReloadPending =
+    appRoute.kind === "reader" &&
+    articleListNeedsReload.current &&
+    contextArticleReturn.current === null &&
+    error === null;
+
   return {
     articles,
     setArticles,
     articlesRef,
-    loading,
+    loading: loading || articleListReloadPending,
     loadingMore,
     error,
     nextCursor,
