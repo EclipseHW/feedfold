@@ -1,10 +1,16 @@
-import { ArrowLeft, Check, LoaderCircle, LockKeyhole, MousePointer2 } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeft,
+  Check,
+  LoaderCircle,
+  LockKeyhole,
+  MousePointer2,
+} from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { WebFeedAnalysis, WebFeedCandidate, WebFeedField } from "../shared/types";
 import { appUrl } from "./api";
-import { type DropdownOption, DropdownSelect } from "./dropdown";
 import { FeedEntriesPreview } from "./feed-entries-preview";
-import { groupWebFeedCandidates, webFeedCandidateOptionLabel } from "./web-feed-candidate-options";
+import { groupWebFeedCandidates } from "./web-feed-candidate-options";
 import { parseWebFeedSelectionMessage, webFeedHighlightMessage } from "./web-feed-selection";
 import "./web-feed-setup.css";
 
@@ -20,6 +26,11 @@ const WEB_FEED_FIELD_LABELS: Record<WebFeedField, string> = {
 };
 
 const COMPACT_WEB_FEED_QUERY = "(max-width: 620px)";
+
+function candidateExample(candidate: WebFeedCandidate): string {
+  const article = candidate.articles[0];
+  return article?.title || article?.summary || "Untitled entry";
+}
 
 function compactWebFeedLayout(): boolean {
   return (
@@ -56,11 +67,13 @@ export interface WebFeedSetupProps {
 function CandidateSuggestion({
   candidate,
   selected,
+  recommended,
   disabled,
   onSelect,
 }: {
   candidate: WebFeedCandidate;
   selected: boolean;
+  recommended?: boolean;
   disabled: boolean;
   onSelect: () => void;
 }) {
@@ -76,11 +89,15 @@ function CandidateSuggestion({
         <Check size={11} strokeWidth={2.5} />
       </span>
       <span className="web-feed-suggestion-copy">
-        <strong>{candidate.label}</strong>
+        <span>
+          <strong>{candidate.label}</strong>
+          {recommended ? <em>Recommended</em> : null}
+        </span>
         <small>
           {candidate.itemCount} {candidate.itemCount === 1 ? "item" : "items"} ·{" "}
           {candidate.availableFields.length} of {WEB_FEED_FIELDS.length} fields
         </small>
+        {candidate.articles[0] ? <small>Example: {candidateExample(candidate)}</small> : null}
       </span>
     </button>
   );
@@ -120,11 +137,9 @@ export function WebFeedSetup({
   const compact = useCompactWebFeedLayout();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const reviewHeadingRef = useRef<HTMLHeadingElement>(null);
   const headingId = useId();
   const suggestionsHeadingId = useId();
-  const compactPickerId = useId().replace(/:/g, "");
-  const compactPickerLabelId = `${compactPickerId}-label`;
-  const compactPickerDescriptionId = `${compactPickerId}-description`;
   const candidateIds = useMemo(
     () => new Set(analysis.candidates.map((candidate) => candidate.id)),
     [analysis.candidates],
@@ -132,22 +147,6 @@ export function WebFeedSetup({
   const { suggested: suggestedCandidates, other: otherCandidates } = useMemo(
     () => groupWebFeedCandidates(analysis.candidates, analysis.suggestedCandidateIds),
     [analysis.candidates, analysis.suggestedCandidateIds],
-  );
-  const compactPickerOptions = useMemo<DropdownOption[]>(
-    () => [
-      { value: "", label: "Choose an entry group", disabled: true },
-      ...suggestedCandidates.map((candidate) => ({
-        value: candidate.id,
-        label: webFeedCandidateOptionLabel(candidate),
-        group: "Suggested groups",
-      })),
-      ...otherCandidates.map((candidate) => ({
-        value: candidate.id,
-        label: webFeedCandidateOptionLabel(candidate),
-        group: suggestedCandidates.length > 0 ? "Other detected groups" : "Detected groups",
-      })),
-    ],
-    [otherCandidates, suggestedCandidates],
   );
   const selectedCandidate =
     analysis.candidates.find((candidate) => candidate.id === selectedCandidateId) ?? null;
@@ -164,7 +163,9 @@ export function WebFeedSetup({
   }, [highlightSelection]);
 
   useEffect(() => {
-    const frame = window.requestAnimationFrame(() => headingRef.current?.focus());
+    const frame = window.requestAnimationFrame(() =>
+      headingRef.current?.focus({ preventScroll: true }),
+    );
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
@@ -184,6 +185,56 @@ export function WebFeedSetup({
   const matchAnnouncement = selectedCandidate
     ? `${selectedCandidate.itemCount} matching ${selectedCandidate.itemCount === 1 ? "item is" : "items are"} highlighted.`
     : "No group is selected.";
+  const reviewSelectedEntries = () => {
+    const heading = reviewHeadingRef.current;
+    if (!heading) return;
+    heading.focus({ preventScroll: true });
+    heading.scrollIntoView({
+      behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
+      block: "start",
+    });
+  };
+  const compactGroups = (
+    <>
+      {suggestedCandidates.length > 0 ? (
+        <section
+          className="web-feed-compact-group"
+          aria-labelledby={`${suggestionsHeadingId}-suggested`}
+        >
+          <h5 id={`${suggestionsHeadingId}-suggested`}>Suggested</h5>
+          {suggestedCandidates.map((candidate, index) => (
+            <CandidateSuggestion
+              key={candidate.id}
+              candidate={candidate}
+              selected={candidate.id === selectedCandidate?.id}
+              recommended={index === 0}
+              disabled={disabled}
+              onSelect={() => onSelect(candidate.id)}
+            />
+          ))}
+        </section>
+      ) : null}
+      {otherCandidates.length > 0 ? (
+        <details className="web-feed-other-groups" open={suggestedCandidates.length === 0}>
+          <summary>
+            {suggestedCandidates.length > 0 ? "Other groups" : "Groups found"} (
+            {otherCandidates.length})
+          </summary>
+          <div className="web-feed-compact-group">
+            {otherCandidates.map((candidate) => (
+              <CandidateSuggestion
+                key={candidate.id}
+                candidate={candidate}
+                selected={candidate.id === selectedCandidate?.id}
+                disabled={disabled}
+                onSelect={() => onSelect(candidate.id)}
+              />
+            ))}
+          </div>
+        </details>
+      ) : null}
+    </>
+  );
 
   return (
     <section className="web-feed-setup" aria-labelledby={headingId} aria-busy={disabled}>
@@ -219,27 +270,38 @@ export function WebFeedSetup({
         </span>
       </header>
 
-      {confirmation ? <div className="web-feed-confirmation-slot">{confirmation}</div> : null}
-
       {compact ? (
-        <div className="web-feed-compact-picker">
-          <label id={compactPickerLabelId} htmlFor={compactPickerId}>
-            Entry group
-          </label>
-          <DropdownSelect
-            id={compactPickerId}
-            className="web-feed-compact-select"
-            value={selectedCandidate?.id ?? ""}
-            options={compactPickerOptions}
-            disabled={disabled}
-            ariaLabelledBy={compactPickerLabelId}
-            ariaDescribedBy={compactPickerDescriptionId}
-            onChange={(value) => onSelect(value || null)}
-          />
-          <p id={compactPickerDescriptionId}>
-            Choose a group, then review its fields and recent entries below.
-          </p>
-        </div>
+        <fieldset className="web-feed-compact-picker">
+          <legend className="sr-only">Entry groups found</legend>
+          {selectedCandidate ? (
+            <>
+              <div className="web-feed-compact-selected">
+                <span aria-hidden="true">
+                  <Check size={13} strokeWidth={2.5} />
+                </span>
+                <div>
+                  <strong>{selectedCandidate.label}</strong>
+                  <small>
+                    {selectedCandidate.itemCount} entries selected · Example:{" "}
+                    {candidateExample(selectedCandidate)}
+                  </small>
+                </div>
+              </div>
+              <details key={selectedCandidate.id} className="web-feed-change-groups">
+                <summary>Choose a different group</summary>
+                {compactGroups}
+              </details>
+            </>
+          ) : (
+            <>
+              <div className="web-feed-suggestions-heading">
+                <h4>Entry groups found</h4>
+                <p>Choose one group. An example from each group is shown below its name.</p>
+              </div>
+              {compactGroups}
+            </>
+          )}
+        </fieldset>
       ) : (
         <div className="web-feed-workspace">
           <div className="web-feed-page-pane">
@@ -283,11 +345,12 @@ export function WebFeedSetup({
             </div>
             {suggestedCandidates.length > 0 ? (
               <div className="web-feed-suggestion-list">
-                {suggestedCandidates.map((candidate) => (
+                {suggestedCandidates.map((candidate, index) => (
                   <CandidateSuggestion
                     key={candidate.id}
                     candidate={candidate}
                     selected={candidate.id === selectedCandidate?.id}
+                    recommended={index === 0}
                     disabled={disabled}
                     onSelect={() => onSelect(candidate.id)}
                   />
@@ -307,6 +370,19 @@ export function WebFeedSetup({
                 ) : null}
               </div>
             )}
+            {selectedCandidate ? (
+              <div className="web-feed-review-selection">
+                <button
+                  className="primary-button"
+                  type="button"
+                  disabled={disabled}
+                  onClick={reviewSelectedEntries}
+                >
+                  Review selected entries
+                  <ArrowDown aria-hidden="true" size={15} />
+                </button>
+              </div>
+            ) : null}
           </aside>
         </div>
       )}
@@ -319,8 +395,10 @@ export function WebFeedSetup({
         <section className="web-feed-selected-preview" aria-labelledby={`${headingId}-preview`}>
           <div className="web-feed-preview-heading">
             <div>
-              <h4 id={`${headingId}-preview`}>Preview this feed</h4>
-              <p>Review the selected group before subscribing.</p>
+              <h4 ref={reviewHeadingRef} id={`${headingId}-preview`} tabIndex={-1}>
+                Review this entry group
+              </h4>
+              <p>These are the entries Echovale will follow from this page.</p>
             </div>
             <FieldAvailability candidate={selectedCandidate} />
           </div>
@@ -331,6 +409,8 @@ export function WebFeedSetup({
           />
         </section>
       ) : null}
+
+      {confirmation ? <div className="web-feed-confirmation-slot">{confirmation}</div> : null}
     </section>
   );
 }

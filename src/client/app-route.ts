@@ -41,7 +41,6 @@ export interface AppRouteController {
   readerRoute: ReaderRoute;
   view: AppView;
   routedArticleId: number | null;
-  addFeedSourceUrl: string | null;
   searchInput: string;
   setSearchInput: (value: string) => void;
   navigate: (route: AppRoute, historyMode?: "push" | "replace", articleIndex?: number) => void;
@@ -221,7 +220,6 @@ export function useAppRoute(basePath: string): AppRouteController {
     readerRoute,
     view: routeView(route),
     routedArticleId: route.kind === "article" ? route.articleId : null,
-    addFeedSourceUrl: route.kind === "add-feed" ? route.sourceUrl : null,
     searchInput,
     setSearchInput,
     navigate,

@@ -1,7 +1,9 @@
 import {
   AlertTriangle,
+  ArrowLeft,
   Check,
   CheckCircle2,
+  ChevronRight,
   Edit3,
   ExternalLink,
   Folder as FolderIcon,
@@ -26,6 +28,7 @@ import {
   type SVGProps,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -73,26 +76,34 @@ function XLogo({ size = 16, ...props }: SVGProps<SVGSVGElement> & { size?: numbe
 const ADD_FEED_SOURCE_OPTIONS = [
   {
     value: "rss",
-    label: "RSS feed",
-    description: "A website or RSS, Atom, or JSON Feed URL.",
+    label: "Website or feed",
+    description: "Find the published feed for a website, or use a direct feed address.",
+    detail: "RSS, Atom, or JSON Feed",
+    recommended: true,
     icon: Rss,
   },
   {
     value: "web",
     label: "Web page",
-    description: "A public page with repeated entries but no published feed.",
+    description: "Turn repeated links on one public page into a feed.",
+    detail: "Articles, releases, listings, and more",
+    recommended: false,
     icon: Globe2,
   },
   {
     value: "telegram",
-    label: "Telegram",
-    description: "A public Telegram channel handle.",
+    label: "Telegram channel",
+    description: "Follow posts from a public Telegram channel.",
+    detail: "Public channels only",
+    recommended: false,
     icon: Send,
   },
   {
     value: "x",
-    label: "x.com",
-    description: "An X profile handle, followed through Nitter RSS.",
+    label: "X profile",
+    description: "Follow a public X profile through Nitter RSS.",
+    detail: "Public profiles only",
+    recommended: false,
     icon: XLogo,
   },
 ] as const;
@@ -101,6 +112,7 @@ const ADD_FEED_INPUTS: Record<
   AddFeedSourceType,
   {
     label: string;
+    heading: string;
     placeholder: string;
     help: string;
     prefix: string | null;
@@ -111,18 +123,20 @@ const ADD_FEED_INPUTS: Record<
   }
 > = {
   rss: {
-    label: "Website or feed URL",
+    label: "Website or feed address",
+    heading: "Which website or feed do you want to follow?",
     placeholder: "https://example.com",
-    help: "echovale checks the address for RSS, Atom, and JSON Feed.",
+    help: "Paste any public website or direct RSS, Atom, or JSON Feed address.",
     prefix: null,
-    action: "Check feed",
-    loading: "Checking feed",
+    action: "Find feed",
+    loading: "Finding the published feed",
     add: "Add feed",
   },
   web: {
-    label: "Public page URL",
+    label: "Public page address",
+    heading: "Which page contains the entries you want?",
     placeholder: "https://example.com/articles",
-    help: "echovale looks for repeated links on this page. Sign-ins and paywalls are not supported.",
+    help: "Choose one public page that lists repeated articles, releases, posts, or other entries.",
     prefix: null,
     action: "Find entries",
     loading: "Finding entries",
@@ -130,6 +144,7 @@ const ADD_FEED_INPUTS: Record<
   },
   telegram: {
     label: "Telegram channel handle",
+    heading: "Which public Telegram channel?",
     placeholder: "durov",
     help: "Enter the public channel handle, with or without @. Links aren't supported.",
     prefix: "t.me/",
@@ -140,6 +155,7 @@ const ADD_FEED_INPUTS: Record<
   },
   x: {
     label: "X profile handle",
+    heading: "Which X profile?",
     placeholder: "egornomic",
     help: "Enter the handle, with or without @. Links aren't supported. Updates come from Nitter RSS.",
     prefix: "x.com/",
@@ -175,37 +191,28 @@ function feedHost(value: string): string {
 
 export function FeedsPage({
   bootstrap,
-  addFeedSourceUrl,
   mutations,
   onMenu,
+  onAddFeed,
   onRefresh,
   onEditWebFeed,
-  onCloseAddFeedRoute,
   showToast,
 }: {
   bootstrap: BootstrapData;
-  addFeedSourceUrl: string | null;
   mutations: ReaderDataMutations;
   onMenu: () => void;
+  onAddFeed: () => void;
   onRefresh: (feedId: number) => void;
   onEditWebFeed: (feed: Feed) => void;
-  onCloseAddFeedRoute: () => void;
   showToast: (message: string) => void;
 }) {
-  const [addFeedOpen, setAddFeedOpen] = useState(
-    addFeedSourceUrl !== null || bootstrap.feeds.length === 0,
-  );
-  const [addFeedSession, setAddFeedSession] = useState(0);
   const [addFolderOpen, setAddFolderOpen] = useState(false);
   const [addFolderSession, setAddFolderSession] = useState(0);
   const [activeTab, setActiveTab] = useState<FeedsPageTab>("subscriptions");
   const [feedTypeFilter, setFeedTypeFilter] = useState<FeedTypeFilter>("all");
   const [feedStatusFilter, setFeedStatusFilter] = useState<FeedStatusFilter>("all");
-  const addFeedPresence = useMotionPresence(addFeedOpen);
   const addFolderPresence = useMotionPresence(addFolderOpen);
-  const addFeedTriggerRef = useRef<HTMLButtonElement>(null);
   const addFolderTriggerRef = useRef<HTMLButtonElement>(null);
-  const previousAddFeedSourceUrl = useRef(addFeedSourceUrl);
   const filteredFeeds = filterFeeds(bootstrap.feeds, feedTypeFilter, feedStatusFilter);
   const filtersActive = feedTypeFilter !== "all" || feedStatusFilter !== "all";
   const publishedFeedCount = bootstrap.feeds.filter(
@@ -220,23 +227,6 @@ export function FeedsPage({
   };
   for (const feed of bootstrap.feeds) statusCounts[visibleFeedStatus(feed)] += 1;
 
-  useEffect(() => {
-    const previousSourceUrl = previousAddFeedSourceUrl.current;
-    previousAddFeedSourceUrl.current = addFeedSourceUrl;
-    if (addFeedSourceUrl !== null) {
-      setActiveTab("subscriptions");
-      setAddFeedOpen(true);
-    } else if (previousSourceUrl !== null) {
-      setAddFeedOpen(false);
-    }
-  }, [addFeedSourceUrl]);
-
-  const closeAddFeed = () => {
-    addFeedTriggerRef.current?.focus();
-    setAddFeedOpen(false);
-    if (addFeedSourceUrl !== null) onCloseAddFeedRoute();
-  };
-
   const closeAddFolder = () => {
     addFolderTriggerRef.current?.focus();
     setAddFolderOpen(false);
@@ -244,10 +234,6 @@ export function FeedsPage({
 
   const selectTab = (tab: FeedsPageTab) => {
     if (tab === activeTab) return;
-    if (tab === "folders" && addFeedOpen) {
-      setAddFeedOpen(false);
-      if (addFeedSourceUrl !== null) onCloseAddFeedRoute();
-    }
     if (tab === "subscriptions" && addFolderOpen) setAddFolderOpen(false);
     setActiveTab(tab);
   };
@@ -268,19 +254,7 @@ export function FeedsPage({
             <>
               <ImportOpmlButton mutations={mutations} showToast={showToast} />
               <ExportOpmlLink />
-              <button
-                ref={addFeedTriggerRef}
-                className="primary-button"
-                type="button"
-                onClick={() => {
-                  if (addFeedOpen) {
-                    closeAddFeed();
-                    return;
-                  }
-                  setAddFeedSession((current) => current + 1);
-                  setAddFeedOpen(true);
-                }}
-              >
+              <button className="primary-button" type="button" onClick={onAddFeed}>
                 <Plus aria-hidden="true" size={16} />
                 Add feed
               </button>
@@ -349,22 +323,6 @@ export function FeedsPage({
           aria-labelledby="subscriptions-tab"
           className="management-tab-panel"
         >
-          {addFeedPresence.present ? (
-            <AddFeedForm
-              key={`${addFeedSession}:${addFeedSourceUrl ?? ""}`}
-              feeds={bootstrap.feeds}
-              folders={bootstrap.folders}
-              initialSourceUrl={addFeedSourceUrl ?? ""}
-              motionState={addFeedPresence.state}
-              mutations={mutations}
-              onCancel={closeAddFeed}
-              onSaved={(feed) => {
-                showToast(`Subscribed to ${feed.title}`);
-                closeAddFeed();
-              }}
-            />
-          ) : null}
-
           <section className="management-section" aria-labelledby="subscriptions-heading">
             <div className="section-title-row">
               <div>
@@ -441,6 +399,10 @@ export function FeedsPage({
                 <Rss aria-hidden="true" size={22} />
                 <h3>No feeds yet</h3>
                 <p>Add a website or feed URL, or import subscriptions from an OPML file.</p>
+                <button className="primary-button" type="button" onClick={onAddFeed}>
+                  <Plus aria-hidden="true" size={16} />
+                  Add your first feed
+                </button>
               </div>
             ) : filteredFeeds.length === 0 ? (
               <div className="section-empty filtered-empty">
@@ -615,10 +577,10 @@ function FeedConfirmationBar({
   onFolderChange: (folderId: number | null) => void;
 }) {
   const inputConfig = ADD_FEED_INPUTS[sourceType];
-  const statusTitle = existingFeed ? "Already in your feeds" : "Choose an entry group";
+  const statusTitle = existingFeed ? "Already in your feeds" : "Finish setup";
   const statusDescription = existingFeed
-    ? `You follow this as ${existingFeed.title}.`
-    : "Select an entry group to review its recent entries.";
+    ? `You already follow this source as ${existingFeed.title}.`
+    : "Give the feed a name and choose where it belongs.";
   const actionLabel = disabled
     ? `${inputConfig.add.replace(/^Add /, "Adding ")}…`
     : existingFeed
@@ -631,19 +593,19 @@ function FeedConfirmationBar({
       aria-label="Confirm subscription"
       data-blocked={!canSave || !!existingFeed || undefined}
     >
-      {existingFeed || !canSave ? (
-        <div className="feed-confirmation-status" aria-live="polite">
-          {existingFeed ? (
-            <CheckCircle2 aria-hidden="true" size={18} />
-          ) : (
-            <MousePointer2 aria-hidden="true" size={18} />
-          )}
-          <span>
-            <strong>{statusTitle}</strong>
-            <small>{statusDescription}</small>
-          </span>
-        </div>
-      ) : null}
+      <div className="feed-confirmation-status" aria-live="polite">
+        {existingFeed ? (
+          <CheckCircle2 aria-hidden="true" size={18} />
+        ) : canSave ? (
+          <Check aria-hidden="true" size={18} />
+        ) : (
+          <MousePointer2 aria-hidden="true" size={18} />
+        )}
+        <span>
+          <strong>{statusTitle}</strong>
+          <small>{statusDescription}</small>
+        </span>
+      </div>
 
       <FeedConfirmationSettings
         title={title}
@@ -656,7 +618,7 @@ function FeedConfirmationBar({
 
       <div className="feed-confirmation-actions">
         <button className="secondary-button" type="button" onClick={onCancel} disabled={disabled}>
-          Cancel
+          Back to feeds
         </button>
         <button
           className="primary-button"
@@ -681,7 +643,6 @@ function AddFeedForm({
   feeds,
   folders,
   initialSourceUrl,
-  motionState,
   mutations,
   onCancel,
   onSaved,
@@ -689,12 +650,13 @@ function AddFeedForm({
   feeds: Feed[];
   folders: Folder[];
   initialSourceUrl: string;
-  motionState: MotionState;
   mutations: ReaderDataMutations;
   onCancel: () => void;
   onSaved: (feed: Feed) => Promise<void> | void;
 }) {
-  const [sourceType, setSourceType] = useState<AddFeedSourceType>("rss");
+  const [sourceType, setSourceType] = useState<AddFeedSourceType | null>(
+    initialSourceUrl ? "rss" : null,
+  );
   const [sourceInputs, setSourceInputs] = useState<Record<AddFeedSourceType, string>>({
     rss: initialSourceUrl,
     web: initialSourceUrl,
@@ -713,27 +675,43 @@ function AddFeedForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const previewHeadingRef = useRef<HTMLHeadingElement>(null);
+  const sourceHeadingRef = useRef<HTMLHeadingElement>(null);
+  const addressInputRef = useRef<HTMLInputElement>(null);
+  const flowRef = useRef<HTMLElement>(null);
   const previewFocusFrame = useRef<number | null>(null);
   const autoDiscoveryStarted = useRef(false);
-  const motionStateRef = useRef(motionState);
-  const loadingPresence = useMotionPresence(discovering || analyzingWebPage);
-  const previewPresence = useMotionPresence(preview !== null);
-  const retainedPreview = useRef<FeedPreview | null>(preview);
-  motionStateRef.current = motionState;
-  if (preview) retainedPreview.current = preview;
-  const displayedPreview = preview ?? retainedPreview.current;
-  const sourceInput = sourceInputs[sourceType];
-  const inputConfig = ADD_FEED_INPUTS[sourceType];
+  const sourceInput = sourceType ? sourceInputs[sourceType] : "";
+  const inputConfig = sourceType ? ADD_FEED_INPUTS[sourceType] : null;
+  const sourceOption = sourceType
+    ? ADD_FEED_SOURCE_OPTIONS.find((option) => option.value === sourceType)
+    : null;
+  const SelectedSourceIcon = sourceOption?.icon ?? Rss;
   const SourcePreviewIcon =
     ADD_FEED_SOURCE_OPTIONS.find((option) => option.value === previewSourceType)?.icon ?? Rss;
-  const showLoadingSurface = loadingPresence.present && error === null;
-  const showPreviewSurface = previewPresence.present && displayedPreview !== null && error === null;
   const selectedCandidate =
     webAnalysis?.candidates.find((candidate) => candidate.id === selectedCandidateId) ?? null;
   const currentSourceUrl = preview?.feedUrl ?? webAnalysis?.pageUrl ?? webPage?.pageUrl;
   const existingFeed = currentSourceUrl
     ? feeds.find((feed) => feed.feedUrl === currentSourceUrl)
     : undefined;
+  const stageKey =
+    sourceType === null
+      ? "source"
+      : discovering || analyzingWebPage
+        ? "loading"
+        : preview
+          ? "published-review"
+          : webAnalysis
+            ? "web-review"
+            : webPage
+              ? "web-offer"
+              : "address";
+
+  useLayoutEffect(() => {
+    void stageKey;
+    const scrollContainer = flowRef.current?.closest<HTMLElement>(".management-page");
+    if (scrollContainer) scrollContainer.scrollTop = 0;
+  }, [stageKey]);
 
   useEffect(
     () => () => {
@@ -757,6 +735,7 @@ function AddFeedForm({
     if (nextSourceType === sourceType) return;
     if (
       (nextSourceType === "rss" || nextSourceType === "web") &&
+      sourceType !== null &&
       (sourceType === "rss" || sourceType === "web") &&
       !sourceInputs[nextSourceType]
     ) {
@@ -767,6 +746,18 @@ function AddFeedForm({
     }
     setSourceType(nextSourceType);
     clearDiscoveryResult();
+    window.requestAnimationFrame(() => addressInputRef.current?.focus());
+  };
+
+  const chooseAnotherSource = () => {
+    clearDiscoveryResult();
+    setSourceType(null);
+    window.requestAnimationFrame(() => sourceHeadingRef.current?.focus());
+  };
+
+  const editAddress = () => {
+    clearDiscoveryResult();
+    window.requestAnimationFrame(() => addressInputRef.current?.focus());
   };
 
   const discover = useCallback(async (url: string, requestedSourceType: AddFeedSourceType) => {
@@ -792,7 +783,7 @@ function AddFeedForm({
       }
       previewFocusFrame.current = window.requestAnimationFrame(() => {
         previewFocusFrame.current = null;
-        if (motionStateRef.current === "open") previewHeadingRef.current?.focus();
+        previewHeadingRef.current?.focus({ preventScroll: true });
       });
     } catch (error) {
       setError(errorMessage(error));
@@ -817,7 +808,7 @@ function AddFeedForm({
     try {
       const result = await api.analyzeWebPage(url);
       setWebAnalysis(result);
-      setSelectedCandidateId(result.selectedCandidateId ?? result.suggestedCandidateIds[0] ?? null);
+      setSelectedCandidateId(result.selectedCandidateId);
       setTitle(result.title);
     } catch (caught) {
       setError(errorMessage(caught));
@@ -860,287 +851,351 @@ function AddFeedForm({
   };
 
   return (
-    <div
-      className="inline-editor add-feed-panel"
-      data-motion-state={motionState}
+    <section
+      ref={flowRef}
+      className="add-feed-flow"
       aria-busy={discovering || analyzingWebPage || saving}
-      inert={motionState === "closed"}
     >
-      <div className="inline-editor-heading">
-        <div>
-          <h2>Add a feed</h2>
-          <p>Choose a source, preview its latest entries, then subscribe.</p>
-        </div>
-        <button
-          className="icon-button"
-          type="button"
-          onClick={onCancel}
-          disabled={saving}
-          aria-label="Close add feed form"
-        >
-          <X aria-hidden="true" size={18} />
-        </button>
-      </div>
-
-      <fieldset className="feed-source-selector">
-        <legend>Source type</legend>
-        <div className="feed-source-options">
-          {ADD_FEED_SOURCE_OPTIONS.map((option) => {
-            const OptionIcon = option.icon;
-            return (
-              <label className="feed-source-option" key={option.value}>
-                <input
-                  className="sr-only"
-                  type="radio"
-                  name="feed-source-type"
-                  value={option.value}
-                  checked={sourceType === option.value}
-                  disabled={discovering || analyzingWebPage || saving}
-                  onChange={() => selectSourceType(option.value)}
-                />
-                <span>
-                  <OptionIcon aria-hidden="true" size={16} />
-                  {option.label}
-                </span>
-              </label>
-            );
-          })}
-        </div>
-        <p aria-live="polite">
-          {ADD_FEED_SOURCE_OPTIONS.find((option) => option.value === sourceType)?.description}
-        </p>
-      </fieldset>
-
-      <form
-        className="feed-discovery-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          try {
-            const url = feedSourceUrl(sourceType, sourceInput);
-            if (sourceType === "web") {
-              void analyzeWebPage(url);
-            } else {
-              void discover(url, sourceType);
-            }
-          } catch (caught) {
-            setError(errorMessage(caught));
-          }
-        }}
-      >
-        <label className="field feed-url-field">
-          <span>{inputConfig.label}</span>
-          <span
-            className={inputConfig.prefix ? "feed-source-input has-prefix" : "feed-source-input"}
-          >
-            {inputConfig.prefix ? <span aria-hidden="true">{inputConfig.prefix}</span> : null}
-            <input
-              type={sourceType === "rss" || sourceType === "web" ? "url" : "text"}
-              required
-              value={sourceInput}
-              pattern={inputConfig.pattern}
-              title={inputConfig.help}
-              placeholder={inputConfig.placeholder}
-              autoCapitalize="none"
-              autoCorrect="off"
-              spellCheck={false}
-              disabled={discovering || analyzingWebPage || saving}
-              aria-describedby="feed-url-help"
-              onChange={(event) => {
-                setSourceInputs((current) => ({
-                  ...current,
-                  [sourceType]: event.target.value,
-                }));
-                clearDiscoveryResult();
-              }}
-            />
-          </span>
-          <small id="feed-url-help">{inputConfig.help}</small>
-        </label>
-        <button
-          className={preview || webPage || webAnalysis ? "secondary-button" : "primary-button"}
-          type="submit"
-          disabled={discovering || analyzingWebPage || saving || !sourceInput.trim()}
-        >
-          {discovering || analyzingWebPage ? (
-            <LoaderCircle className="spin" aria-hidden="true" size={16} />
-          ) : (
-            <Search aria-hidden="true" size={16} />
-          )}
-          {discovering || analyzingWebPage
-            ? inputConfig.loading
-            : preview || webPage || webAnalysis
-              ? `${inputConfig.action} again`
-              : inputConfig.action}
-        </button>
-      </form>
-
-      {error ? (
-        <div className="feed-discovery-error" role="alert">
-          <AlertTriangle aria-hidden="true" size={17} />
-          <span>{error}</span>
-        </div>
-      ) : null}
-
-      {webPage && !webAnalysis && !analyzingWebPage ? (
-        <section className="web-feed-offer" aria-labelledby="web-feed-offer-heading">
-          <div className="web-feed-offer-mark" aria-hidden="true">
-            <Globe2 size={20} />
+      {sourceType === null ? (
+        <div className="add-feed-stage add-feed-source-stage">
+          <header className="add-feed-stage-heading">
+            <span className="add-feed-step">Step 1 of 3 · Choose a source</span>
+            <h2 ref={sourceHeadingRef} tabIndex={-1}>
+              What do you want to follow?
+            </h2>
+            <p>Choose a source. You will preview what Echovale found before anything is added.</p>
+          </header>
+          <div className="add-feed-source-list">
+            {ADD_FEED_SOURCE_OPTIONS.map((option) => {
+              const OptionIcon = option.icon;
+              return (
+                <button
+                  className="add-feed-source-row"
+                  data-source-type={option.value}
+                  key={option.value}
+                  type="button"
+                  onClick={() => selectSourceType(option.value)}
+                >
+                  <span className="add-feed-source-mark" aria-hidden="true">
+                    <OptionIcon size={19} />
+                  </span>
+                  <span className="add-feed-source-copy">
+                    <span>
+                      <strong>{option.label}</strong>
+                      {option.recommended ? (
+                        <span className="add-feed-recommended">Recommended</span>
+                      ) : null}
+                    </span>
+                    <small>{option.description}</small>
+                    <em>{option.detail}</em>
+                  </span>
+                  <ChevronRight aria-hidden="true" size={18} />
+                </button>
+              );
+            })}
           </div>
-          <div>
-            <h3 id="web-feed-offer-heading" ref={previewHeadingRef} tabIndex={-1}>
-              This page has no published feed
-            </h3>
-            <p>echovale can turn repeated entries on this public page into a web feed.</p>
-            <small>
-              Web feeds support one public page. They do not support sign-ins, paywalls, CAPTCHAs,
-              pagination, or arbitrary change tracking.
-            </small>
+        </div>
+      ) : discovering || analyzingWebPage ? (
+        <div className="add-feed-stage add-feed-loading-stage" role="status">
+          <LoaderCircle className="spin" aria-hidden="true" size={24} />
+          <span className="add-feed-step">Step 2 of 3 · Find the source</span>
+          <h2>{analyzingWebPage ? "Finding repeatable entries" : inputConfig?.loading}</h2>
+          <p>
+            {analyzingWebPage
+              ? "Echovale is loading the page and looking for groups of links that repeat."
+              : sourceType === "telegram"
+                ? "Loading the public channel and its latest posts."
+                : sourceType === "x"
+                  ? "Loading the profile through Nitter RSS."
+                  : "Checking the website for a published feed and loading its latest entries."}
+          </p>
+          <div className="feed-preview-loading-lines" aria-hidden="true">
+            <div className="skeleton-line wide" />
+            <div className="skeleton-line" />
+            <div className="skeleton-line short" />
           </div>
-          <button
-            className="primary-button"
-            type="button"
-            disabled={saving}
-            onClick={() => {
-              const pageUrl = webPage.pageUrl;
-              setSourceInputs((current) => ({ ...current, web: pageUrl }));
-              setSourceType("web");
-              void analyzeWebPage(pageUrl);
-            }}
-          >
-            <Globe2 aria-hidden="true" size={16} />
-            Use web feed
-          </button>
-        </section>
-      ) : null}
+        </div>
+      ) : preview ? (
+        <form
+          className="add-feed-stage feed-confirmation-form"
+          onSubmit={(event) => void save(event)}
+        >
+          <header className="add-feed-stage-heading add-feed-review-heading">
+            <div>
+              <span className="add-feed-step">Step 3 of 3 · Review and add</span>
+              <h2 ref={previewHeadingRef} tabIndex={-1}>
+                This feed is ready
+              </h2>
+              <p>Check the recent entries, then choose its name and folder.</p>
+            </div>
+            <button className="quiet-button" type="button" onClick={editAddress}>
+              <ArrowLeft aria-hidden="true" size={15} />
+              Edit address
+            </button>
+          </header>
 
-      {showLoadingSurface || showPreviewSurface ? (
-        <div className="feed-discovery-result">
-          {showLoadingSurface ? (
-            <div
-              className="feed-preview-loading"
-              data-motion-state={loadingPresence.state}
-              role="status"
-              inert={loadingPresence.state === "closed"}
-            >
-              <span>
-                {analyzingWebPage
-                  ? "Loading the page and finding repeated entries…"
-                  : sourceType === "telegram"
-                    ? "Loading the public channel and its latest posts…"
-                    : sourceType === "x"
-                      ? "Loading the profile through Nitter RSS…"
-                      : "Looking for a published feed and loading its latest entries…"}
-              </span>
-              <div className="feed-preview-loading-lines" aria-hidden="true">
-                <div className="skeleton-line wide" />
-                <div className="skeleton-line" />
-                <div className="skeleton-line short" />
-              </div>
+          {error ? (
+            <div className="feed-discovery-error" role="alert">
+              <AlertTriangle aria-hidden="true" size={17} />
+              <span>{error}</span>
             </div>
           ) : null}
 
-          {showPreviewSurface ? (
-            <form
-              className="feed-confirmation-form"
-              data-motion-state={previewPresence.state}
-              inert={previewPresence.state === "closed"}
-              onSubmit={(event) => void save(event)}
-            >
-              <section className="feed-preview" aria-labelledby="feed-preview-heading">
-                <div className="feed-preview-header">
-                  <div className="feed-preview-mark" aria-hidden="true">
-                    <SourcePreviewIcon size={20} />
-                  </div>
-                  <div className="feed-preview-title-copy">
-                    <h3 id="feed-preview-heading" ref={previewHeadingRef} tabIndex={-1}>
-                      {displayedPreview.title}
-                    </h3>
-                    <div className="feed-preview-links">
-                      {displayedPreview.siteUrl ? (
-                        <a href={displayedPreview.siteUrl} target="_blank" rel="noreferrer">
-                          {feedHost(displayedPreview.siteUrl)}
-                          <ExternalLink aria-hidden="true" size={12} />
-                        </a>
-                      ) : (
-                        <span>{feedHost(displayedPreview.feedUrl)}</span>
-                      )}
-                      <span aria-hidden="true">·</span>
-                      <a href={displayedPreview.feedUrl} target="_blank" rel="noreferrer">
-                        Open feed source
-                        <ExternalLink aria-hidden="true" size={12} />
-                      </a>
-                    </div>
-                  </div>
+          <section className="feed-preview" aria-labelledby="feed-preview-heading">
+            <div className="feed-preview-header">
+              <div className="feed-preview-mark" aria-hidden="true">
+                <SourcePreviewIcon size={20} />
+              </div>
+              <div className="feed-preview-title-copy">
+                <h3 id="feed-preview-heading">{preview.title}</h3>
+                <div className="feed-preview-links">
+                  {preview.siteUrl ? (
+                    <a href={preview.siteUrl} target="_blank" rel="noreferrer">
+                      {feedHost(preview.siteUrl)}
+                      <ExternalLink aria-hidden="true" size={12} />
+                    </a>
+                  ) : (
+                    <span>{feedHost(preview.feedUrl)}</span>
+                  )}
+                  <span aria-hidden="true">·</span>
+                  <a href={preview.feedUrl} target="_blank" rel="noreferrer">
+                    Open feed source
+                    <ExternalLink aria-hidden="true" size={12} />
+                  </a>
                 </div>
+              </div>
+            </div>
 
-                <FeedConfirmationBar
-                  sourceType={previewSourceType}
-                  title={title}
-                  folderId={folderId}
-                  folders={folders}
-                  disabled={saving}
-                  existingFeed={existingFeed}
-                  canSave
-                  onCancel={onCancel}
-                  onTitleChange={setTitle}
-                  onFolderChange={setFolderId}
-                />
+            <FeedEntriesPreview articles={preview.articles} totalEntries={preview.totalArticles} />
 
-                <FeedEntriesPreview
-                  articles={displayedPreview.articles}
-                  totalEntries={displayedPreview.totalArticles}
-                />
-              </section>
-            </form>
+            <FeedConfirmationBar
+              sourceType={previewSourceType}
+              title={title}
+              folderId={folderId}
+              folders={folders}
+              disabled={saving}
+              existingFeed={existingFeed}
+              canSave
+              onCancel={onCancel}
+              onTitleChange={setTitle}
+              onFolderChange={setFolderId}
+            />
+          </section>
+        </form>
+      ) : webAnalysis ? (
+        <form
+          className="add-feed-stage web-feed-confirmation-form"
+          onSubmit={(event) => void save(event)}
+        >
+          <span className="add-feed-step">Step 3 of 3 · Choose and review</span>
+          {error ? (
+            <div className="feed-discovery-error" role="alert">
+              <AlertTriangle aria-hidden="true" size={17} />
+              <span>{error}</span>
+            </div>
           ) : null}
-        </div>
-      ) : null}
-
-      {webAnalysis ? (
-        <form className="web-feed-confirmation-form" onSubmit={(event) => void save(event)}>
           <WebFeedSetup
             analysis={webAnalysis}
             selectedCandidateId={selectedCandidateId}
             disabled={saving}
             busyLabel="Adding web feed…"
             onSelect={setSelectedCandidateId}
-            onBack={() => {
-              setWebAnalysis(null);
-              setSelectedCandidateId(null);
-            }}
+            onBack={editAddress}
             confirmation={
-              <>
-                <FeedConfirmationBar
-                  sourceType="web"
-                  title={title}
-                  folderId={folderId}
-                  folders={folders}
-                  disabled={saving}
-                  existingFeed={existingFeed}
-                  canSave={selectedCandidate !== null}
-                  onCancel={onCancel}
-                  onTitleChange={setTitle}
-                  onFolderChange={setFolderId}
-                />
-                {selectedCandidate && !selectedCandidate.availableFields.includes("date") ? (
-                  <p className="web-feed-date-fallback">
-                    These entries have no publication date. echovale will use the time it first
-                    discovers each one.
-                  </p>
-                ) : null}
-              </>
+              selectedCandidate ? (
+                <>
+                  {!selectedCandidate.availableFields.includes("date") ? (
+                    <p className="web-feed-date-fallback">
+                      These entries have no publication date. Echovale will use the time it first
+                      discovers each one.
+                    </p>
+                  ) : null}
+                  <FeedConfirmationBar
+                    sourceType="web"
+                    title={title}
+                    folderId={folderId}
+                    folders={folders}
+                    disabled={saving}
+                    existingFeed={existingFeed}
+                    canSave
+                    onCancel={onCancel}
+                    onTitleChange={setTitle}
+                    onFolderChange={setFolderId}
+                  />
+                </>
+              ) : undefined
             }
           />
         </form>
-      ) : null}
+      ) : webPage ? (
+        <div className="add-feed-stage">
+          <header className="add-feed-stage-heading">
+            <span className="add-feed-step">Step 2 of 3 · Find the source</span>
+            <h2 ref={previewHeadingRef} tabIndex={-1}>
+              No published feed was found
+            </h2>
+            <p>This page can still become a web feed by following one repeated group of entries.</p>
+          </header>
+          <div className="add-feed-fallback">
+            <span className="add-feed-source-mark" aria-hidden="true">
+              <Globe2 size={20} />
+            </span>
+            <div>
+              <strong>Build a web feed from this page</strong>
+              <p>
+                Web feeds follow one public page. They cannot sign in, bypass paywalls or CAPTCHAs,
+                follow pagination, or track arbitrary text or prices.
+              </p>
+            </div>
+            <div className="add-feed-fallback-actions">
+              <button className="secondary-button" type="button" onClick={editAddress}>
+                Try another address
+              </button>
+              <button
+                className="primary-button"
+                type="button"
+                onClick={() => {
+                  const pageUrl = webPage.pageUrl;
+                  setSourceInputs((current) => ({ ...current, web: pageUrl }));
+                  setSourceType("web");
+                  void analyzeWebPage(pageUrl);
+                }}
+              >
+                <Globe2 aria-hidden="true" size={16} />
+                Choose page entries
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : inputConfig && sourceOption ? (
+        <div className="add-feed-stage add-feed-address-stage">
+          <header className="add-feed-stage-heading">
+            <span className="add-feed-step">Step 2 of 3 · Enter the source</span>
+            <h2>{inputConfig.heading}</h2>
+            <p>{sourceOption.description}</p>
+          </header>
 
-      {!previewPresence.present && !webAnalysis ? (
-        <div className="form-actions add-feed-initial-actions">
-          <button className="secondary-button" type="button" onClick={onCancel}>
-            Cancel
-          </button>
+          <div className="add-feed-selected-source">
+            <span className="add-feed-source-mark" aria-hidden="true">
+              <SelectedSourceIcon size={18} />
+            </span>
+            <span>
+              <strong>{sourceOption.label}</strong>
+              <small>{sourceOption.detail}</small>
+            </span>
+            <button className="quiet-button" type="button" onClick={chooseAnotherSource}>
+              Change
+            </button>
+          </div>
+
+          <form
+            className="add-feed-address-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              try {
+                const url = feedSourceUrl(sourceType, sourceInput);
+                if (sourceType === "web") void analyzeWebPage(url);
+                else void discover(url, sourceType);
+              } catch (caught) {
+                setError(errorMessage(caught));
+              }
+            }}
+          >
+            <label className="field feed-url-field">
+              <span>{inputConfig.label}</span>
+              <span
+                className={
+                  inputConfig.prefix ? "feed-source-input has-prefix" : "feed-source-input"
+                }
+              >
+                {inputConfig.prefix ? <span aria-hidden="true">{inputConfig.prefix}</span> : null}
+                <input
+                  ref={addressInputRef}
+                  type={sourceType === "rss" || sourceType === "web" ? "url" : "text"}
+                  required
+                  value={sourceInput}
+                  pattern={inputConfig.pattern}
+                  title={inputConfig.help}
+                  placeholder={inputConfig.placeholder}
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  aria-invalid={error ? true : undefined}
+                  aria-describedby={error ? "feed-url-help feed-discovery-error" : "feed-url-help"}
+                  onChange={(event) => {
+                    setSourceInputs((current) => ({
+                      ...current,
+                      [sourceType]: event.target.value,
+                    }));
+                    clearDiscoveryResult();
+                  }}
+                />
+              </span>
+              <small id="feed-url-help">{inputConfig.help}</small>
+            </label>
+
+            {error ? (
+              <div id="feed-discovery-error" className="feed-discovery-error" role="alert">
+                <AlertTriangle aria-hidden="true" size={17} />
+                <span>{error}</span>
+              </div>
+            ) : null}
+
+            <button className="primary-button" type="submit" disabled={!sourceInput.trim()}>
+              <Search aria-hidden="true" size={16} />
+              {inputConfig.action}
+            </button>
+          </form>
         </div>
       ) : null}
+    </section>
+  );
+}
+
+export function AddFeedPage({
+  bootstrap,
+  initialSourceUrl,
+  mutations,
+  onMenu,
+  onBack,
+  showToast,
+}: {
+  bootstrap: BootstrapData;
+  initialSourceUrl: string;
+  mutations: ReaderDataMutations;
+  onMenu: () => void;
+  onBack: () => void;
+  showToast: (message: string) => void;
+}) {
+  return (
+    <div className="management-page add-feed-page">
+      <PageHeader
+        title="Add feed"
+        description="Choose a source, preview what Echovale finds, then subscribe."
+        onMenu={onMenu}
+        actions={
+          <button
+            className="secondary-button"
+            type="button"
+            aria-label="All feeds"
+            onClick={onBack}
+          >
+            <ArrowLeft aria-hidden="true" size={16} />
+            <span className="add-feed-back-label">All feeds</span>
+          </button>
+        }
+      />
+      <AddFeedForm
+        feeds={bootstrap.feeds}
+        folders={bootstrap.folders}
+        initialSourceUrl={initialSourceUrl}
+        mutations={mutations}
+        onCancel={onBack}
+        onSaved={(feed) => {
+          showToast(`Subscribed to ${feed.title}`);
+          onBack();
+        }}
+      />
     </div>
   );
 }

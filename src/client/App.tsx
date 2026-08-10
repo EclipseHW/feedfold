@@ -55,6 +55,9 @@ import { appRoutePath, DEFAULT_READER_ROUTE, type ReaderRoute } from "./routes";
 
 const APP_BASE_PATH = import.meta.env.BASE_URL;
 const FeedsPage = lazy(() => import("./management/feeds"));
+const AddFeedPage = lazy(async () => ({
+  default: (await import("./management/feeds")).AddFeedPage,
+}));
 const RulesPage = lazy(() => import("./management/rules"));
 const SettingsPage = lazy(() => import("./management/settings"));
 const ShortcutHelp = lazy(() => import("./management/shortcut-help"));
@@ -871,16 +874,26 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               )}
             </div>
           </>
+        ) : route.route.kind === "add-feed" ? (
+          <Suspense fallback={<ManagementRouteFallback />}>
+            <AddFeedPage
+              bootstrap={bootstrap}
+              initialSourceUrl={route.route.sourceUrl}
+              mutations={dataResource}
+              onMenu={() => setNavOpen(true)}
+              onBack={() => route.navigate({ kind: "feeds" }, "replace")}
+              showToast={showToast}
+            />
+          </Suspense>
         ) : route.view === "feeds" ? (
           <Suspense fallback={<ManagementRouteFallback />}>
             <FeedsPage
               bootstrap={bootstrap}
-              addFeedSourceUrl={route.addFeedSourceUrl}
               mutations={dataResource}
               onMenu={() => setNavOpen(true)}
+              onAddFeed={openAddFeed}
               onRefresh={(feedId) => void refresh(feedId)}
               onEditWebFeed={(feed) => openFeedManagement(feed, "selection")}
-              onCloseAddFeedRoute={() => route.navigate({ kind: "feeds" }, "replace")}
               showToast={showToast}
             />
           </Suspense>
