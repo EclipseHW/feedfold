@@ -4053,6 +4053,12 @@ kbd {
 }
 
 @media (max-width: 620px) {
+  .pwa-update > span {
+    white-space: nowrap;
+  }
+  .pwa-update-actions {
+    flex-shrink: 0;
+  }
   .mark-read-menu {
     width: calc(100vw - 18px);
   }
