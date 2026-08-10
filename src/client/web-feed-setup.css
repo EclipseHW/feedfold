@@ -90,6 +90,10 @@
   height: 44px;
 }
 
+.web-feed-compact-select .dropdown-select-menu {
+  width: anchor-size(width);
+}
+
 .web-feed-compact-picker p {
   margin: 7px 0 0;
   color: var(--muted);
