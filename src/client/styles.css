@@ -29,7 +29,7 @@
   --type-article-display: clamp(2.125rem, 5vw, 3.625rem);
   --type-expanded-display: clamp(1.625rem, 3vw, 2.5rem);
   --type-story-list-display: clamp(1.25rem, 2.3vw, 1.6875rem);
-  --type-wordmark: 1rem;
+  --type-wordmark: 1.25rem;
   --type-page-title: 1.375rem;
   --type-auth-title: 1.5rem;
   --type-dialog-title: 1.0625rem;
@@ -137,6 +137,23 @@ body {
   font-size: var(--type-body);
   font-weight: var(--weight-regular);
   line-height: var(--leading-ui);
+}
+
+body::before {
+  position: fixed;
+  z-index: calc(var(--z-toast) + 2);
+  inset: 0;
+  background-image: url("./assets/paper-grain.png");
+  background-size: 320px 320px;
+  content: "";
+  mix-blend-mode: soft-light;
+  opacity: 0.032;
+  pointer-events: none;
+}
+
+:root[data-theme="light"] body::before {
+  mix-blend-mode: multiply;
+  opacity: 0.018;
 }
 
 button,
@@ -450,16 +467,13 @@ kbd {
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
-  border-radius: 7px;
-  background: oklch(0.07 0.006 130);
+  color: var(--accent);
 }
 
-.brand-logo img {
+.brand-logo svg {
   width: 100%;
   height: 100%;
-  max-width: none;
-  transform: scale(1.45);
+  fill: currentColor;
 }
 
 .brand-wordmark {
@@ -4823,6 +4837,10 @@ kbd {
 }
 
 @media (prefers-reduced-transparency: reduce) {
+  body::before {
+    display: none;
+  }
+
   :where(
     .mark-read-menu,
     .article-source-menu,
@@ -4848,6 +4866,14 @@ kbd {
 }
 
 @media (forced-colors: active) {
+  body::before {
+    display: none;
+  }
+
+  .brand-logo {
+    color: CanvasText;
+  }
+
   .feed-dot,
   .status-dot {
     border: 1px solid CanvasText;

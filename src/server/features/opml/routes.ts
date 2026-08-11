@@ -28,7 +28,7 @@ export async function opmlRoutes(
   app.get("/api/opml/export", async (request, reply) => {
     return reply
       .header("Content-Type", "text/x-opml; charset=utf-8")
-      .header("Content-Disposition", 'attachment; filename="echovale-subscriptions.opml"')
+      .header("Content-Disposition", 'attachment; filename="feedfold-subscriptions.opml"')
       .send(opml.export(userId(request)));
   });
 }

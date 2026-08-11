@@ -39,7 +39,7 @@ export interface AppServices {
   logger?: boolean;
 }
 
-const appBasePath = "/echovale";
+const appBasePath = "/feedfold";
 
 export async function createApp(services: AppServices): Promise<FastifyInstance> {
   const app = Fastify({

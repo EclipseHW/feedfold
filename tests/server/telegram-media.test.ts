@@ -30,8 +30,8 @@ const EMBED_HTML = `<!doctype html><html><body>
 
 describe("Telegram article media", () => {
   it("resolves fresh media for an owned article and exposes stable authenticated URLs", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "echovale-telegram-media-test-"));
-    const database = new AppDatabase(join(directory, "echovale.db"));
+    const directory = await mkdtemp(join(tmpdir(), "feedfold-telegram-media-test-"));
+    const database = new AppDatabase(join(directory, "feedfold.db"));
     const authService = new AuthService(database.auth);
     const reader = authService.register("reader", "reader-password");
     const otherReader = authService.register("other", "reader-password");
@@ -85,7 +85,7 @@ describe("Telegram article media", () => {
       () => Promise.all([refresh.stop(), extraction.stop()]).then(() => undefined),
       () => app.close(),
     );
-    const readerCookie = `echovale_session=${reader.token}`;
+    const readerCookie = `feedfold_session=${reader.token}`;
     const request = (url: string) =>
       app.inject({ method: "GET", url, headers: { cookie: readerCookie } });
 
@@ -130,7 +130,7 @@ describe("Telegram article media", () => {
     const hiddenFromOtherAccount = await app.inject({
       method: "GET",
       url: `/api/articles/${article.id}/telegram-media`,
-      headers: { cookie: `echovale_session=${otherReader.token}` },
+      headers: { cookie: `feedfold_session=${otherReader.token}` },
     });
     expect(hiddenFromOtherAccount.statusCode).toBe(404);
   });

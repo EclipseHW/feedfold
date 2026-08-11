@@ -277,7 +277,7 @@ async function materializeOpenShadowRoots(page: Page): Promise<void> {
         if (!element.shadowRoot) continue;
         roots.push(element.shadowRoot);
         const container = document.createElement("div");
-        container.setAttribute("data-echovale-shadow-root", "");
+        container.setAttribute("data-feedfold-shadow-root", "");
         for (const child of element.shadowRoot.childNodes) container.append(child.cloneNode(true));
         element.append(container);
       }
@@ -421,7 +421,7 @@ function browserFailure(error: unknown): WebFeedError {
   const message = error instanceof Error ? error.message : "Unknown browser error";
   if (/executable doesn't exist|browser.*not found|failed to launch/i.test(message)) {
     return new WebFeedError(
-      "This echovale server cannot load JavaScript pages. Check the server's Chromium setup.",
+      "This feedfold server cannot load JavaScript pages. Check the server's Chromium setup.",
       "unsupported_content",
       null,
       { cause: error },
@@ -559,7 +559,7 @@ export class WebFeedBrowserLoader {
     let transferredResourceBytes = 0;
     let contentRequestFailure: ContentRequestFailure | null = null;
     const pendingContentRequests = new Set<Request>();
-    const pendingRequestBinding = `__echovalePending${randomBytes(12).toString("hex")}`;
+    const pendingRequestBinding = `__feedfoldPending${randomBytes(12).toString("hex")}`;
     try {
       context = await browser.newContext({
         acceptDownloads: false,
@@ -739,7 +739,7 @@ export class WebFeedBrowserLoader {
         );
       if (await detectedChallenge(page)) {
         throw new WebFeedError(
-          "This page requires a CAPTCHA or bot check that echovale cannot complete. Choose another page.",
+          "This page requires a CAPTCHA or bot check that feedfold cannot complete. Choose another page.",
           "access_blocked",
           status,
         );
@@ -764,7 +764,7 @@ export class WebFeedBrowserLoader {
       const bodyText = await page.evaluate(() => document.body?.innerText ?? "");
       if (challengeDetected(title, bodyText.slice(0, 50_000))) {
         throw new WebFeedError(
-          "This page requires a CAPTCHA or bot check that echovale cannot complete. Choose another page.",
+          "This page requires a CAPTCHA or bot check that feedfold cannot complete. Choose another page.",
           "access_blocked",
           status,
         );
@@ -801,7 +801,7 @@ export class WebFeedBrowserLoader {
       if (!singleLine(bodyText)) {
         if (!domContentLoaded) {
           throw new WebFeedError(
-            "This page did not finish loading before echovale could read it. Try again.",
+            "This page did not finish loading before feedfold could read it. Try again.",
             "javascript_timeout",
             status,
           );

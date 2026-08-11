@@ -18,8 +18,8 @@ afterEach(async () => {
 
 describe("feed and folder management", () => {
   it("manages a subscription in place and returns persisted feed settings", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "echovale-feed-management-test-"));
-    const database = new AppDatabase(join(directory, "echovale.db"), 37);
+    const directory = await mkdtemp(join(tmpdir(), "feedfold-feed-management-test-"));
+    const database = new AppDatabase(join(directory, "feedfold.db"), 37);
     const authService = new AuthService(database.auth, 37);
     const extraction = new ExtractionQueue(database.extractions, 1, 1_000);
     const refresh = new FeedRefreshService(database.feeds, 1, 1_000);

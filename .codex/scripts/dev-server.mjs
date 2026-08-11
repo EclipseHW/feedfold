@@ -28,7 +28,7 @@ if (commonGitResult.status !== 0) {
 }
 const commonGitPath = realpathSync(commonGitResult.stdout.trim());
 const sharedEnvPath = join(dirname(commonGitPath), ".env");
-const sharedDatabasePath = join(commonGitPath, "codex", "echovale.db");
+const sharedDatabasePath = join(commonGitPath, "codex", "feedfold.db");
 if (existsSync(sharedEnvPath)) process.loadEnvFile(sharedEnvPath);
 const runtimePath = join(worktreePath, ".codex", "runtime");
 const statePath = join(runtimePath, "dev-server.json");
@@ -218,7 +218,7 @@ async function start() {
 
   const [apiPort, webPort] = await Promise.all([availablePort(), availablePort()]);
   const apiOrigin = `http://127.0.0.1:${apiPort}`;
-  const readyUrl = `http://127.0.0.1:${webPort}/echovale/`;
+  const readyUrl = `http://127.0.0.1:${webPort}/feedfold/`;
   const healthUrl = `${apiOrigin}/health`;
   mkdirSync(runtimePath, { recursive: true });
   const logDescriptor = openSync(logPath, "w");
@@ -228,8 +228,8 @@ async function start() {
     env: {
       ...process.env,
       COMPOSE_PROJECT_NAME: basename(sourceTreePath),
-      ECHOVALE_DEV_API_ORIGIN: apiOrigin,
-      ECHOVALE_DEV_PORT: String(webPort),
+      FEEDFOLD_DEV_API_ORIGIN: apiOrigin,
+      FEEDFOLD_DEV_PORT: String(webPort),
       DATABASE_PATH: sharedDatabasePath,
       PORT: String(apiPort),
     },

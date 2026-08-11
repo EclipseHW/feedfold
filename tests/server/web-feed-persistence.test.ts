@@ -15,9 +15,9 @@ afterEach(async () => {
 });
 
 async function temporaryDatabase(): Promise<AppDatabase> {
-  const directory = await mkdtemp(join(tmpdir(), "echovale-web-feed-test-"));
+  const directory = await mkdtemp(join(tmpdir(), "feedfold-web-feed-test-"));
   directories.push(directory);
-  return new AppDatabase(join(directory, "echovale.db"));
+  return new AppDatabase(join(directory, "feedfold.db"));
 }
 
 function config(pageUrl: string, item = ".card"): WebFeedConfig {
@@ -311,9 +311,9 @@ describe("web feed persistence", () => {
   });
 
   it("keeps web feeds on a three-hour schedule independently of published feeds", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "echovale-web-feed-schedule-test-"));
+    const directory = await mkdtemp(join(tmpdir(), "feedfold-web-feed-schedule-test-"));
     directories.push(directory);
-    const path = join(directory, "echovale.db");
+    const path = join(directory, "feedfold.db");
     const pageUrl = "https://example.test/publications";
     const database = new AppDatabase(path);
     const webFeed = database.feeds.createWebFeed(TEST_USER_ID, {

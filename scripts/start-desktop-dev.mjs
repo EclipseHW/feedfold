@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { setTimeout } from "node:timers/promises";
 
-const url = `http://127.0.0.1:${process.env.ECHOVALE_DEV_PORT ?? "45173"}/echovale/`;
+const url = `http://127.0.0.1:${process.env.FEEDFOLD_DEV_PORT ?? "45173"}/feedfold/`;
 const deadline = Date.now() + 30_000;
 
 while (Date.now() < deadline) {
@@ -21,7 +21,7 @@ if (Date.now() >= deadline) {
 
 const desktop = spawn(process.execPath, ["scripts/run-desktop.mjs"], {
   cwd: process.cwd(),
-  env: { ...process.env, ECHOVALE_DESKTOP_DEV_URL: url },
+  env: { ...process.env, FEEDFOLD_DESKTOP_DEV_URL: url },
   stdio: "inherit",
 });
 

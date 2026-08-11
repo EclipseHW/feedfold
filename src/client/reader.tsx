@@ -500,7 +500,7 @@ export function AppSkeleton() {
       className="app-shell app-loading"
       role="status"
       aria-busy="true"
-      aria-label="Loading echovale"
+      aria-label="Loading feedfold"
     >
       <aside className="sidebar skeleton-sidebar">
         <div className="skeleton-line wide" />
@@ -523,7 +523,7 @@ export function StartupError({ message, retry }: { message: string; retry: () =>
   return (
     <main className="startup-state">
       <BrandLogo className="startup-logo" />
-      <h1>echovale is unavailable</h1>
+      <h1>feedfold is unavailable</h1>
       <p>{message}</p>
       <button className="primary-button" type="button" onClick={retry}>
         <RefreshCw aria-hidden="true" size={16} />
@@ -2721,7 +2721,7 @@ function ArticleText({
           <LoaderCircle className="spin" aria-hidden="true" size={18} />
           <div>
             <strong>Loading the full article</strong>
-            <p>You can keep reading the feed text while echovale loads the source page.</p>
+            <p>You can keep reading the feed text while feedfold loads the source page.</p>
           </div>
         </div>
         <FeedArticleText article={article} showYouTubeDescriptions={showYouTubeDescriptions} />

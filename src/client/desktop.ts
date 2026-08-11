@@ -1,17 +1,17 @@
-import type { DesktopOperation, EchovaleDesktopBridge } from "../shared/desktop.js";
+import type { DesktopOperation, FeedfoldDesktopBridge } from "../shared/desktop.js";
 
 declare global {
   interface Window {
-    echovaleDesktop?: EchovaleDesktopBridge;
+    feedfoldDesktop?: FeedfoldDesktopBridge;
   }
 }
 
 export function isDesktopApp(): boolean {
-  return window.echovaleDesktop?.platform === "desktop";
+  return window.feedfoldDesktop?.platform === "desktop";
 }
 
 export async function invokeDesktop<T>(operation: DesktopOperation, payload?: unknown): Promise<T> {
-  const bridge = window.echovaleDesktop;
+  const bridge = window.feedfoldDesktop;
   if (!bridge) throw new Error("The desktop bridge is unavailable.");
   const response = await bridge.invoke({ operation, payload });
   if (!response.ok) {

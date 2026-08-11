@@ -1,7 +1,7 @@
 import { fetchPublic } from "./public-network.js";
 
 const CACHE_TTL_MS = 60_000;
-const USER_AGENT = "echovale/0.2 (+self-hosted feed reader)";
+const USER_AGENT = "feedfold/0.2 (+self-hosted feed reader)";
 
 export interface XPostMedia {
   url: string;

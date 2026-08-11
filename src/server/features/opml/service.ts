@@ -104,7 +104,7 @@ export class OpmlService {
     });
 
     const document: Opml.Document<Date> = {
-      head: { title: "echovale subscriptions", dateCreated: new Date() },
+      head: { title: "feedfold subscriptions", dateCreated: new Date() },
       body: {
         outlines: [
           ...folders.filter((folder) => folder.parentId === null).map(buildFolder),

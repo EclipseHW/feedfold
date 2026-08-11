@@ -10,15 +10,15 @@ import { FeedRefreshService } from "../../src/server/refresh.js";
 
 describe("production app hosting", () => {
   it("serves navigation, assets, and APIs from the application base path", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "echovale-static-hosting-test-"));
+    const directory = await mkdtemp(join(tmpdir(), "feedfold-static-hosting-test-"));
     const staticDirectory = join(directory, "client");
     await mkdir(join(staticDirectory, "assets"), { recursive: true });
     await Promise.all([
-      writeFile(join(staticDirectory, "index.html"), "<main>echovale shell</main>"),
+      writeFile(join(staticDirectory, "index.html"), "<main>feedfold shell</main>"),
       writeFile(join(staticDirectory, "assets", "app.css"), "body { color: green; }"),
     ]);
 
-    const database = new AppDatabase(join(directory, "echovale.db"), 20);
+    const database = new AppDatabase(join(directory, "feedfold.db"), 20);
     const authService = new AuthService(database.auth, 20);
     const extraction = new ExtractionQueue(database.extractions, 1, 1_000);
     const refresh = new FeedRefreshService(database.feeds, 1, 1_000);
@@ -31,16 +31,16 @@ describe("production app hosting", () => {
     });
 
     try {
-      const navigation = await app.inject({ method: "GET", url: "/echovale/feeds/all" });
+      const navigation = await app.inject({ method: "GET", url: "/feedfold/feeds/all" });
       expect(navigation.statusCode).toBe(200);
-      expect(navigation.body).toBe("<main>echovale shell</main>");
+      expect(navigation.body).toBe("<main>feedfold shell</main>");
 
-      const asset = await app.inject({ method: "GET", url: "/echovale/assets/app.css" });
+      const asset = await app.inject({ method: "GET", url: "/feedfold/assets/app.css" });
       expect(asset.statusCode).toBe(200);
       expect(asset.headers["content-type"]).toContain("text/css");
       expect(asset.body).toBe("body { color: green; }");
 
-      const api = await app.inject({ method: "GET", url: "/echovale/api/auth/session" });
+      const api = await app.inject({ method: "GET", url: "/feedfold/api/auth/session" });
       expect(api.statusCode).toBe(401);
       expect(api.json()).toEqual({ error: "Sign in to continue." });
     } finally {

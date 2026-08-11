@@ -6,7 +6,15 @@ interface BrandIdentityProps {
 export function BrandLogo({ className = "" }: { className?: string }) {
   return (
     <span className={`brand-logo${className ? ` ${className}` : ""}`} aria-hidden="true">
-      <img src={`${import.meta.env.BASE_URL}icons/pwa-192.png`} alt="" width="192" height="192" />
+      <svg viewBox="14 14 72 72" focusable="false">
+        <title>Feedfold Plain Grid logo</title>
+        <rect x="20" y="18" width="18" height="18" rx="4" />
+        <rect x="41" y="18" width="18" height="18" rx="4" />
+        <rect x="62" y="18" width="18" height="18" rx="4" />
+        <rect x="20" y="41" width="18" height="18" rx="4" />
+        <rect x="41" y="41" width="18" height="18" rx="4" />
+        <rect x="20" y="64" width="18" height="18" rx="4" />
+      </svg>
     </span>
   );
 }
@@ -18,7 +26,7 @@ export function BrandIdentity({ className = "", decorative = false }: BrandIdent
       aria-hidden={decorative || undefined}
     >
       <BrandLogo />
-      <span className="brand-wordmark">echovale</span>
+      <span className="brand-wordmark">feedfold</span>
     </span>
   );
 }

@@ -3,14 +3,14 @@ import {
   DESKTOP_DATA_CHANGED_CHANNEL,
   type DesktopRequest,
   type DesktopResponse,
-  type EchovaleDesktopBridge,
+  type FeedfoldDesktopBridge,
 } from "../shared/desktop.js";
 
-const bridge: EchovaleDesktopBridge = Object.freeze({
+const bridge: FeedfoldDesktopBridge = Object.freeze({
   platform: "desktop" as const,
   invoke: (request: DesktopRequest) =>
-    ipcRenderer.invoke("echovale:invoke", request) as Promise<DesktopResponse>,
-  exportOpml: () => ipcRenderer.invoke("echovale:export-opml") as Promise<DesktopResponse>,
+    ipcRenderer.invoke("feedfold:invoke", request) as Promise<DesktopResponse>,
+  exportOpml: () => ipcRenderer.invoke("feedfold:export-opml") as Promise<DesktopResponse>,
   onDataChanged: (listener: () => void) => {
     const handleDataChanged = () => listener();
     ipcRenderer.on(DESKTOP_DATA_CHANGED_CHANNEL, handleDataChanged);
@@ -18,4 +18,4 @@ const bridge: EchovaleDesktopBridge = Object.freeze({
   },
 });
 
-contextBridge.exposeInMainWorld("echovaleDesktop", bridge);
+contextBridge.exposeInMainWorld("feedfoldDesktop", bridge);

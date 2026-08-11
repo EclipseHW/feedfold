@@ -78,7 +78,7 @@ function fixturePage(broken: boolean): string {
   return `<!doctype html>
     <html>
       <head>
-        <title>echovale fixture</title>
+        <title>feedfold fixture</title>
         <link rel="stylesheet" href="/fixture.css">
       </head>
       <body>
@@ -141,7 +141,7 @@ describe("web-feed browser loading and network security", () => {
     const analysis = await service.analyze("owner", baseUrl);
     expect(analysis).toMatchObject({
       pageUrl: `${baseUrl}/`,
-      title: "echovale fixture",
+      title: "feedfold fixture",
       savedSelectionMatched: false,
       selectedCandidateId: null,
     });

@@ -9,7 +9,7 @@ import { PwaUpdate } from "./pwa-update";
 import "./styles.css";
 
 const root = document.getElementById("root");
-if (!root) throw new Error("The echovale root element is missing.");
+if (!root) throw new Error("The feedfold root element is missing.");
 
 const POINTER_MOVE_THRESHOLD = 4;
 const TOASTER_STYLE = {

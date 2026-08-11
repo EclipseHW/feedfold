@@ -5,7 +5,7 @@ import {
   telegramPostEmbedUrl,
 } from "./telegram-feed.js";
 
-const USER_AGENT = "echovale/0.1 (+self-hosted feed reader)";
+const USER_AGENT = "feedfold/0.1 (+self-hosted feed reader)";
 const CACHE_TTL_MS = 60_000;
 
 interface CachedTelegramMedia {

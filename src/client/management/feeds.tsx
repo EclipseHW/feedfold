@@ -213,7 +213,7 @@ function FeedsDesignContract() {
     markerRef.current?.replaceChildren(
       document.createComment(`
 THESIS: A compact signal ledger makes subscriptions findable and anomalies obvious; it refuses stacked mobile data cards.
-OWN-WORLD: Echovale charcoal and sparse moss, thin separators, compact controls, exception-only amber, flat rows, anchored menus.
+OWN-WORLD: Feedfold charcoal and sparse moss, thin separators, compact controls, exception-only amber, flat rows, anchored menus.
 STORY: Search or filter, scan health, repair failures in context, and open one menu for deeper management. Folders retain their own clear view.
 FIRST VIEWPORT: Compact app bar, two tabs, one search/filter row, then 60–68px feed rows; Add feed stays top-right.
 FORM: Grounded structure 6, flat adaptive ledger, surface seed acac87d8.
@@ -1016,7 +1016,7 @@ function AddFeedForm({
             <h2 ref={sourceHeadingRef} tabIndex={-1}>
               What do you want to follow?
             </h2>
-            <p>Choose a source. You will preview what Echovale found before anything is added.</p>
+            <p>Choose a source. You will preview what Feedfold found before anything is added.</p>
           </header>
           <div className="add-feed-source-list">
             {ADD_FEED_SOURCE_OPTIONS.map((option) => {
@@ -1055,7 +1055,7 @@ function AddFeedForm({
           <h2>{analyzingWebPage ? "Finding repeatable entries" : inputConfig?.loading}</h2>
           <p>
             {analyzingWebPage
-              ? "Echovale is loading the page and looking for groups of links that repeat."
+              ? "Feedfold is loading the page and looking for groups of links that repeat."
               : sourceType === "telegram"
                 ? "Loading the public channel and its latest posts."
                 : sourceType === "x"
@@ -1159,7 +1159,7 @@ function AddFeedForm({
                 <>
                   {!selectedCandidate.availableFields.includes("date") ? (
                     <p className="web-feed-date-fallback">
-                      These entries have no publication date. Echovale will use the time it first
+                      These entries have no publication date. Feedfold will use the time it first
                       discovers each one.
                     </p>
                   ) : null}
@@ -1324,7 +1324,7 @@ export function AddFeedPage({
     <div className="management-page add-feed-page">
       <PageHeader
         title="Add feed"
-        description="Choose a source, preview what Echovale finds, then subscribe."
+        description="Choose a source, preview what Feedfold finds, then subscribe."
         onMenu={onMenu}
         actions={
           <button

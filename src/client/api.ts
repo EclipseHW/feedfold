@@ -31,7 +31,7 @@ import type {
 } from "../shared/types.js";
 import { invokeDesktop, isDesktopApp } from "./desktop.js";
 
-export const AUTH_REQUIRED_EVENT = "echovale:auth-required";
+export const AUTH_REQUIRED_EVENT = "feedfold:auth-required";
 const appBase =
   (import.meta as ImportMeta & { env?: { BASE_URL?: string } }).env?.BASE_URL?.replace(/\/$/, "") ??
   "";
@@ -156,7 +156,7 @@ function subscribeReaderDataInvalidations(listener: () => void): () => void {
   const invalidate = () => {
     if (active) listener();
   };
-  const bridge = window.echovaleDesktop;
+  const bridge = window.feedfoldDesktop;
   const unsubscribe = bridge
     ? bridge.onDataChanged(invalidate)
     : (() => {
@@ -398,7 +398,7 @@ export const api = {
   },
 
   async exportOpml(): Promise<void> {
-    const bridge = window.echovaleDesktop;
+    const bridge = window.feedfoldDesktop;
     if (!bridge) {
       window.location.assign(appUrl("/api/opml/export"));
       return;

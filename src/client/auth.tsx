@@ -7,7 +7,7 @@ import { BrandIdentity } from "./brand";
 export function SessionLoading() {
   return (
     <main className="auth-page" aria-busy="true">
-      <div className="session-loading" role="status" aria-label="Opening echovale">
+      <div className="session-loading" role="status" aria-label="Opening feedfold">
         <BrandIdentity decorative />
       </div>
     </main>

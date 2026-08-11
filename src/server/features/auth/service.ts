@@ -2,7 +2,7 @@ import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypt
 import type { SessionUser } from "../../../shared/types.js";
 import type { AuthRepository, StoredSession } from "./repository.js";
 
-const SESSION_COOKIE = "echovale_session";
+const SESSION_COOKIE = "feedfold_session";
 const SESSION_SECONDS = 60 * 60 * 24 * 30;
 export interface LoginSession {
   token: string;

@@ -33,7 +33,7 @@ export function youtubeEmbedRequestHeaders(
 
   const refererHeader = headerName(request.requestHeaders, "referer");
   const referer = refererHeader ? request.requestHeaders[refererHeader] : null;
-  if (referer && !referer.startsWith("echovale://")) return request.requestHeaders;
+  if (referer && !referer.startsWith("feedfold://")) return request.requestHeaders;
 
   return {
     ...request.requestHeaders,

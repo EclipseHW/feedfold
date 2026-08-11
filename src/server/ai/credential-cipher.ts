@@ -69,7 +69,7 @@ export class CredentialCipher implements CredentialCipherLike {
       throw new AiError(
         "AI_CREDENTIAL_UNREADABLE",
         409,
-        "echovale could not decrypt the saved API key. Enter it again in Settings.",
+        "feedfold could not decrypt the saved API key. Enter it again in Settings.",
       );
     }
   }

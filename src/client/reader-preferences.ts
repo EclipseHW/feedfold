@@ -27,7 +27,7 @@ function storedBoolean(key: string, fallback: boolean): boolean {
 }
 
 function accountStorageKey(userId: number, setting: string): string {
-  return `echovale-account-${userId}-${setting}`;
+  return `feedfold-account-${userId}-${setting}`;
 }
 
 export function resolveTheme(theme: Theme, prefersLight: boolean): ResolvedTheme {

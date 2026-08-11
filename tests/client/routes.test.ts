@@ -8,7 +8,7 @@ import {
   routeAfterFeedDeletion,
 } from "../../src/client/routes.js";
 
-const BASE_PATH = "/echovale/";
+const BASE_PATH = "/feedfold/";
 
 describe("application routes", () => {
   it.each([
@@ -37,26 +37,26 @@ describe("application routes", () => {
   });
 
   it("uses the canonical unread page for the app root and malformed paths", () => {
-    expect(parseAppRoute("/echovale/", "", BASE_PATH)).toEqual(DEFAULT_READER_ROUTE);
-    expect(parseAppRoute("/echovale/articles/0", "", BASE_PATH)).toEqual(DEFAULT_READER_ROUTE);
-    expect(parseAppRoute("/echovale/folders/nope/all", "", BASE_PATH)).toEqual(
+    expect(parseAppRoute("/feedfold/", "", BASE_PATH)).toEqual(DEFAULT_READER_ROUTE);
+    expect(parseAppRoute("/feedfold/articles/0", "", BASE_PATH)).toEqual(DEFAULT_READER_ROUTE);
+    expect(parseAppRoute("/feedfold/folders/nope/all", "", BASE_PATH)).toEqual(
       DEFAULT_READER_ROUTE,
     );
     expect(parseAppRoute("/another-app/settings", "", BASE_PATH)).toEqual(DEFAULT_READER_ROUTE);
   });
 
   it("keeps submitted search only on collection routes", () => {
-    expect(parseAppRoute("/echovale/feeds/9/unread", "?q=%20AI%20agents%20", BASE_PATH)).toEqual({
+    expect(parseAppRoute("/feedfold/feeds/9/unread", "?q=%20AI%20agents%20", BASE_PATH)).toEqual({
       kind: "reader",
       scope: "feed",
       scopeId: 9,
       state: "unread",
       search: "AI agents",
     });
-    expect(parseAppRoute("/echovale/settings", "?q=ignored", BASE_PATH)).toEqual({
+    expect(parseAppRoute("/feedfold/settings", "?q=ignored", BASE_PATH)).toEqual({
       kind: "settings",
     });
-    expect(parseAppRoute("/echovale/articles/8", "?q=ignored", BASE_PATH)).toEqual({
+    expect(parseAppRoute("/feedfold/articles/8", "?q=ignored", BASE_PATH)).toEqual({
       kind: "article",
       articleId: 8,
     });
@@ -64,7 +64,7 @@ describe("application routes", () => {
 
   it("accepts an unescaped feed URL across the remaining path", () => {
     expect(
-      parseAppRoute("/echovale/feeds/add/https://example.com/news/feed.xml", "", BASE_PATH),
+      parseAppRoute("/feedfold/feeds/add/https://example.com/news/feed.xml", "", BASE_PATH),
     ).toEqual({
       kind: "add-feed",
       sourceUrl: "https://example.com/news/feed.xml",

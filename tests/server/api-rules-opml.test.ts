@@ -42,9 +42,9 @@ async function json<T>(url: string, init?: RequestInit): Promise<T> {
 
 describe("live API, OPML, and filtering rules", () => {
   it("requires a session and keeps each account's data isolated", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "echovale-auth-test-"));
+    const directory = await mkdtemp(join(tmpdir(), "feedfold-auth-test-"));
     cleanups.push(() => rm(directory, { recursive: true, force: true }));
-    const database = new AppDatabase(join(directory, "echovale.db"));
+    const database = new AppDatabase(join(directory, "feedfold.db"));
     const authService = new AuthService(database.auth);
     const extraction = new ExtractionQueue(database.extractions, 1, 1_000);
     const refresh = new FeedRefreshService(database.feeds, 1, 1_000);
@@ -84,6 +84,7 @@ describe("live API, OPML, and filtering rules", () => {
       return cookie;
     };
     const registrationCookie = await register(TEST_ACCOUNTS[0]);
+    expect(registrationCookie).toMatch(/^feedfold_session=/);
     expect(
       (
         await app.inject({
@@ -559,9 +560,9 @@ describe("live API, OPML, and filtering rules", () => {
     });
     feedBase = await listen(feedServer);
 
-    const directory = await mkdtemp(join(tmpdir(), "echovale-api-test-"));
+    const directory = await mkdtemp(join(tmpdir(), "feedfold-api-test-"));
     cleanups.push(() => rm(directory, { recursive: true, force: true }));
-    const database = new AppDatabase(join(directory, "echovale.db"));
+    const database = new AppDatabase(join(directory, "feedfold.db"));
     const authService = new AuthService(database.auth);
     expect(
       authService.register(TEST_ACCOUNTS[0].username, TEST_ACCOUNTS[0].password),
@@ -739,7 +740,7 @@ describe("live API, OPML, and filtering rules", () => {
     });
 
     const exported = await fetch(`${apiBase}/api/opml/export`, { headers: { Cookie: cookie } });
-    expect(exported.headers.get("content-disposition")).toContain("echovale-subscriptions.opml");
+    expect(exported.headers.get("content-disposition")).toContain("feedfold-subscriptions.opml");
     const exportedText = await exported.text();
     expect(exportedText).toContain('text="Parent"');
     expect(exportedText).toContain('text="Child"');

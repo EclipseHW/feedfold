@@ -13,7 +13,8 @@ FROM node:24.18.0-bookworm-slim AS runtime
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=3000 \
-    DATABASE_PATH=/data/echovale.db \
+    DATABASE_PATH=/data/feedfold.db \
+    LEGACY_DATABASE_PATH=/data/echovale.db \
     PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 
 WORKDIR /app

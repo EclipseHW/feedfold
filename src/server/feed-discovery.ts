@@ -7,7 +7,7 @@ import { parseAndNormalizeFeed } from "./feed-parser.js";
 import { PublicNetworkError } from "./public-network.js";
 import { parseAndNormalizeTelegramFeed, telegramChannelUrls } from "./telegram-feed.js";
 
-const USER_AGENT = "echovale/0.1 (+self-hosted feed reader)";
+const USER_AGENT = "feedfold/0.1 (+self-hosted feed reader)";
 const FEED_ACCEPT =
   "application/atom+xml,application/rss+xml,application/feed+json,application/json;q=0.9,application/xml;q=0.8,text/xml;q=0.8,text/html;q=0.7,*/*;q=0.5";
 const FEED_MIME_TYPES = new Set([

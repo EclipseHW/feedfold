@@ -250,7 +250,7 @@ export function Sidebar({
         return;
       }
       event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("application/x-echovale-feed", String(feed.id));
+      event.dataTransfer.setData("application/x-feedfold-feed", String(feed.id));
       setDraggedFeedId(feed.id);
       setDropTarget(null);
     },

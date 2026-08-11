@@ -17,7 +17,7 @@ export function PwaUpdate() {
       data-motion-state={presence.state}
       inert={presence.state === "closed" ? true : undefined}
       aria-live="polite"
-      aria-label="echovale update available"
+      aria-label="feedfold update available"
     >
       <span>New version is available</span>
       <div className="pwa-update-actions">

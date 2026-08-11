@@ -232,9 +232,9 @@ Return only the summary in plain text.`,
   });
 
   it("repairs media responses and backfills article images when upgrading an existing database", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "echovale-migration-test-"));
+    const directory = await mkdtemp(join(tmpdir(), "feedfold-migration-test-"));
     directories.push(directory);
-    const path = join(directory, "echovale.db");
+    const path = join(directory, "feedfold.db");
     const oldDatabase = new Sqlite(path);
     oldDatabase.exec(`
       CREATE TABLE migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);

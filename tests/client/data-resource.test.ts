@@ -582,8 +582,8 @@ describe("reader data resource", () => {
   });
 
   it("replaces a stale add-feed snapshot after ingestion and reloads articles", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "echovale-data-resource-test-"));
-    const database = new AppDatabase(join(directory, "echovale.db"));
+    const directory = await mkdtemp(join(tmpdir(), "feedfold-data-resource-test-"));
+    const database = new AppDatabase(join(directory, "feedfold.db"));
     const authService = new AuthService(database.auth);
     const extraction = new ExtractionQueue(database.extractions, 1, 1_000);
     const fetchStarted = [deferred(), deferred()];

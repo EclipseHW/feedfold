@@ -17,7 +17,7 @@ export default async function signLocalMacBuild(context) {
   if (context.electronPlatformName !== "darwin") return;
 
   const appPath = join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`);
-  const localIdentity = process.env.ECHOVALE_LOCAL_SIGNING_IDENTITY;
+  const localIdentity = process.env.FEEDFOLD_LOCAL_SIGNING_IDENTITY;
   if (localIdentity) {
     console.log(`Signing the local macOS build with ${localIdentity}.`);
     await run("codesign", ["--force", "--deep", "--sign", localIdentity, appPath]);

@@ -39,7 +39,7 @@ export class DesktopCredentialCipher implements CredentialCipherLike {
       throw new AiError(
         "AI_CREDENTIAL_UNREADABLE",
         409,
-        "echovale could not read the saved API key from this Mac. Enter it again in Settings.",
+        "feedfold could not read the saved API key from this Mac. Enter it again in Settings.",
       );
     }
   }

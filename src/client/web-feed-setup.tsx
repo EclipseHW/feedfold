@@ -361,7 +361,7 @@ export function WebFeedSetup({
                 <p>
                   {analysis.candidates.length > 0
                     ? "No group could be recommended. Select one representative entry in the page preview."
-                    : "This page has no repeated entry groups that echovale can follow."}
+                    : "This page has no repeated entry groups that feedfold can follow."}
                 </p>
                 {analysis.candidates.length === 0 && onBack ? (
                   <button className="secondary-button" type="button" onClick={onBack}>
@@ -398,7 +398,7 @@ export function WebFeedSetup({
               <h4 ref={reviewHeadingRef} id={`${headingId}-preview`} tabIndex={-1}>
                 Review this entry group
               </h4>
-              <p>These are the entries Echovale will follow from this page.</p>
+              <p>These are the entries Feedfold will follow from this page.</p>
             </div>
             <FieldAvailability candidate={selectedCandidate} />
           </div>

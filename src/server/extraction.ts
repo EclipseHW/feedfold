@@ -76,7 +76,7 @@ export async function extractArticle(
       const response = await fetcher(record.url, {
         headers: {
           Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.5",
-          "User-Agent": "echovale/0.1 (+self-hosted feed reader)",
+          "User-Agent": "feedfold/0.1 (+self-hosted feed reader)",
         },
         signal: AbortSignal.timeout(timeoutMs),
       });

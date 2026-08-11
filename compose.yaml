@@ -2,7 +2,7 @@ services:
   echovale:
     build:
       context: .
-    image: echovale:local
+    image: feedfold:local
     restart: unless-stopped
     init: true
     read_only: true
@@ -17,7 +17,8 @@ services:
       NODE_ENV: production
       HOST: 0.0.0.0
       PORT: "3000"
-      DATABASE_PATH: /data/echovale.db
+      DATABASE_PATH: /data/feedfold.db
+      LEGACY_DATABASE_PATH: /data/echovale.db
       POLL_INTERVAL_MINUTES: "${POLL_INTERVAL_MINUTES:-20}"
       FEED_FETCH_TIMEOUT_MS: "${FEED_FETCH_TIMEOUT_MS:-15000}"
       WEB_FEED_LOAD_TIMEOUT_MS: "${WEB_FEED_LOAD_TIMEOUT_MS:-30000}"
@@ -25,7 +26,7 @@ services:
       AI_REQUEST_TIMEOUT_MS: "${AI_REQUEST_TIMEOUT_MS:-60000}"
       AI_CREDENTIALS_KEY: "${AI_CREDENTIALS_KEY:-}"
     ports:
-      - "${ECHOVALE_BIND_ADDRESS:-127.0.0.1}:${ECHOVALE_PORT:-3000}:3000"
+      - "${FEEDFOLD_BIND_ADDRESS:-${ECHOVALE_BIND_ADDRESS:-127.0.0.1}}:${FEEDFOLD_PORT:-${ECHOVALE_PORT:-3000}}:3000"
     volumes:
       - echovale-data:/data
     tmpfs:

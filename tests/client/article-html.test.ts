@@ -6,7 +6,7 @@ import { ArticleHtml } from "../../src/client/article-html.js";
 
 describe("article HTML", () => {
   it("opens article images in a keyboard-accessible lightbox", async () => {
-    const dom = new JSDOM('<div id="app"></div>', { url: "https://echovale.test/" });
+    const dom = new JSDOM('<div id="app"></div>', { url: "https://feedfold.test/" });
     const previousWindow = globalThis.window;
     const previousDocument = globalThis.document;
     const previousActEnvironment = Reflect.get(globalThis, "IS_REACT_ACT_ENVIRONMENT");

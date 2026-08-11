@@ -22,6 +22,7 @@ import { ZodError } from "zod";
 import { AiError } from "../server/ai/errors.js";
 import { ApplicationApi, ApplicationApiError, LOCAL_USER_ID } from "../server/application-api.js";
 import { AppDatabase } from "../server/database.js";
+import { migrateLegacyDatabaseFile } from "../server/database-file-migration.js";
 import { InvalidRequestError } from "../server/errors.js";
 import { ExtractionQueue } from "../server/extraction.js";
 import { AiService } from "../server/features/ai/service.js";
@@ -40,9 +41,19 @@ import {
 import { DesktopCredentialCipher } from "./credential-cipher.js";
 import { youtubeEmbedRequestHeaders } from "./youtube-player.js";
 
+const PRODUCT_NAME = "feedfold";
+const LEGACY_PRODUCT_NAME = "echovale";
+const configuredUserDataPath = process.env.FEEDFOLD_DESKTOP_USER_DATA;
+const userDataPath = resolve(configuredUserDataPath ?? join(app.getPath("appData"), PRODUCT_NAME));
+
+// Safe Storage derives its macOS Keychain identity from Electron's internal application name.
+app.setName(LEGACY_PRODUCT_NAME);
+mkdirSync(userDataPath, { recursive: true });
+app.setPath("userData", userDataPath);
+
 protocol.registerSchemesAsPrivileged([
   {
-    scheme: "echovale",
+    scheme: "feedfold",
     privileges: {
       standard: true,
       secure: true,
@@ -53,24 +64,26 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-const DESKTOP_ORIGIN = "echovale://app";
-const APP_URL = `${DESKTOP_ORIGIN}/echovale/`;
+const DESKTOP_ORIGIN = "feedfold://app";
+const APP_URL = `${DESKTOP_ORIGIN}/feedfold/`;
 const DEFAULT_WINDOW_BOUNDS = { width: 1440, height: 940 };
 const MIN_WINDOW_WIDTH = 900;
 const MIN_WINDOW_HEIGHT = 620;
 const WINDOW_STATE_SAVE_DELAY_MS = 250;
-const developmentUrl = process.env.ECHOVALE_DESKTOP_DEV_URL;
-const smokeTest = process.env.ECHOVALE_DESKTOP_SMOKE === "1";
+const developmentUrl = process.env.FEEDFOLD_DESKTOP_DEV_URL;
+const smokeTest = process.env.FEEDFOLD_DESKTOP_SMOKE === "1";
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
+const configuredLegacyDatabasePath = process.env.FEEDFOLD_DESKTOP_LEGACY_DATABASE;
+const legacyDatabasePath = configuredLegacyDatabasePath
+  ? resolve(configuredLegacyDatabasePath)
+  : configuredUserDataPath
+    ? null
+    : join(app.getPath("appData"), LEGACY_PRODUCT_NAME, "echovale.db");
 
 type WindowState = {
   bounds: Rectangle;
   mode: "normal" | "maximized" | "fullscreen";
 };
-
-if (process.env.ECHOVALE_DESKTOP_USER_DATA) {
-  app.setPath("userData", resolve(process.env.ECHOVALE_DESKTOP_USER_DATA));
-}
 
 function positiveInteger(value: string | undefined, fallback: number, name: string): number {
   if (value === undefined) return fallback;
@@ -124,7 +137,7 @@ class DesktopRuntime {
   private readonly unsubscribeFromRefresh: () => void;
 
   constructor() {
-    const databasePath = resolve(join(app.getPath("userData"), "echovale.db"));
+    const databasePath = resolve(join(app.getPath("userData"), "feedfold.db"));
     const pollIntervalMinutes = positiveInteger(
       process.env.POLL_INTERVAL_MINUTES,
       20,
@@ -157,7 +170,7 @@ class DesktopRuntime {
     this.webFeedService = new WebFeedService({
       timeoutMs: webFeedLoadTimeoutMs,
       allowPrivateNetworks:
-        smokeTest && process.env.ECHOVALE_DESKTOP_SMOKE_ALLOW_PRIVATE_NETWORKS === "1",
+        smokeTest && process.env.FEEDFOLD_DESKTOP_SMOKE_ALLOW_PRIVATE_NETWORKS === "1",
       browserFactory: () =>
         chromium.launch({
           executablePath: desktopBrowserExecutable(),
@@ -353,7 +366,7 @@ function errorResponse(error: unknown): DesktopResponse {
   return {
     ok: false,
     error: {
-      message: "echovale could not complete the request. Try again.",
+      message: "feedfold could not complete the request. Try again.",
       status: 500,
       code: null,
     },
@@ -400,7 +413,7 @@ async function invoke(request: DesktopRequest): Promise<DesktopResponse> {
   if (!runtime) {
     return {
       ok: false,
-      error: { message: "echovale is still starting.", status: 503, code: null },
+      error: { message: "feedfold is still starting.", status: 503, code: null },
     };
   }
   try {
@@ -411,7 +424,7 @@ async function invoke(request: DesktopRequest): Promise<DesktopResponse> {
 }
 
 function registerIpc(): void {
-  ipcMain.handle("echovale:invoke", async (event, request: unknown) => {
+  ipcMain.handle("feedfold:invoke", async (event, request: unknown) => {
     if (!trustedIpcSender(event)) {
       return errorResponse(new ApplicationApiError(403, "This request is not allowed."));
     }
@@ -421,7 +434,7 @@ function registerIpc(): void {
     return invoke(request);
   });
 
-  ipcMain.handle("echovale:export-opml", async (event) => {
+  ipcMain.handle("feedfold:export-opml", async (event) => {
     if (!trustedIpcSender(event)) {
       return errorResponse(new ApplicationApiError(403, "This request is not allowed."));
     }
@@ -429,7 +442,7 @@ function registerIpc(): void {
     if (!response.ok || typeof response.value !== "string") return response;
     const options = {
       title: "Export subscriptions",
-      defaultPath: "echovale-subscriptions.opml",
+      defaultPath: "feedfold-subscriptions.opml",
       filters: [{ name: "OPML", extensions: ["opml", "xml"] }],
     };
     const result = mainWindow
@@ -494,8 +507,8 @@ function htmlResponse(body: string, csp: string): Response {
 }
 
 async function applicationResource(pathname: string, request: Request): Promise<Response | null> {
-  if (!runtime) return new Response("echovale is still starting", { status: 503 });
-  const snapshotMatch = pathname.match(/^\/echovale\/api\/web-feed-snapshots\/([^/]+)$/);
+  if (!runtime) return new Response("feedfold is still starting", { status: 503 });
+  const snapshotMatch = pathname.match(/^\/feedfold\/api\/web-feed-snapshots\/([^/]+)$/);
   if (snapshotMatch) {
     try {
       return htmlResponse(
@@ -507,7 +520,7 @@ async function applicationResource(pathname: string, request: Request): Promise<
     }
   }
   const telegramPreviewMatch = pathname.match(
-    /^\/echovale\/api\/articles\/(\d+)\/telegram-media-preview$/,
+    /^\/feedfold\/api\/articles\/(\d+)\/telegram-media-preview$/,
   );
   if (telegramPreviewMatch) {
     try {
@@ -521,7 +534,7 @@ async function applicationResource(pathname: string, request: Request): Promise<
 }
 
 function safeClientPath(clientRoot: string, pathname: string): string | null {
-  const relativePath = pathname.replace(/^\/echovale\/?/, "") || "index.html";
+  const relativePath = pathname.replace(/^\/feedfold\/?/, "") || "index.html";
   const candidate = join(clientRoot, relativePath);
   const outside = relative(clientRoot, candidate);
   if (outside.startsWith("..") || outside.includes(`..${sep}`)) return null;
@@ -530,7 +543,7 @@ function safeClientPath(clientRoot: string, pathname: string): string | null {
 
 async function registerApplicationProtocol(): Promise<void> {
   const clientRoot = join(app.getAppPath(), "dist", "client");
-  await protocol.handle("echovale", async (request) => {
+  await protocol.handle("feedfold", async (request) => {
     try {
       const url = new URL(request.url);
       if (url.host !== "app") return new Response("Not found", { status: 404 });
@@ -556,24 +569,25 @@ async function registerApplicationProtocol(): Promise<void> {
       }
     } catch (error) {
       console.error(error);
-      return new Response("Could not load echovale", { status: 500 });
+      return new Response("Could not load feedfold", { status: 500 });
     }
   });
 }
 
 function installMenu(): void {
+  app.setAboutPanelOptions({ applicationName: PRODUCT_NAME });
   Menu.setApplicationMenu(
     Menu.buildFromTemplate([
       {
-        label: app.name,
+        label: PRODUCT_NAME,
         submenu: [
-          { role: "about" },
+          { label: `About ${PRODUCT_NAME}`, role: "about" },
           { type: "separator" },
-          { role: "hide" },
+          { label: `Hide ${PRODUCT_NAME}`, role: "hide" },
           { role: "hideOthers" },
           { role: "unhide" },
           { type: "separator" },
-          { role: "quit" },
+          { label: `Quit ${PRODUCT_NAME}`, role: "quit" },
         ],
       },
       { role: "editMenu" },
@@ -591,8 +605,8 @@ async function createWindow(): Promise<void> {
     minWidth: MIN_WINDOW_WIDTH,
     minHeight: MIN_WINDOW_HEIGHT,
     show: false,
-    backgroundColor: "#121312",
-    title: "echovale",
+    backgroundColor: "#0f1211",
+    title: "feedfold",
     webPreferences: {
       preload: join(moduleDirectory, "preload.cjs"),
       contextIsolation: true,
@@ -638,14 +652,14 @@ async function createWindow(): Promise<void> {
 
   if (smokeTest) {
     const result = (await window.webContents.executeJavaScript(
-      `window.echovaleDesktop.invoke({ operation: "bootstrap" })`,
+      `window.feedfoldDesktop.invoke({ operation: "bootstrap" })`,
       true,
     )) as DesktopResponse;
     if (!result.ok) throw new Error(result.error.message);
-    const webFeedUrl = process.env.ECHOVALE_DESKTOP_SMOKE_WEB_FEED_URL;
+    const webFeedUrl = process.env.FEEDFOLD_DESKTOP_SMOKE_WEB_FEED_URL;
     if (webFeedUrl) {
       const analysis = (await window.webContents.executeJavaScript(
-        `window.echovaleDesktop.invoke({ operation: "analyzeWebPage", payload: { url: ${JSON.stringify(webFeedUrl)} } })`,
+        `window.feedfoldDesktop.invoke({ operation: "analyzeWebPage", payload: { url: ${JSON.stringify(webFeedUrl)} } })`,
         true,
       )) as DesktopResponse;
       if (!analysis.ok) throw new Error(analysis.error.message);
@@ -653,14 +667,18 @@ async function createWindow(): Promise<void> {
       if (!Array.isArray(candidates) || candidates.length === 0) {
         throw new Error("The packaged web-feed browser did not find the rendered entries.");
       }
-      console.log("ECHOVALE_DESKTOP_WEB_FEED_SMOKE_OK");
+      console.log("FEEDFOLD_DESKTOP_WEB_FEED_SMOKE_OK");
     }
-    console.log("ECHOVALE_DESKTOP_SMOKE_OK");
+    console.log("FEEDFOLD_DESKTOP_SMOKE_OK");
     app.quit();
   }
 }
 
 async function start(): Promise<void> {
+  const databasePath = resolve(join(app.getPath("userData"), "feedfold.db"));
+  if (legacyDatabasePath) {
+    await migrateLegacyDatabaseFile(databasePath, legacyDatabasePath);
+  }
   runtime = new DesktopRuntime();
   runtime.start();
   registerIpc();
@@ -704,7 +722,7 @@ if (!hasInstanceLock) {
     .catch((error) => {
       console.error(error);
       dialog.showErrorBox(
-        "echovale could not start",
+        "feedfold could not start",
         error instanceof Error ? error.message : String(error),
       );
       app.exit(1);

@@ -150,7 +150,7 @@ export class AiService {
       throw new AiError(
         "AI_CREDENTIAL_STORAGE_UNAVAILABLE",
         503,
-        "API key storage is unavailable. Set AI_CREDENTIALS_KEY on the server, then restart echovale.",
+        "API key storage is unavailable. Set AI_CREDENTIALS_KEY on the server, then restart feedfold.",
       );
     }
     const encrypted = cipher.encrypt(userId, provider, apiKey.trim());
@@ -203,7 +203,7 @@ export class AiService {
       throw new AiError(
         "AI_CREDENTIAL_STORAGE_UNAVAILABLE",
         503,
-        "The server cannot decrypt saved API keys. Set AI_CREDENTIALS_KEY, then restart echovale.",
+        "The server cannot decrypt saved API keys. Set AI_CREDENTIALS_KEY, then restart feedfold.",
       );
     }
     const result = await provider.generateText({

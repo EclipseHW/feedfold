@@ -615,7 +615,7 @@ export function RuleForm({
         <section className="rule-form-section" aria-labelledby="rule-action-heading">
           <div className="rule-form-section-heading">
             <h3 id="rule-action-heading">Action</h3>
-            <p>Choose what echovale does when an article matches.</p>
+            <p>Choose what feedfold does when an article matches.</p>
           </div>
           <fieldset className="rule-action-options">
             <legend className="sr-only">Rule action</legend>

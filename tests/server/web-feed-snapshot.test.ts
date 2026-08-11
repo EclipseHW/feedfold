@@ -38,9 +38,9 @@ describe("web-feed snapshot sanitization", () => {
 
     const html = createWebFeedSnapshot(source.window.document, candidates, token);
 
-    expect(html).toContain("data-echovale-candidates");
-    expect(html).toContain("echovale:web-feed-select");
-    expect(html).toContain("echovale:web-feed-highlight");
+    expect(html).toContain("data-feedfold-candidates");
+    expect(html).toContain("feedfold:web-feed-select");
+    expect(html).toContain("feedfold:web-feed-highlight");
     expect(html).toContain(token);
     expect(html).not.toContain("window.compromised");
     expect(html).not.toContain("/one.jpg");
@@ -57,14 +57,14 @@ describe("web-feed snapshot sanitization", () => {
     const messages: unknown[] = [];
     preview.window.addEventListener("message", (event) => messages.push(event.data));
     const firstSelectable = preview.window.document.querySelector<HTMLElement>(
-      "[data-echovale-candidates]",
+      "[data-feedfold-candidates]",
     );
     expect(firstSelectable?.getAttribute("aria-label")).toContain("One");
     firstSelectable?.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(messages.at(-1)).toMatchObject({
-      type: "echovale:web-feed-select",
+      type: "feedfold:web-feed-select",
       messageToken: token,
       candidateId: candidates[0]?.candidate.id,
     });

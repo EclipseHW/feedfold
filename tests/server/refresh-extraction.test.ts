@@ -20,9 +20,9 @@ afterEach(async () => {
 });
 
 async function temporaryDatabase(): Promise<AppDatabase> {
-  const directory = await mkdtemp(join(tmpdir(), "echovale-test-"));
+  const directory = await mkdtemp(join(tmpdir(), "feedfold-test-"));
   cleanups.push(() => rm(directory, { recursive: true, force: true }));
-  return new AppDatabase(join(directory, "echovale.db"));
+  return new AppDatabase(join(directory, "feedfold.db"));
 }
 
 async function listen(server: Server): Promise<string> {
@@ -454,9 +454,9 @@ describe("feed refresh and full-text extraction", () => {
     await refresh.waitForIdle();
 
     expect(feeds.map((feed) => database.feeds.getFeed(TEST_USER_ID, feed.id)?.lastError)).toEqual([
-      "This feed requires browser verification from Imunify360, so echovale cannot refresh it automatically.",
-      "This feed requires browser verification from Cloudflare, so echovale cannot refresh it automatically.",
-      "This feed requires browser verification from Vercel, so echovale cannot refresh it automatically.",
+      "This feed requires browser verification from Imunify360, so feedfold cannot refresh it automatically.",
+      "This feed requires browser verification from Cloudflare, so feedfold cannot refresh it automatically.",
+      "This feed requires browser verification from Vercel, so feedfold cannot refresh it automatically.",
     ]);
   });
 

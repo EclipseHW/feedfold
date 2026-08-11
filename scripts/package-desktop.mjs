@@ -30,7 +30,7 @@ await run(npm, ["run", "build:desktop"]);
 try {
   await rebuildSqliteForElectron(projectPath);
   const builderArguments = [electronBuilderCli, "--mac"];
-  if (process.env.ECHOVALE_LOCAL_SIGNING_IDENTITY) {
+  if (process.env.FEEDFOLD_LOCAL_SIGNING_IDENTITY) {
     builderArguments.push("-c.mac.identity=null");
   }
   if (process.argv.includes("--dir")) builderArguments.push("--dir");

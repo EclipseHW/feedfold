@@ -2,35 +2,35 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 import { VitePWA } from "vite-plugin-pwa";
 
-const apiOrigin = process.env.ECHOVALE_DEV_API_ORIGIN ?? "http://127.0.0.1:43001";
-const devPort = Number(process.env.ECHOVALE_DEV_PORT ?? 45173);
+const apiOrigin = process.env.FEEDFOLD_DEV_API_ORIGIN ?? "http://127.0.0.1:43001";
+const devPort = Number(process.env.FEEDFOLD_DEV_PORT ?? 45173);
 
 export default defineConfig({
-  base: "/echovale/",
+  base: "/feedfold/",
   plugins: [
     react(),
     VitePWA({
       registerType: "prompt",
       manifest: {
-        id: "/echovale/",
-        name: "echovale",
-        short_name: "echovale",
+        id: "/feedfold/",
+        name: "feedfold",
+        short_name: "feedfold",
         description: "A quiet, keyboard-first, self-hosted feed reader.",
-        start_url: "/echovale/",
-        scope: "/echovale/",
+        start_url: "/feedfold/",
+        scope: "/feedfold/",
         display: "standalone",
         categories: ["news", "productivity"],
-        background_color: "#121312",
-        theme_color: "#121312",
+        background_color: "#0f1211",
+        theme_color: "#0f1211",
         icons: [
           {
-            src: "/echovale/icons/pwa-192.png",
+            src: "/feedfold/icons/pwa-192.png",
             sizes: "192x192",
             type: "image/png",
             purpose: "any",
           },
           {
-            src: "/echovale/icons/pwa-512.png",
+            src: "/feedfold/icons/pwa-512.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "any maskable",
@@ -40,24 +40,24 @@ export default defineConfig({
           {
             name: "Unread articles",
             short_name: "Unread",
-            url: "/echovale/articles/unread",
-            icons: [{ src: "/echovale/icons/pwa-192.png", sizes: "192x192" }],
+            url: "/feedfold/articles/unread",
+            icons: [{ src: "/feedfold/icons/pwa-192.png", sizes: "192x192" }],
           },
           {
             name: "Starred articles",
             short_name: "Starred",
-            url: "/echovale/articles/starred",
-            icons: [{ src: "/echovale/icons/pwa-192.png", sizes: "192x192" }],
+            url: "/feedfold/articles/starred",
+            icons: [{ src: "/feedfold/icons/pwa-192.png", sizes: "192x192" }],
           },
         ],
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,png}"],
-        navigateFallback: "/echovale/index.html",
-        navigateFallbackDenylist: [/^\/echovale\/(?:api|health)(?:\/|$)/],
+        navigateFallback: "/feedfold/index.html",
+        navigateFallbackDenylist: [/^\/feedfold\/(?:api|health)(?:\/|$)/],
         runtimeCaching: [
           {
-            urlPattern: /\/echovale\/(?:api|health)(?:\/|$)/,
+            urlPattern: /\/feedfold\/(?:api|health)(?:\/|$)/,
             handler: "NetworkOnly",
           },
         ],
@@ -74,13 +74,13 @@ export default defineConfig({
     port: devPort,
     strictPort: true,
     proxy: {
-      "/echovale/api": {
+      "/feedfold/api": {
         target: apiOrigin,
-        rewrite: (path) => path.replace(/^\/echovale/, ""),
+        rewrite: (path) => path.replace(/^\/feedfold/, ""),
       },
-      "/echovale/health": {
+      "/feedfold/health": {
         target: apiOrigin,
-        rewrite: (path) => path.replace(/^\/echovale/, ""),
+        rewrite: (path) => path.replace(/^\/feedfold/, ""),
       },
     },
   },

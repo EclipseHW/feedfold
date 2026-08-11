@@ -5,7 +5,7 @@ import {
 } from "../../src/desktop/youtube-player.js";
 
 describe("desktop YouTube player requests", () => {
-  it("identifies Echovale when a YouTube iframe has no HTTP referrer", () => {
+  it("identifies Feedfold when a YouTube iframe has no HTTP referrer", () => {
     const headers = { Accept: "text/html" };
     expect(
       youtubeEmbedRequestHeaders(
@@ -27,7 +27,7 @@ describe("desktop YouTube player requests", () => {
           url: "https://www.youtube.com/embed/video-id?autoplay=1",
           resourceType: "subFrame",
           webContentsId: 7,
-          requestHeaders: { referer: "echovale://app/echovale/" },
+          requestHeaders: { referer: "feedfold://app/feedfold/" },
         },
         7,
       ),

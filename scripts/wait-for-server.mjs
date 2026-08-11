@@ -1,6 +1,6 @@
 import { setTimeout } from "node:timers/promises";
 
-const apiOrigin = process.env.ECHOVALE_DEV_API_ORIGIN ?? "http://127.0.0.1:43001";
+const apiOrigin = process.env.FEEDFOLD_DEV_API_ORIGIN ?? "http://127.0.0.1:43001";
 const healthUrl = new URL("/health", apiOrigin);
 const deadline = Date.now() + 30_000;
 

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { CredentialCipher } from "./ai/credential-cipher.js";
 import { createApp } from "./app.js";
 import { AppDatabase } from "./database.js";
+import { migrateLegacyDatabaseFile } from "./database-file-migration.js";
 import { ExtractionQueue } from "./extraction.js";
 import { AiService } from "./features/ai/service.js";
 import { AuthService } from "./features/auth/service.js";
@@ -21,7 +22,14 @@ function positiveInteger(value: string | undefined, fallback: number, name: stri
 
 const host = process.env.HOST ?? "127.0.0.1";
 const port = positiveInteger(process.env.PORT, 3000, "PORT");
-const databasePath = resolve(process.env.DATABASE_PATH ?? "./data/echovale.db");
+const configuredDatabasePath = process.env.DATABASE_PATH;
+const configuredLegacyDatabasePath = process.env.LEGACY_DATABASE_PATH?.trim();
+const databasePath = resolve(configuredDatabasePath ?? "./data/feedfold.db");
+const legacyDatabasePath = configuredLegacyDatabasePath
+  ? resolve(configuredLegacyDatabasePath)
+  : configuredDatabasePath === undefined
+    ? resolve("./data/echovale.db")
+    : null;
 const pollIntervalMinutes = positiveInteger(
   process.env.POLL_INTERVAL_MINUTES,
   20,
@@ -50,6 +58,12 @@ const aiRequestTimeoutMs = positiveInteger(
 const staticDir = fileURLToPath(new URL("../client", import.meta.url));
 
 mkdirSync(dirname(databasePath), { recursive: true });
+if (legacyDatabasePath) {
+  const migrationResult = await migrateLegacyDatabaseFile(databasePath, legacyDatabasePath);
+  if (migrationResult === "migrated") {
+    console.info(`Copied the Echovale database to ${databasePath}.`);
+  }
+}
 const database = new AppDatabase(databasePath, pollIntervalMinutes);
 const authService = new AuthService(database.auth, pollIntervalMinutes);
 const extractionQueue = new ExtractionQueue(database.extractions, 2, articleFetchTimeoutMs);
@@ -80,7 +94,7 @@ let shuttingDown = false;
 async function shutdown(signal: NodeJS.Signals): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
-  app.log.info({ signal }, "Stopping echovale");
+  app.log.info({ signal }, "Stopping feedfold");
   try {
     await app.close();
     await Promise.all([refreshService.stop(), extractionQueue.stop()]);
@@ -88,7 +102,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
     await closePublicNetwork();
     database.close();
   } catch (error) {
-    app.log.error(error, "echovale did not shut down cleanly");
+    app.log.error(error, "feedfold did not shut down cleanly");
     process.exitCode = 1;
   }
 }

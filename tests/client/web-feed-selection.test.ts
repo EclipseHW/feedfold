@@ -64,7 +64,7 @@ describe("web feed selection messages", () => {
     expect(
       parseWebFeedSelectionMessage(
         {
-          type: "echovale:unrelated",
+          type: "feedfold:unrelated",
           messageToken: MESSAGE_TOKEN,
           candidateId: "articles",
         },

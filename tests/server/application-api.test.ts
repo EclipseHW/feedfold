@@ -20,8 +20,8 @@ afterEach(async () => {
 
 describe("local application API", () => {
   it("runs the reading workflow for one local user without an account session", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "echovale-application-api-test-"));
-    const database = new AppDatabase(join(directory, "echovale.db"));
+    const directory = await mkdtemp(join(tmpdir(), "feedfold-application-api-test-"));
+    const database = new AppDatabase(join(directory, "feedfold.db"));
     const extraction = new ExtractionQueue(database.extractions, 1, 1_000);
     const webFeeds = new WebFeedService();
     const refresh = new FeedRefreshService(database.feeds, 1, 1_000, webFeeds);

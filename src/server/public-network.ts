@@ -145,7 +145,7 @@ export function publicHttpUrl(value: string): URL {
   }
   if (url.username || url.password) {
     throw new PublicNetworkError(
-      "Remove the username and password from this URL. echovale only supports public pages.",
+      "Remove the username and password from this URL. feedfold only supports public pages.",
       "inaccessible",
     );
   }

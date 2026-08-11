@@ -398,7 +398,7 @@ function AiSettingsSection({
           <p id="ai-api-key-help">
             {provider.configured
               ? "A key is saved. Enter a new key only if you want to replace it."
-              : "echovale encrypts this key on the server and does not show it again."}
+              : "feedfold encrypts this key on the server and does not show it again."}
           </p>
         </div>
         <form className="ai-key-form" onSubmit={(event) => void saveKey(event)}>
@@ -688,7 +688,7 @@ function AiSettingsSection({
               <h2 id="custom-prompt-dialog-title">
                 {editingCustomPrompt ? "Edit custom prompt" : "Add custom prompt"}
               </h2>
-              <p>Write the task only. echovale adds the article title and text.</p>
+              <p>Write the task only. feedfold adds the article title and text.</p>
             </div>
             <button
               className="icon-button"
@@ -998,7 +998,7 @@ export function SettingsPage({
           <label htmlFor="poll-interval">
             <strong>Published feed interval</strong>
             <p>
-              How often echovale checks RSS, Atom, and JSON feeds. Web feeds refresh every 3 hours.
+              How often feedfold checks RSS, Atom, and JSON feeds. Web feeds refresh every 3 hours.
             </p>
           </label>
           <DropdownSelect

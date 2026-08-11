@@ -12,7 +12,7 @@ import {
 } from "./routes";
 
 interface AppHistoryState {
-  echovale?: true;
+  feedfold?: true;
   returnTo?: string;
   returnsWithBack?: boolean;
   articleIndex?: number;
@@ -92,11 +92,11 @@ export function useAppRoute(basePath: string): AppRouteController {
       const currentUrl = `${window.location.pathname}${window.location.search}`;
       const previousState = historyState();
       if (currentUrl === url) {
-        window.history.replaceState({ ...previousState, echovale: true }, "", url);
+        window.history.replaceState({ ...previousState, feedfold: true }, "", url);
         return;
       }
 
-      const state: AppHistoryState = { echovale: true };
+      const state: AppHistoryState = { feedfold: true };
       if (nextRoute.kind === "article") {
         state.returnTo = appRoutePath(lastReaderRoute.current);
         if (articleIndex !== undefined && articleIndex >= 0) state.articleIndex = articleIndex;
@@ -117,7 +117,7 @@ export function useAppRoute(basePath: string): AppRouteController {
   useEffect(() => {
     const parsed = parseAppRoute(window.location.pathname, window.location.search, basePath);
     window.history.replaceState(
-      { ...historyState(), echovale: true },
+      { ...historyState(), feedfold: true },
       "",
       appRouteUrl(parsed, basePath),
     );
@@ -143,7 +143,7 @@ export function useAppRoute(basePath: string): AppRouteController {
     lastReaderRoute.current = nextReaderRoute;
     const nextState: AppHistoryState = {
       ...historyState(),
-      echovale: true,
+      feedfold: true,
       returnTo: appRoutePath(nextReaderRoute),
       ...(articleIndex === undefined ? {} : { articleIndex }),
     };
@@ -200,7 +200,7 @@ export function useAppRoute(basePath: string): AppRouteController {
 
   const returnToArticleList = useCallback(() => {
     const state = historyState();
-    if (state.echovale && state.returnTo && state.returnsWithBack) {
+    if (state.feedfold && state.returnTo && state.returnsWithBack) {
       window.history.back();
       return;
     }

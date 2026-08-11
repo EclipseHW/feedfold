@@ -1,14 +1,14 @@
-# echovale
+# feedfold
 
-echovale is an opinionated feed reader built because I couldn't find one that met my requirements.
+feedfold is an opinionated feed reader built because I couldn't find one that met my requirements.
 
-## See echovale
+## See feedfold
 
 | Reader | Filters |
 | :---: | :---: |
-| [![echovale magazine view populated with public demo feeds](docs/screenshots/reader-desktop.png)](docs/screenshots/reader-desktop.png) | [![An echovale rule that hides YouTube Shorts from a feed](docs/screenshots/filters-desktop.png)](docs/screenshots/filters-desktop.png) |
+| [![feedfold magazine view populated with public demo feeds](docs/screenshots/reader-desktop.png)](docs/screenshots/reader-desktop.png) | [![A feedfold rule that hides YouTube Shorts from a feed](docs/screenshots/filters-desktop.png)](docs/screenshots/filters-desktop.png) |
 | **YouTube article** | **Nitter / X article** |
-| [![A 3Blue1Brown YouTube video open in echovale](docs/screenshots/article-youtube.png)](docs/screenshots/article-youtube.png) | [![An Andrej Karpathy post from Nitter open in echovale](docs/screenshots/article-nitter.png)](docs/screenshots/article-nitter.png) |
+| [![A YouTube video open in feedfold](docs/screenshots/article-youtube.png)](docs/screenshots/article-youtube.png) | [![A post from Nitter open in feedfold](docs/screenshots/article-nitter.png)](docs/screenshots/article-nitter.png) |
 
 ## Features
 
@@ -24,10 +24,10 @@ echovale is an opinionated feed reader built because I couldn't find one that me
 
 The Electron app is fully local. It opens no HTTP port, needs no account or hosted backend, and sends application requests through a narrow IPC bridge. SQLite, background refreshes, article extraction, and the bundled headless browser all run inside the app. The hosted version remains available separately.
 
-Install the Apple silicon release with Homebrew:
+After the first Feedfold release is published, install the Apple silicon build with Homebrew:
 
 ```sh
-brew install --cask egornomic/tap/echovale
+brew install --cask egornomic/tap/feedfold
 ```
 
 For local development:
@@ -48,23 +48,25 @@ To create distributable DMG and ZIP artifacts in `release/`:
 npm run desktop:package
 ```
 
-Desktop data is stored at `~/Library/Application Support/echovale/echovale.db`. Provider API keys are encrypted using secure storage in macOS before they enter SQLite. Feed refreshes continue while the app is running; use **echovale → Quit echovale** or <kbd>⌘Q</kbd> to stop it completely.
+Desktop data is stored at `~/Library/Application Support/feedfold/feedfold.db`. Provider API keys are encrypted using secure storage in macOS before they enter SQLite. Feed refreshes continue while the app is running; use **feedfold → Quit feedfold** or <kbd>⌘Q</kbd> to stop it completely.
 
-## Start echovale with Docker Compose
+The Feedfold identity is a hard cutover: it uses a new macOS application identity and data directory rather than adopting data from an earlier installation automatically.
+
+## Start feedfold with Docker Compose
 
 The included Compose deployment runs one Node.js 24.18.0 process, starts sandboxed headless Chromium when a web feed loads, and stores SQLite data in a named volume.
 
 You need Docker Engine with Docker Compose v2.
 
-1. Build and start echovale:
+1. Build and start feedfold:
 
    ```sh
    docker compose up -d --build
    ```
 
-2. Open `http://127.0.0.1:3000/echovale/`.
+2. Open `http://127.0.0.1:3000/feedfold/`.
 
-3. Choose **Create an account**. Registration signs in the new account immediately. echovale hashes passwords before storing them in SQLite.
+3. Choose **Create an account**. Registration signs in the new account immediately. feedfold hashes passwords before storing them in SQLite.
 
 4. Check that the container is ready:
 
@@ -78,15 +80,17 @@ You need Docker Engine with Docker Compose v2.
    curl --fail http://127.0.0.1:3000/health
    ```
 
-The health endpoint returns HTTP 200 when the SQLite query succeeds. Application data is stored in the `echovale-data` volume at `/data/echovale.db`.
+The health endpoint returns HTTP 200 when the SQLite query succeeds. Application data is stored in the `feedfold-data` volume at `/data/feedfold.db`.
+
+The Compose service and named volume also use the new Feedfold identity. An earlier deployment volume is left untouched and is not migrated automatically.
 
 To follow the server logs:
 
 ```sh
-docker compose logs -f --tail=200 echovale
+docker compose logs -f --tail=200 feedfold
 ```
 
-To stop echovale without deleting its data:
+To stop feedfold without deleting its data:
 
 ```sh
 docker compose down
@@ -94,7 +98,7 @@ docker compose down
 
 Adding `--volumes` to this command permanently deletes the SQLite database.
 
-Do not scale echovale to multiple application replicas. Background polling and SQLite ownership are designed for one process.
+Do not scale feedfold to multiple application replicas. Background polling and SQLite ownership are designed for one process.
 
 ### Add another account
 
@@ -104,11 +108,11 @@ When you upgrade an existing single-account database, the first account register
 
 ## Keep access private
 
-echovale uses password authentication, but anyone who can reach the sign-in screen can register. Compose therefore publishes the service on host loopback by default.
+feedfold uses password authentication, but anyone who can reach the sign-in screen can register. Compose therefore publishes the service on host loopback by default.
 
-For access from another device, use a trusted private network or an HTTPS reverse proxy with its own access controls. Do not publish echovale through Tailscale Funnel or an unrestricted public proxy unless you intend to allow open registration.
+For access from another device, use a trusted private network or an HTTPS reverse proxy with its own access controls. Do not publish feedfold through Tailscale Funnel or an unrestricted public proxy unless you intend to allow open registration.
 
-### Publish echovale to a Tailscale network
+### Publish feedfold to a Tailscale network
 
 On a host connected to Tailscale, publish the loopback service to its tailnet:
 
@@ -136,8 +140,8 @@ Compose reads these values from the shell or a project-level `.env` file:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ECHOVALE_BIND_ADDRESS` | `127.0.0.1` | Host address that publishes the container port. Keep loopback when a local reverse proxy provides access. |
-| `ECHOVALE_PORT` | `3000` | Host port forwarded to echovale. |
+| `FEEDFOLD_BIND_ADDRESS` | `127.0.0.1` | Host address that publishes the container port. Keep loopback when a local reverse proxy provides access. |
+| `FEEDFOLD_PORT` | `3000` | Host port forwarded to feedfold. |
 | `POLL_INTERVAL_MINUTES` | `20` | Initial polling interval for published feeds in a new database. |
 | `FEED_FETCH_TIMEOUT_MS` | `15000` | Feed request timeout, in milliseconds. |
 | `WEB_FEED_LOAD_TIMEOUT_MS` | `30000` | Maximum normal load time for a JavaScript-rendered web feed, in milliseconds. |
@@ -145,7 +149,7 @@ Compose reads these values from the shell or a project-level `.env` file:
 | `AI_CREDENTIALS_KEY` | none | Persistent 64-character hexadecimal key used to encrypt provider API keys. AI key storage remains unavailable until this is set. |
 | `AI_REQUEST_TIMEOUT_MS` | `60000` | AI provider request timeout, in milliseconds. |
 
-The container fixes its internal runtime settings to `HOST=0.0.0.0`, `PORT=3000`, and `DATABASE_PATH=/data/echovale.db`. For a non-container deployment, `.env.example` lists every server setting.
+The container fixes its internal runtime settings to `HOST=0.0.0.0`, `PORT=3000`, and `DATABASE_PATH=/data/feedfold.db`. For a non-container deployment, `.env.example` lists every server setting.
 
 After changing container configuration, recreate the service:
 
@@ -160,12 +164,12 @@ The server continues background polling when no browser is open. Published feeds
 Use a web feed when a public page has repeated entries but no published RSS, Atom, or JSON Feed.
 
 1. In **Manage feeds**, choose **Add feed**.
-2. Enter any page on the website and choose **Check URL**. echovale looks for a published feed first.
+2. Enter any page on the website and choose **Check URL**. feedfold looks for a published feed first.
 3. If no published feed exists, choose **Create web feed**.
 4. Choose a suggested entry group, or select one representative entry in the page preview.
 5. Review the feed preview and choose **Add web feed**.
 
-During a refresh, echovale reloads the configured page in Chromium. It updates existing links, adds each new link once, and keeps entries that disappear from the page in feed history. When an entry has no publication date, echovale uses the time it first discovered the entry.
+During a refresh, feedfold reloads the configured page in Chromium. It updates existing links, adds each new link once, and keeps entries that disappear from the page in feed history. When an entry has no publication date, feedfold uses the time it first discovered the entry.
 
 If the page changes and the saved selection stops matching, open the feed's actions and choose **Edit page selection**. Repairing the selection keeps saved articles and their reading state.
 
@@ -179,7 +183,7 @@ A web feed follows repeated entries from one publicly accessible page after a no
 - monitor arbitrary text or prices;
 - compare screenshots.
 
-echovale reports temporary loading failures and JavaScript timeouts separately from a broken saved selection. It rejects pages that cannot become reliable feeds before creating a subscription.
+feedfold reports temporary loading failures and JavaScript timeouts separately from a broken saved selection. It rejects pages that cannot become reliable feeds before creating a subscription.
 
 The Compose deployment runs Chromium as the non-root application user with its Linux sandbox enabled. It uses the version-pinned [Playwright seccomp profile](https://github.com/microsoft/playwright/blob/v1.62.0/utils/docker/seccomp_profile.json) and restores only the `SYS_CHROOT` capability required by that sandbox.
 
@@ -197,11 +201,11 @@ The Compose deployment runs Chromium as the non-root application user with its L
 5. Choose Google Gemini, OpenAI, or Anthropic.
 6. Enter a model ID and save the provider's API key.
 
-Summaries, translations, and custom prompts use the same provider and model. Each provider begins with a recommended model ID, but the model field accepts any model available to your provider account. You can edit the default summary and translation prompts for each echovale account and add named prompts to the article's AI menu.
+Summaries, translations, and custom prompts use the same provider and model. Each provider begins with a recommended model ID, but the model field accepts any model available to your provider account. You can edit the default summary and translation prompts for each feedfold account and add named prompts to the article's AI menu.
 
-echovale encrypts provider keys per account before storing them in SQLite. It does not return a saved key to the browser.
+feedfold encrypts provider keys per account before storing them in SQLite. It does not return a saved key to the browser.
 
-## Update echovale
+## Update feedfold
 
 1. Pull the latest commit:
 

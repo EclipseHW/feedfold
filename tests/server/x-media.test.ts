@@ -55,8 +55,8 @@ describe("X article media", () => {
   });
 
   it("resolves a quoted video for an owned article and exposes authenticated URLs", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "echovale-x-media-test-"));
-    const database = new AppDatabase(join(directory, "echovale.db"));
+    const directory = await mkdtemp(join(tmpdir(), "feedfold-x-media-test-"));
+    const database = new AppDatabase(join(directory, "feedfold.db"));
     const authService = new AuthService(database.auth);
     const reader = authService.register("reader", "reader-password");
     const otherReader = authService.register("other", "reader-password");
@@ -114,7 +114,7 @@ describe("X article media", () => {
       () => Promise.all([refresh.stop(), extraction.stop()]).then(() => undefined),
       () => app.close(),
     );
-    const cookie = `echovale_session=${reader.token}`;
+    const cookie = `feedfold_session=${reader.token}`;
     const request = (url: string) => app.inject({ method: "GET", url, headers: { cookie } });
 
     const metadata = await request(`/api/articles/${article.id}/x-media`);
@@ -134,7 +134,7 @@ describe("X article media", () => {
     const hidden = await app.inject({
       method: "GET",
       url: `/api/articles/${article.id}/x-media`,
-      headers: { cookie: `echovale_session=${otherReader.token}` },
+      headers: { cookie: `feedfold_session=${otherReader.token}` },
     });
     expect(hidden.statusCode).toBe(404);
   });

@@ -154,7 +154,7 @@ export function App() {
             ? "You are offline. Reconnect, then try again."
             : error instanceof ApiError
               ? errorMessage(error)
-              : "echovale could not reach the server. Check the connection, then try again.",
+              : "feedfold could not reach the server. Check the connection, then try again.",
         );
       }
     } finally {

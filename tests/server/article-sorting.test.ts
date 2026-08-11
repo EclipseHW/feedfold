@@ -18,8 +18,8 @@ afterEach(async () => {
 
 describe("folder article sorting", () => {
   it("applies each folder order to its feeds and fairly merges aggregate pages", async () => {
-    const directory = await mkdtemp(join(tmpdir(), "echovale-sorting-test-"));
-    const database = new AppDatabase(join(directory, "echovale.db"));
+    const directory = await mkdtemp(join(tmpdir(), "feedfold-sorting-test-"));
+    const database = new AppDatabase(join(directory, "feedfold.db"));
     const authService = new AuthService(database.auth);
     const extraction = new ExtractionQueue(database.extractions, 1, 1_000);
     const refresh = new FeedRefreshService(database.feeds, 1, 1_000);

@@ -4,10 +4,10 @@ import type { RankedWebFeedCandidate } from "./web-feed-dom.js";
 function markCandidateElements(candidates: RankedWebFeedCandidate[]): void {
   for (const { candidate, elements } of candidates) {
     for (const element of elements) {
-      const ids = new Set((element.getAttribute("data-echovale-candidates") ?? "").split(/\s+/));
+      const ids = new Set((element.getAttribute("data-feedfold-candidates") ?? "").split(/\s+/));
       ids.delete("");
       ids.add(candidate.id);
-      element.setAttribute("data-echovale-candidates", [...ids].join(" "));
+      element.setAttribute("data-feedfold-candidates", [...ids].join(" "));
     }
   }
 }
@@ -21,19 +21,19 @@ function safeSnapshotResource(element: Element, attributeName: string): boolean 
 function pickerScript(messageToken: string): string {
   return `(() => {
   const MESSAGE_TOKEN = ${JSON.stringify(messageToken)};
-  const ITEM_SELECTOR = "[data-echovale-candidates]";
-  const INSTRUCTIONS_ID = "echovale-picker-instructions";
+  const ITEM_SELECTOR = "[data-feedfold-candidates]";
+  const INSTRUCTIONS_ID = "feedfold-picker-instructions";
   let activeCandidateId = null;
   let pointerStart = null;
 
   const items = () => Array.from(document.querySelectorAll(ITEM_SELECTOR));
-  const candidateIds = (element) => (element.getAttribute("data-echovale-candidates") || "")
+  const candidateIds = (element) => (element.getAttribute("data-feedfold-candidates") || "")
     .split(/\\s+/).filter(Boolean);
   const setHighlight = (candidateId) => {
     activeCandidateId = candidateId;
     for (const element of items()) {
       const highlighted = Boolean(candidateId) && candidateIds(element).includes(candidateId);
-      element.toggleAttribute("data-echovale-highlighted", highlighted);
+      element.toggleAttribute("data-feedfold-highlighted", highlighted);
       element.setAttribute("aria-pressed", String(highlighted));
     }
   };
@@ -43,7 +43,7 @@ function pickerScript(messageToken: string): string {
     if (!candidateId) return;
     setHighlight(candidateId);
     parent.postMessage({
-      type: "echovale:web-feed-select",
+      type: "feedfold:web-feed-select",
       messageToken: MESSAGE_TOKEN,
       candidateId,
     }, "*");
@@ -80,7 +80,7 @@ function pickerScript(messageToken: string): string {
 
   addEventListener("message", (event) => {
     const data = event.data;
-    if (event.source !== parent || !data || data.type !== "echovale:web-feed-highlight" ||
+    if (event.source !== parent || !data || data.type !== "feedfold:web-feed-highlight" ||
         data.messageToken !== MESSAGE_TOKEN) return;
     setHighlight(typeof data.candidateId === "string" ? data.candidateId : null);
   });
@@ -113,7 +113,7 @@ function pickerScript(messageToken: string): string {
       event.preventDefault();
       setHighlight(null);
       parent.postMessage({
-        type: "echovale:web-feed-select",
+        type: "feedfold:web-feed-select",
         messageToken: MESSAGE_TOKEN,
         candidateId: null,
       }, "*");
@@ -199,15 +199,15 @@ function sanitizeSnapshot(document: Document, messageToken: string): string {
   head.prepend(csp);
   const pickerStyle = document.createElement("style");
   pickerStyle.textContent = `
-    [data-echovale-candidates] {
+    [data-feedfold-candidates] {
       cursor: pointer !important;
       touch-action: pan-x pan-y pinch-zoom;
     }
-    [data-echovale-candidates]:focus-visible {
+    [data-feedfold-candidates]:focus-visible {
       outline: 3px solid #2563eb !important;
       outline-offset: 3px !important;
     }
-    [data-echovale-highlighted] {
+    [data-feedfold-highlighted] {
       outline: 3px solid #2563eb !important;
       outline-offset: 3px !important;
       background-color: color-mix(in srgb, #2563eb 12%, transparent) !important;

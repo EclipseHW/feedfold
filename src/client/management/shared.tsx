@@ -158,7 +158,7 @@ export function ExportOpmlLink({ menuItem = false }: { menuItem?: boolean } = {}
       className="secondary-button"
       role={menuItem ? "menuitem" : undefined}
       href={appUrl("/api/opml/export")}
-      download="echovale-subscriptions.opml"
+      download="feedfold-subscriptions.opml"
     >
       <Download aria-hidden="true" size={16} />
       Export OPML
