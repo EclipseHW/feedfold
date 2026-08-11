@@ -4,30 +4,30 @@ import {
   Check,
   CheckCircle2,
   ChevronRight,
-  Edit3,
   ExternalLink,
   Folder as FolderIcon,
   FolderPlus,
   Globe2,
   ListFilter,
   LoaderCircle,
+  MoreHorizontal,
   MousePointer2,
-  Pause,
-  Play,
   Plus,
   RefreshCw,
   Rss,
   Search,
   Send,
-  Trash2,
   X,
 } from "lucide-react";
 import {
+  type CSSProperties,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   type SVGProps,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useRef,
   useState,
@@ -52,14 +52,28 @@ import {
   visibleFeedStatus,
 } from "../feed-filters";
 import {
+  FeedActionMenuItems,
+  type FeedManagementAction,
+  FolderActionMenuItems,
+  type FolderManagementAction,
+  handleActionMenuKeyDown,
+} from "../feed-management";
+import {
   type AddFeedSourceType,
   feedSourceUrl,
   TELEGRAM_HANDLE_PATTERN,
   X_HANDLE_PATTERN,
 } from "../feed-source";
-import { type MotionState, useMotionPresence } from "../motion";
+import { folderBranchFeedCount, folderHierarchy, folderPathLabel } from "../folder-hierarchy";
+import type { MotionState } from "../motion";
 import { WebFeedSetup } from "../web-feed-setup";
-import { ExportOpmlLink, formatDate, ImportOpmlButton, PageHeader } from "./shared";
+import {
+  ExportOpmlLink,
+  formatDate,
+  formatRelativeDate,
+  ImportOpmlButton,
+  PageHeader,
+} from "./shared";
 import "./feeds.css";
 
 type FeedsPageTab = "subscriptions" | "folders";
@@ -189,36 +203,181 @@ function feedHost(value: string): string {
   return new URL(value).hostname.replace(/^www\./, "");
 }
 
+function FeedsDesignContract() {
+  const markerRef = useRef<HTMLSpanElement>(null);
+  useLayoutEffect(() => {
+    markerRef.current?.replaceChildren(
+      document.createComment(`
+THESIS: A compact signal ledger makes subscriptions findable and anomalies obvious; it refuses stacked mobile data cards.
+OWN-WORLD: Echovale charcoal and sparse moss, thin separators, compact controls, exception-only amber, flat rows, anchored menus.
+STORY: Search or filter, scan health, repair failures in context, and open one menu for deeper management. Folders retain their own clear view.
+FIRST VIEWPORT: Compact app bar, two tabs, one search/filter row, then 60–68px feed rows; Add feed stays top-right.
+FORM: Grounded structure 6, flat adaptive ledger, surface seed acac87d8.
+`),
+    );
+  }, []);
+  return <span ref={markerRef} hidden data-design-contract="feeds" />;
+}
+
+function AnchoredPopover({
+  label,
+  triggerClassName,
+  triggerContent,
+  variant,
+  managementTarget,
+  children,
+}: {
+  label: string;
+  triggerClassName: string;
+  triggerContent: ReactNode;
+  variant: "actions" | "transfer";
+  managementTarget?: { kind: "feed" | "folder"; id: number };
+  children: ReactNode;
+}) {
+  const id = useId().replace(/:/g, "");
+  const menuId = `management-actions-${id}`;
+  const anchorName = `--management-actions-${id}`;
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState(false);
+
+  const close = () => {
+    const menu = menuRef.current;
+    if (menu?.matches(":popover-open")) menu.hidePopover();
+  };
+
+  const openAndFocus = () => {
+    const menu = menuRef.current;
+    if (menu && !menu.matches(":popover-open")) menu.showPopover();
+    window.requestAnimationFrame(() => {
+      menuRef.current
+        ?.querySelector<HTMLElement>('[role="menuitem"]')
+        ?.focus({ preventScroll: true });
+    });
+  };
+
+  return (
+    <>
+      <button
+        className={triggerClassName}
+        type="button"
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={menuId}
+        popoverTarget={menuId}
+        data-management-feed-id={
+          managementTarget?.kind === "feed" ? managementTarget.id : undefined
+        }
+        data-management-folder-id={
+          managementTarget?.kind === "folder" ? managementTarget.id : undefined
+        }
+        style={{ anchorName }}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowDown") return;
+          event.preventDefault();
+          openAndFocus();
+        }}
+      >
+        {triggerContent}
+      </button>
+      <div
+        ref={menuRef}
+        id={menuId}
+        className={`management-actions-popover dropdown-menu-surface${
+          variant === "actions" ? " context-action-menu" : " feed-transfer-popover"
+        }`}
+        popover="auto"
+        role="menu"
+        aria-label={label}
+        style={{ positionAnchor: anchorName }}
+        onToggle={(event) => {
+          const nextOpen = event.currentTarget.matches(":popover-open");
+          setOpen(nextOpen);
+          if (nextOpen) {
+            window.requestAnimationFrame(() => {
+              menuRef.current
+                ?.querySelector<HTMLElement>('[role="menuitem"]')
+                ?.focus({ preventScroll: true });
+            });
+          }
+        }}
+        onKeyDown={(event) => {
+          handleActionMenuKeyDown(event, close);
+        }}
+        onClickCapture={(event) => {
+          if ((event.target as Element).closest("button, a")) close();
+        }}
+      >
+        {children}
+      </div>
+    </>
+  );
+}
+
+function FeedTransferMenu({
+  mutations,
+  showToast,
+}: {
+  mutations: ReaderDataMutations;
+  showToast: (message: string) => void;
+}) {
+  return (
+    <AnchoredPopover
+      label="Import or export feeds"
+      triggerClassName="secondary-button feed-transfer-trigger"
+      triggerContent={
+        <>
+          <MoreHorizontal aria-hidden="true" size={17} />
+          <span>Import / export</span>
+        </>
+      }
+      variant="transfer"
+    >
+      <ImportOpmlButton menuItem mutations={mutations} showToast={showToast} />
+      <ExportOpmlLink menuItem />
+    </AnchoredPopover>
+  );
+}
+
 export function FeedsPage({
   bootstrap,
   mutations,
   onMenu,
   onAddFeed,
+  onAddFolder,
   onRefresh,
-  onEditWebFeed,
+  onFeedAction,
+  onFolderAction,
   showToast,
 }: {
   bootstrap: BootstrapData;
   mutations: ReaderDataMutations;
   onMenu: () => void;
   onAddFeed: () => void;
+  onAddFolder: () => void;
   onRefresh: (feedId: number) => void;
-  onEditWebFeed: (feed: Feed) => void;
+  onFeedAction: (feed: Feed, action: FeedManagementAction) => void;
+  onFolderAction: (folder: Folder, action: FolderManagementAction) => void;
   showToast: (message: string) => void;
 }) {
-  const [addFolderOpen, setAddFolderOpen] = useState(false);
-  const [addFolderSession, setAddFolderSession] = useState(0);
   const [activeTab, setActiveTab] = useState<FeedsPageTab>("subscriptions");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [feedTypeFilter, setFeedTypeFilter] = useState<FeedTypeFilter>("all");
   const [feedStatusFilter, setFeedStatusFilter] = useState<FeedStatusFilter>("all");
-  const addFolderPresence = useMotionPresence(addFolderOpen);
-  const addFolderTriggerRef = useRef<HTMLButtonElement>(null);
-  const filteredFeeds = filterFeeds(bootstrap.feeds, feedTypeFilter, feedStatusFilter);
-  const filtersActive = feedTypeFilter !== "all" || feedStatusFilter !== "all";
+  const filteredFeeds = filterFeeds(bootstrap.feeds, bootstrap.folders, {
+    query: searchQuery,
+    type: feedTypeFilter,
+    status: feedStatusFilter,
+  });
+  const filtersActive =
+    searchQuery.trim() !== "" || feedTypeFilter !== "all" || feedStatusFilter !== "all";
+  const activeFilterCount = Number(feedTypeFilter !== "all") + Number(feedStatusFilter !== "all");
   const publishedFeedCount = bootstrap.feeds.filter(
     (feed) => feed.sourceKind === "published",
   ).length;
   const webFeedCount = bootstrap.feeds.length - publishedFeedCount;
+  const orderedFolders = folderHierarchy(bootstrap.folders);
   const statusCounts: Record<Exclude<FeedStatusFilter, "all">, number> = {
     healthy: 0,
     needs_attention: 0,
@@ -227,52 +386,36 @@ export function FeedsPage({
   };
   for (const feed of bootstrap.feeds) statusCounts[visibleFeedStatus(feed)] += 1;
 
-  const closeAddFolder = () => {
-    addFolderTriggerRef.current?.focus();
-    setAddFolderOpen(false);
-  };
-
   const selectTab = (tab: FeedsPageTab) => {
     if (tab === activeTab) return;
-    if (tab === "subscriptions" && addFolderOpen) setAddFolderOpen(false);
+    setFiltersOpen(false);
     setActiveTab(tab);
   };
 
-  const clearFeedFilters = () => {
+  const clearFeedView = () => {
+    setSearchQuery("");
     setFeedTypeFilter("all");
     setFeedStatusFilter("all");
   };
 
   return (
-    <div className="management-page">
+    <div className="management-page feeds-management-page">
+      <FeedsDesignContract />
       <PageHeader
         title="Manage feeds"
-        description="Add feeds, organize folders, and resolve refresh problems."
+        description="Subscriptions, folders, and source health in one place."
         onMenu={onMenu}
         actions={
           activeTab === "subscriptions" ? (
-            <>
-              <ImportOpmlButton mutations={mutations} showToast={showToast} />
-              <ExportOpmlLink />
+            <div className="feed-page-actions">
+              <FeedTransferMenu mutations={mutations} showToast={showToast} />
               <button className="primary-button" type="button" onClick={onAddFeed}>
                 <Plus aria-hidden="true" size={16} />
                 Add feed
               </button>
-            </>
+            </div>
           ) : (
-            <button
-              ref={addFolderTriggerRef}
-              className="primary-button"
-              type="button"
-              onClick={() => {
-                if (addFolderOpen) {
-                  closeAddFolder();
-                  return;
-                }
-                setAddFolderSession((current) => current + 1);
-                setAddFolderOpen(true);
-              }}
-            >
+            <button className="primary-button" type="button" onClick={onAddFolder}>
               <FolderPlus aria-hidden="true" size={16} />
               Add folder
             </button>
@@ -323,30 +466,47 @@ export function FeedsPage({
           aria-labelledby="subscriptions-tab"
           className="management-tab-panel"
         >
-          <section className="management-section" aria-labelledby="subscriptions-heading">
-            <div className="section-title-row">
-              <div>
-                <h2 id="subscriptions-heading">Feeds</h2>
-                <p>Check refresh status and repair feeds that need attention.</p>
-              </div>
-              <p className="feed-result-count" aria-live="polite">
-                {filtersActive ? (
-                  <>
-                    Showing <strong>{filteredFeeds.length}</strong> of {bootstrap.feeds.length}
-                  </>
-                ) : (
-                  <>
-                    <strong>{bootstrap.feeds.length}</strong>{" "}
-                    {bootstrap.feeds.length === 1 ? "feed" : "feeds"}
-                  </>
-                )}
-              </p>
-            </div>
+          <section
+            className="management-section feed-management-section"
+            aria-labelledby="subscriptions-heading"
+          >
+            <h2 id="subscriptions-heading" className="sr-only">
+              Subscriptions
+            </h2>
 
             {bootstrap.feeds.length > 0 ? (
-              <fieldset className="feed-filter-bar">
-                <legend className="sr-only">Filter subscriptions</legend>
-                <div className="feed-filter-controls">
+              <div className="feed-tools">
+                <label className="feed-search-field">
+                  <Search aria-hidden="true" size={16} />
+                  <span className="sr-only">Search feeds or folders</span>
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    placeholder="Search feeds or folders"
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                  />
+                </label>
+                <button
+                  className={`secondary-button feed-filter-toggle${
+                    activeFilterCount > 0 ? " has-active-filters" : ""
+                  }`}
+                  type="button"
+                  aria-expanded={filtersOpen}
+                  aria-controls="feed-filter-panel"
+                  onClick={() => setFiltersOpen((current) => !current)}
+                >
+                  <ListFilter aria-hidden="true" size={16} />
+                  Filters
+                  {activeFilterCount > 0 ? (
+                    <span className="filter-count">{activeFilterCount}</span>
+                  ) : null}
+                </button>
+                <fieldset
+                  id="feed-filter-panel"
+                  className="feed-filter-panel"
+                  data-open={filtersOpen || undefined}
+                >
+                  <legend className="sr-only">Filter subscriptions</legend>
                   <div className="feed-filter-field">
                     <span>Type</span>
                     <DropdownSelect
@@ -354,8 +514,8 @@ export function FeedsPage({
                       value={feedTypeFilter}
                       options={[
                         { value: "all", label: `All types (${bootstrap.feeds.length})` },
-                        { value: "published", label: `Published feeds (${publishedFeedCount})` },
-                        { value: "web", label: `Web feeds (${webFeedCount})` },
+                        { value: "published", label: `Published (${publishedFeedCount})` },
+                        { value: "web", label: `Web (${webFeedCount})` },
                       ]}
                       onChange={(value) => setFeedTypeFilter(value as FeedTypeFilter)}
                     />
@@ -378,20 +538,33 @@ export function FeedsPage({
                       onChange={(value) => setFeedStatusFilter(value as FeedStatusFilter)}
                     />
                   </div>
-                </div>
-                {filtersActive ? (
-                  <button
-                    className="quiet-button feed-filter-clear"
-                    type="button"
-                    onClick={clearFeedFilters}
-                  >
-                    <X aria-hidden="true" size={14} />
-                    Clear filters
-                  </button>
-                ) : (
-                  <span className="feed-filter-hint">Filter by type and status.</span>
-                )}
-              </fieldset>
+                  {feedTypeFilter !== "all" || feedStatusFilter !== "all" ? (
+                    <button
+                      className="quiet-button feed-filter-clear"
+                      type="button"
+                      onClick={() => {
+                        setFeedTypeFilter("all");
+                        setFeedStatusFilter("all");
+                      }}
+                    >
+                      <X aria-hidden="true" size={14} />
+                      Clear
+                    </button>
+                  ) : null}
+                </fieldset>
+                <p className="feed-result-count" aria-live="polite">
+                  {filtersActive ? (
+                    <>
+                      <strong>{filteredFeeds.length}</strong> of {bootstrap.feeds.length}
+                    </>
+                  ) : (
+                    <>
+                      <strong>{bootstrap.feeds.length}</strong>{" "}
+                      {bootstrap.feeds.length === 1 ? "feed" : "feeds"}
+                    </>
+                  )}
+                </p>
+              </div>
             ) : null}
 
             {bootstrap.feeds.length === 0 ? (
@@ -407,41 +580,33 @@ export function FeedsPage({
             ) : filteredFeeds.length === 0 ? (
               <div className="section-empty filtered-empty">
                 <ListFilter aria-hidden="true" size={22} />
-                <h3>No feeds match these filters</h3>
-                <p>Change a filter, or clear both filters to show every feed.</p>
-                <button className="secondary-button" type="button" onClick={clearFeedFilters}>
-                  Clear filters
+                <h3>No matching feeds</h3>
+                <p>Try another search or reset the current filters.</p>
+                <button className="secondary-button" type="button" onClick={clearFeedView}>
+                  Reset view
                 </button>
               </div>
             ) : (
-              <div className="table-scroll">
-                <table className="data-table feed-table">
-                  <thead>
-                    <tr>
-                      <th scope="col">Feed</th>
-                      <th scope="col">Folder</th>
-                      <th scope="col">Status</th>
-                      <th scope="col">Last success</th>
-                      <th scope="col">Unread</th>
-                      <th scope="col">
-                        <span className="sr-only">Actions</span>
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredFeeds.map((feed) => (
-                      <FeedRow
-                        key={feed.id}
-                        feed={feed}
-                        folders={bootstrap.folders}
-                        mutations={mutations}
-                        onRefresh={() => onRefresh(feed.id)}
-                        onEditSelection={() => onEditWebFeed(feed)}
-                        showToast={showToast}
-                      />
-                    ))}
-                  </tbody>
-                </table>
+              <div className="feed-management-list">
+                <div className="feed-management-list-header" aria-hidden="true">
+                  <span>Feed</span>
+                  <span>Folder</span>
+                  <span>Status</span>
+                  <span>Updated</span>
+                  <span>Unread</span>
+                  <span />
+                </div>
+                <ul className="feed-management-rows" aria-label="Subscriptions">
+                  {filteredFeeds.map((feed) => (
+                    <FeedRow
+                      key={feed.id}
+                      feed={feed}
+                      folders={bootstrap.folders}
+                      onRefresh={() => onRefresh(feed.id)}
+                      onAction={(action) => onFeedAction(feed, action)}
+                    />
+                  ))}
+                </ul>
               </div>
             )}
           </section>
@@ -451,56 +616,37 @@ export function FeedsPage({
           id="folders-panel"
           role="tabpanel"
           aria-labelledby="folders-tab"
-          className="management-section management-tab-panel"
+          className="management-section management-tab-panel folder-management-section"
         >
-          <div className="section-title-row">
+          <div className="folder-section-heading">
             <div>
-              <h2 id="folders-heading">Folders</h2>
-              <p>Group feeds, nest folders, and choose the article order.</p>
+              <h2 id="folders-heading">Folder structure</h2>
+              <p>Nesting and article order apply everywhere the folder appears.</p>
             </div>
-            <p className="feed-result-count">
-              <strong>{bootstrap.folders.length}</strong>{" "}
-              {bootstrap.folders.length === 1 ? "folder" : "folders"}
-            </p>
+            <span>
+              {bootstrap.folders.length} {bootstrap.folders.length === 1 ? "folder" : "folders"}
+            </span>
           </div>
-          {addFolderPresence.present ? (
-            <FolderForm
-              key={addFolderSession}
-              folders={bootstrap.folders}
-              motionState={addFolderPresence.state}
-              mutations={mutations}
-              onCancel={closeAddFolder}
-              onSaved={(folder) => {
-                showToast(`Created ${folder.name}`);
-                closeAddFolder();
-              }}
-              showToast={showToast}
-            />
-          ) : null}
           {bootstrap.folders.length === 0 ? (
             <div className="section-empty">
               <FolderIcon aria-hidden="true" size={22} />
               <h3>No folders yet</h3>
               <p>Create a folder to group feeds. Until then, feeds remain at the top level.</p>
-              <button
-                className="secondary-button"
-                type="button"
-                onClick={() => setAddFolderOpen(true)}
-              >
+              <button className="secondary-button" type="button" onClick={onAddFolder}>
                 <FolderPlus aria-hidden="true" size={16} />
                 Add folder
               </button>
             </div>
           ) : (
             <ul className="folder-management-list">
-              {bootstrap.folders.map((folder) => (
+              {orderedFolders.map(({ folder, depth, path }) => (
                 <FolderRow
                   key={folder.id}
                   folder={folder}
-                  folders={bootstrap.folders}
-                  feedCount={bootstrap.feeds.filter((feed) => feed.folderId === folder.id).length}
-                  mutations={mutations}
-                  showToast={showToast}
+                  depth={depth}
+                  path={path}
+                  feedCount={folderBranchFeedCount(folder.id, bootstrap.folders, bootstrap.feeds)}
+                  onAction={(action) => onFolderAction(folder, action)}
                 />
               ))}
             </ul>
@@ -544,7 +690,10 @@ function FeedConfirmationSettings({
           disabled={disabled}
           options={[
             { value: "", label: "No folder" },
-            ...folders.map((folder) => ({ value: String(folder.id), label: folder.name })),
+            ...folders.map((folder) => ({
+              value: String(folder.id),
+              label: folderPathLabel(folder.id, folders),
+            })),
           ]}
           onChange={(value) => onFolderChange(value ? Number(value) : null)}
         />
@@ -1214,245 +1363,112 @@ function feedFailureLabel(feed: Feed): string {
 function FeedRow({
   feed,
   folders,
-  mutations,
   onRefresh,
-  onEditSelection,
-  showToast,
+  onAction,
 }: {
   feed: Feed;
   folders: Folder[];
-  mutations: ReaderDataMutations;
   onRefresh: () => void;
-  onEditSelection: () => void;
-  showToast: (message: string) => void;
+  onAction: (action: FeedManagementAction) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const [title, setTitle] = useState(feed.title);
-  const [feedUrl, setFeedUrl] = useState(feed.feedUrl);
-  const [folderId, setFolderId] = useState<number | null>(feed.folderId);
-  const [busy, setBusy] = useState(false);
-  const folder = folders.find((candidate) => candidate.id === feed.folderId);
-
-  const save = async () => {
-    setBusy(true);
-    try {
-      await mutations.updateFeed(
-        feed.id,
-        feed.sourceKind === "web"
-          ? { title: title.trim(), folderId }
-          : { title: title.trim(), feedUrl: feedUrl.trim(), folderId },
-      );
-      showToast(`Saved ${title.trim()}`);
-      setEditing(false);
-    } catch (error) {
-      showToast(`Could not save ${feed.title}: ${errorMessage(error)}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const togglePaused = async () => {
-    setBusy(true);
-    try {
-      await mutations.updateFeed(feed.id, { paused: !feed.paused });
-      showToast(feed.paused ? `Resumed ${feed.title}` : `Paused ${feed.title}`);
-    } catch (error) {
-      showToast(`Could not update ${feed.title}: ${errorMessage(error)}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const remove = async () => {
-    if (!window.confirm(`Unsubscribe from “${feed.title}” and delete its stored articles?`)) return;
-    setBusy(true);
-    try {
-      await mutations.deleteFeed(feed.id);
-      showToast(`Unsubscribed from ${feed.title}`);
-    } catch (error) {
-      showToast(`Could not unsubscribe from ${feed.title}: ${errorMessage(error)}`);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (editing) {
-    return (
-      <tr className="editing-row">
-        <td colSpan={6}>
-          <div className="table-inline-form">
-            <label className="field">
-              <span>Name</span>
-              <input value={title} onChange={(event) => setTitle(event.target.value)} />
-            </label>
-            <label className="field wide-field">
-              <span>{feed.sourceKind === "web" ? "Page URL" : "Feed URL"}</span>
-              <input
-                type="url"
-                value={feedUrl}
-                readOnly={feed.sourceKind === "web"}
-                onChange={(event) => setFeedUrl(event.target.value)}
-              />
-              {feed.sourceKind === "web" ? (
-                <small>
-                  To change this URL, use Edit page selection so the saved entry group stays valid.
-                </small>
-              ) : null}
-            </label>
-            <div className="field">
-              <span>Folder</span>
-              <DropdownSelect
-                ariaLabel="Folder"
-                value={folderId === null ? "" : String(folderId)}
-                options={[
-                  { value: "", label: "No folder" },
-                  ...folders.map((item) => ({ value: String(item.id), label: item.name })),
-                ]}
-                onChange={(value) => setFolderId(value ? Number(value) : null)}
-              />
-            </div>
-            <div className="form-actions">
-              <button className="secondary-button" type="button" onClick={() => setEditing(false)}>
-                Cancel
-              </button>
-              <button
-                className="primary-button"
-                type="button"
-                disabled={busy || !title.trim() || !feedUrl.trim()}
-                onClick={() => void save()}
-              >
-                {busy ? (
-                  <LoaderCircle className="spin" aria-hidden="true" size={15} />
-                ) : (
-                  <Check aria-hidden="true" size={15} />
-                )}
-                Save feed
-              </button>
-            </div>
-          </div>
-        </td>
-      </tr>
-    );
-  }
+  const status = visibleFeedStatus(feed);
+  const sourceUrl = feed.siteUrl ?? feed.feedUrl;
+  const statusLabel =
+    status === "needs_attention"
+      ? feedFailureLabel(feed)
+      : status === "paused"
+        ? "Paused"
+        : status === "refreshing"
+          ? "Refreshing"
+          : "Healthy";
 
   return (
-    <tr>
-      <td data-label="Feed">
-        <div className="feed-cell">
-          <span
-            className={`status-dot ${
-              feed.healthStatus !== "healthy" ? "failed" : feed.paused ? "paused" : "healthy"
-            }`}
-          />
-          <div>
-            <div className="feed-title-row">
-              <strong>{feed.title}</strong>
-              <span className="feed-type-badge">
-                {feed.sourceKind === "web" ? "Web" : "Published"}
-              </span>
-            </div>
-            <a href={feed.siteUrl ?? feed.feedUrl} target="_blank" rel="noreferrer">
-              {feed.feedUrl}
-            </a>
-          </div>
+    <li className="feed-management-row" data-feed-status={status}>
+      <div className="feed-row-identity">
+        <span
+          className="feed-health-dot"
+          data-status={status}
+          role="img"
+          aria-label={statusLabel}
+        />
+        <div>
+          <span className="feed-row-title">
+            <strong>{feed.title}</strong>
+            {feed.sourceKind === "web" ? <span className="feed-type-badge">Web</span> : null}
+          </span>
+          <a
+            href={sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            aria-label={`Open ${feed.title} website`}
+          >
+            {feedHost(sourceUrl)}
+          </a>
         </div>
-      </td>
-      <td data-label="Folder">{folder?.name ?? <span className="muted">Top level</span>}</td>
-      <td data-label="Status">
-        {feed.healthStatus !== "healthy" ? (
-          <div className="feed-status-actions">
-            <span className="feed-status failed-status" title={feed.lastError ?? undefined}>
+      </div>
+      <div className="feed-row-meta">
+        <span className="feed-folder-path">{folderPathLabel(feed.folderId, folders)}</span>
+        <div className="feed-health" data-status={status}>
+          <span className="feed-health-label">
+            {status === "needs_attention" ? (
               <AlertTriangle aria-hidden="true" size={14} />
-              {feedFailureLabel(feed)}
-              {feed.lastError ? <small>{feed.lastError}</small> : null}
-            </span>
-            {feed.lastErrorKind === "selection_broken" ? (
-              <button className="feed-repair-button" type="button" onClick={onEditSelection}>
-                Repair selection
-              </button>
-            ) : null}
-          </div>
-        ) : feed.paused ? (
-          <span className="feed-status">
-            <Pause aria-hidden="true" size={14} />
-            Paused
+            ) : status === "refreshing" ? (
+              <LoaderCircle className="spin" aria-hidden="true" size={14} />
+            ) : (
+              <span className="feed-health-mini-dot" aria-hidden="true" />
+            )}
+            {statusLabel}
           </span>
-        ) : feed.refreshing ? (
-          <span className="feed-status">
-            <LoaderCircle className="spin" aria-hidden="true" size={14} />
-            Refreshing
-          </span>
-        ) : (
-          <span className="feed-status">
-            <CheckCircle2 aria-hidden="true" size={14} />
-            Healthy
-          </span>
-        )}
-      </td>
-      <td data-label="Last success">
-        <span className="date-cell">
-          {formatDate(feed.lastSuccessAt)}
-          {feed.lastAttemptAt ? <small>Attempt: {formatDate(feed.lastAttemptAt)}</small> : null}
+          {feed.lastError ? <small title={feed.lastError}>{feed.lastError}</small> : null}
+          {feed.lastErrorKind === "selection_broken" ? (
+            <button
+              className="feed-repair-button"
+              type="button"
+              onClick={() => onAction("selection")}
+            >
+              Repair
+            </button>
+          ) : null}
+        </div>
+        <time
+          className="feed-updated"
+          dateTime={feed.lastSuccessAt ?? undefined}
+          title={formatDate(feed.lastSuccessAt)}
+        >
+          {formatRelativeDate(feed.lastSuccessAt)}
+          {status === "needs_attention" && feed.lastAttemptAt ? (
+            <small title={formatDate(feed.lastAttemptAt)}>
+              Tried {formatRelativeDate(feed.lastAttemptAt)}
+            </small>
+          ) : null}
+        </time>
+        <span className="feed-unread" data-zero={feed.unreadCount === 0 || undefined}>
+          <strong>{feed.unreadCount}</strong>
+          <span> unread</span>
         </span>
-      </td>
-      <td data-label="Unread">
-        <span className="numeric-cell">{feed.unreadCount}</span>
-      </td>
-      <td className="row-actions">
+      </div>
+      <div className="feed-row-actions">
         <button
+          className="feed-refresh-button"
           type="button"
-          disabled={busy || feed.refreshing || feed.paused}
+          disabled={feed.refreshing || feed.paused}
           onClick={onRefresh}
           aria-label={`Refresh ${feed.title}`}
           title="Refresh feed"
         >
           <RefreshCw className={feed.refreshing ? "spin" : ""} aria-hidden="true" size={15} />
         </button>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => setEditing(true)}
-          aria-label={`Edit ${feed.title}`}
-          title="Edit feed"
+        <AnchoredPopover
+          label={`${feed.title} actions`}
+          triggerClassName="feed-actions-trigger"
+          triggerContent={<MoreHorizontal aria-hidden="true" size={17} />}
+          variant="actions"
+          managementTarget={{ kind: "feed", id: feed.id }}
         >
-          <Edit3 aria-hidden="true" size={15} />
-        </button>
-        {feed.sourceKind === "web" ? (
-          <button
-            type="button"
-            disabled={busy}
-            onClick={onEditSelection}
-            aria-label={`Edit page selection for ${feed.title}`}
-            title="Edit page selection"
-          >
-            <MousePointer2 aria-hidden="true" size={15} />
-          </button>
-        ) : null}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void togglePaused()}
-          aria-label={feed.paused ? `Resume ${feed.title}` : `Pause ${feed.title}`}
-          title={feed.paused ? "Resume feed" : "Pause feed"}
-        >
-          {feed.paused ? (
-            <Play aria-hidden="true" size={15} />
-          ) : (
-            <Pause aria-hidden="true" size={15} />
-          )}
-        </button>
-        <button
-          className="danger-action"
-          type="button"
-          disabled={busy}
-          onClick={() => void remove()}
-          aria-label={`Unsubscribe from ${feed.title}`}
-          title="Unsubscribe from feed"
-        >
-          <Trash2 aria-hidden="true" size={15} />
-        </button>
-      </td>
-    </tr>
+          <FeedActionMenuItems feed={feed} onAction={onAction} />
+        </AnchoredPopover>
+      </div>
+    </li>
   );
 }
 
@@ -1520,6 +1536,7 @@ export function FolderForm({
       className={`compact-form${motionState ? " add-folder-form" : ""}`}
       data-motion-state={motionState}
       inert={motionState === "closed" ? true : undefined}
+      aria-busy={saving}
       onSubmit={(event) => void submit(event)}
     >
       <label className="field">
@@ -1540,7 +1557,7 @@ export function FolderForm({
             { value: "", label: "No parent" },
             ...availableParents.map((folder) => ({
               value: String(folder.id),
-              label: folder.name,
+              label: folderPathLabel(folder.id, folders),
             })),
           ]}
           onChange={(value) => setParentId(value ? Number(value) : null)}
@@ -1577,78 +1594,38 @@ export function FolderForm({
 
 function FolderRow({
   folder,
-  folders,
+  depth,
+  path,
   feedCount,
-  mutations,
-  showToast,
+  onAction,
 }: {
   folder: Folder;
-  folders: Folder[];
+  depth: number;
+  path: string;
   feedCount: number;
-  mutations: ReaderDataMutations;
-  showToast: (message: string) => void;
+  onAction: (action: FolderManagementAction) => void;
 }) {
-  const [editing, setEditing] = useState(false);
-  const parent = folders.find((candidate) => candidate.id === folder.parentId);
-
-  const remove = async () => {
-    if (!window.confirm(`Delete folder “${folder.name}”? Its feeds will move to the top level.`))
-      return;
-    try {
-      await mutations.deleteFolder(folder.id);
-      showToast(`Deleted folder ${folder.name}`);
-    } catch (error) {
-      showToast(`Could not delete ${folder.name}: ${errorMessage(error)}`);
-    }
-  };
-
   return (
-    <li>
-      {editing ? (
-        <FolderForm
-          folders={folders}
-          initial={folder}
-          mutations={mutations}
-          onCancel={() => setEditing(false)}
-          onSaved={() => {
-            showToast(`Saved ${folder.name}`);
-            setEditing(false);
-          }}
-          showToast={showToast}
-        />
-      ) : (
-        <div className="folder-management-row">
-          <div>
-            <FolderPlus aria-hidden="true" size={16} />
-            <span>
-              <strong>{folder.name}</strong>
-              <small>
-                {feedCount} {feedCount === 1 ? "feed" : "feeds"}
-                {parent ? ` · inside ${parent.name}` : ""}
-                {` · ${folder.sortDirection === "oldest" ? "oldest" : "newest"} first`}
-              </small>
-            </span>
-          </div>
-          <span className="folder-unread">{folder.unreadCount} unread</span>
-          <div className="row-actions">
-            <button
-              type="button"
-              onClick={() => setEditing(true)}
-              aria-label={`Edit ${folder.name}`}
-            >
-              <Edit3 aria-hidden="true" size={15} />
-            </button>
-            <button
-              className="danger-action"
-              type="button"
-              onClick={() => void remove()}
-              aria-label={`Delete ${folder.name}`}
-            >
-              <Trash2 aria-hidden="true" size={15} />
-            </button>
-          </div>
-        </div>
-      )}
+    <li className="folder-management-row" style={{ "--folder-depth": depth } as CSSProperties}>
+      <div className="folder-row-identity" title={path}>
+        <FolderIcon aria-hidden="true" size={16} />
+        <span>
+          <strong>{folder.name}</strong>
+          <small>
+            {feedCount} {feedCount === 1 ? "feed" : "feeds"}
+            {` · ${folder.sortDirection === "oldest" ? "Oldest" : "Newest"} first`}
+          </small>
+        </span>
+      </div>
+      <AnchoredPopover
+        label={`${path} actions`}
+        triggerClassName="folder-actions-trigger"
+        triggerContent={<MoreHorizontal aria-hidden="true" size={17} />}
+        variant="actions"
+        managementTarget={{ kind: "folder", id: folder.id }}
+      >
+        <FolderActionMenuItems onAction={onAction} />
+      </AnchoredPopover>
     </li>
   );
 }

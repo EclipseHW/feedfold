@@ -13,6 +13,20 @@ export function formatDate(value: string | null): string {
   }).format(new Date(value));
 }
 
+export function formatRelativeDate(value: string | null): string {
+  if (!value) return "Never";
+  const seconds = (new Date(value).getTime() - Date.now()) / 1000;
+  const formatter = new Intl.RelativeTimeFormat(undefined, { numeric: "auto", style: "short" });
+  if (Math.abs(seconds) < 60) return formatter.format(Math.round(seconds), "second");
+  const minutes = seconds / 60;
+  if (Math.abs(minutes) < 60) return formatter.format(Math.round(minutes), "minute");
+  const hours = minutes / 60;
+  if (Math.abs(hours) < 24) return formatter.format(Math.round(hours), "hour");
+  const days = hours / 24;
+  if (Math.abs(days) < 30) return formatter.format(Math.round(days), "day");
+  return formatDate(value);
+}
+
 export function formatRefreshInterval(minutes: number): string {
   if (minutes < 60) return `${minutes} minutes`;
   const hours = minutes / 60;
@@ -54,9 +68,11 @@ export function PageHeader({
 }
 
 export function ImportOpmlButton({
+  menuItem = false,
   mutations,
   showToast,
 }: {
+  menuItem?: boolean;
   mutations: ReaderDataMutations;
   showToast: (message: string) => void;
 }) {
@@ -84,7 +100,7 @@ export function ImportOpmlButton({
     <>
       <input
         ref={inputRef}
-        className="visually-hidden-input"
+        hidden
         type="file"
         accept=".opml,.xml,text/xml,application/xml"
         onChange={(event) => void importFile(event)}
@@ -92,6 +108,7 @@ export function ImportOpmlButton({
       <button
         className="secondary-button"
         type="button"
+        role={menuItem ? "menuitem" : undefined}
         disabled={busy}
         onClick={() => inputRef.current?.click()}
       >
@@ -106,7 +123,7 @@ export function ImportOpmlButton({
   );
 }
 
-export function ExportOpmlLink() {
+export function ExportOpmlLink({ menuItem = false }: { menuItem?: boolean } = {}) {
   const [busy, setBusy] = useState(false);
   if (isDesktopApp()) {
     const exportOpml = async () => {
@@ -123,6 +140,7 @@ export function ExportOpmlLink() {
       <button
         className="secondary-button"
         type="button"
+        role={menuItem ? "menuitem" : undefined}
         disabled={busy}
         onClick={() => void exportOpml()}
       >
@@ -138,6 +156,7 @@ export function ExportOpmlLink() {
   return (
     <a
       className="secondary-button"
+      role={menuItem ? "menuitem" : undefined}
       href={appUrl("/api/opml/export")}
       download="echovale-subscriptions.opml"
     >

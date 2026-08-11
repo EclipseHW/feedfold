@@ -55,8 +55,54 @@ describe("feed filters", () => {
       feed(4, { healthStatus: "failing" }),
     ];
 
-    expect(filterFeeds(feeds, "web", "needs_attention").map(({ id }) => id)).toEqual([3]);
-    expect(filterFeeds(feeds, "all", "needs_attention").map(({ id }) => id)).toEqual([3, 4]);
-    expect(filterFeeds(feeds, "published", "all").map(({ id }) => id)).toEqual([1, 4]);
+    expect(
+      filterFeeds(feeds, [], { query: "", type: "web", status: "needs_attention" }).map(
+        ({ id }) => id,
+      ),
+    ).toEqual([3]);
+    expect(
+      filterFeeds(feeds, [], { query: "", type: "all", status: "needs_attention" }).map(
+        ({ id }) => id,
+      ),
+    ).toEqual([3, 4]);
+    expect(
+      filterFeeds(feeds, [], { query: "", type: "published", status: "all" }).map(({ id }) => id),
+    ).toEqual([1, 4]);
+  });
+
+  it("searches feed identity and folder paths case-insensitively", () => {
+    const folders = [
+      {
+        id: 1,
+        name: "Personal",
+        parentId: null,
+        position: 1,
+        sortDirection: "newest" as const,
+        unreadCount: 0,
+      },
+      {
+        id: 2,
+        name: "Reading",
+        parentId: 1,
+        position: 2,
+        sortDirection: "newest" as const,
+        unreadCount: 0,
+      },
+    ];
+    const feeds = [
+      { ...feed(1), title: "Signal Notes", folderId: 2 },
+      { ...feed(2), title: "Elsewhere", feedUrl: "https://example.com/special.xml" },
+    ];
+
+    expect(
+      filterFeeds(feeds, folders, { query: "personal / reading", type: "all", status: "all" }).map(
+        ({ id }) => id,
+      ),
+    ).toEqual([1]);
+    expect(
+      filterFeeds(feeds, folders, { query: "SPECIAL.XML", type: "all", status: "all" }).map(
+        ({ id }) => id,
+      ),
+    ).toEqual([2]);
   });
 });

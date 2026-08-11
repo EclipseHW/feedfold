@@ -424,8 +424,10 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
       setManagementRequest({ kind: "add-feed-to-folder", folderId: folder.id });
     } else if (action === "add-folder") {
       setManagementRequest({ kind: "add-folder", parentId: folder.id });
-    } else {
+    } else if (action === "rule") {
       setManagementRequest({ kind: "create-folder-rule", folderId: folder.id });
+    } else {
+      setManagementRequest({ kind: "delete-folder", folderId: folder.id });
     }
   }, []);
 
@@ -892,8 +894,10 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               mutations={dataResource}
               onMenu={() => setNavOpen(true)}
               onAddFeed={openAddFeed}
+              onAddFolder={() => setManagementRequest({ kind: "create-folder" })}
               onRefresh={(feedId) => void refresh(feedId)}
-              onEditWebFeed={(feed) => openFeedManagement(feed, "selection")}
+              onFeedAction={openFeedManagement}
+              onFolderAction={openFolderManagement}
               showToast={showToast}
             />
           </Suspense>
@@ -948,7 +952,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
                 ? `${managementRequest.kind}:${managementRequest.feedId}`
                 : "folderId" in managementRequest
                   ? `${managementRequest.kind}:${managementRequest.folderId}`
-                  : `${managementRequest.kind}:${managementRequest.parentId}`
+                  : "parentId" in managementRequest
+                    ? `${managementRequest.kind}:${managementRequest.parentId}`
+                    : managementRequest.kind
             }
             request={managementRequest}
             bootstrap={bootstrap}

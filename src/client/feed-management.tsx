@@ -19,7 +19,7 @@ export type FeedManagementAction =
   | "rule"
   | "unsubscribe";
 
-export type FolderManagementAction = "settings" | "add-feed" | "add-folder" | "rule";
+export type FolderManagementAction = "settings" | "add-feed" | "add-folder" | "rule" | "delete";
 
 export type ManagementRequest =
   | { kind: "feed-settings"; feedId: number }
@@ -28,7 +28,9 @@ export type ManagementRequest =
   | { kind: "move-feed"; feedId: number }
   | { kind: "create-feed-rule"; feedId: number }
   | { kind: "unsubscribe-feed"; feedId: number }
+  | { kind: "create-folder" }
   | { kind: "folder-settings"; folderId: number }
+  | { kind: "delete-folder"; folderId: number }
   | { kind: "add-feed-to-folder"; folderId: number }
   | { kind: "add-folder"; parentId: number }
   | { kind: "create-folder-rule"; folderId: number };
@@ -102,6 +104,16 @@ export function FolderActionMenuItems({
       <button type="button" role="menuitem" onClick={() => onAction("rule")}>
         <ListFilter aria-hidden="true" size={15} />
         Create rule
+      </button>
+      <hr className="context-menu-separator" />
+      <button
+        className="danger-menu-item"
+        type="button"
+        role="menuitem"
+        onClick={() => onAction("delete")}
+      >
+        <Trash2 aria-hidden="true" size={15} />
+        Delete folder
       </button>
     </>
   );

@@ -1,4 +1,5 @@
-import type { Feed, FeedSourceKind } from "../shared/types.js";
+import type { Feed, FeedSourceKind, Folder } from "../shared/types.js";
+import { folderPathLabel } from "./folder-hierarchy.js";
 
 export type FeedTypeFilter = "all" | FeedSourceKind;
 export type FeedStatusFilter = "all" | "healthy" | "needs_attention" | "paused" | "refreshing";
@@ -14,10 +15,26 @@ export function visibleFeedStatus(
   return "healthy";
 }
 
-export function filterFeeds(feeds: Feed[], type: FeedTypeFilter, status: FeedStatusFilter): Feed[] {
-  return feeds.filter(
-    (feed) =>
+export function filterFeeds(
+  feeds: Feed[],
+  folders: Folder[],
+  { query, type, status }: { query: string; type: FeedTypeFilter; status: FeedStatusFilter },
+): Feed[] {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  return feeds.filter((feed) => {
+    const searchText = [
+      feed.title,
+      feed.feedUrl,
+      feed.siteUrl,
+      folderPathLabel(feed.folderId, folders),
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLocaleLowerCase();
+    return (
       (type === "all" || feed.sourceKind === type) &&
-      (status === "all" || visibleFeedStatus(feed) === status),
-  );
+      (status === "all" || visibleFeedStatus(feed) === status) &&
+      (!normalizedQuery || searchText.includes(normalizedQuery))
+    );
+  });
 }

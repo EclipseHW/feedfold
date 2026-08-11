@@ -32,6 +32,7 @@ import { api, errorMessage } from "../api";
 import type { ReaderDataMutations } from "../data-resource";
 import { DropdownSelect } from "../dropdown";
 import type { ManagementRequest } from "../feed-management";
+import { folderPathLabel } from "../folder-hierarchy";
 import { useAnimatedDialog } from "../motion";
 import { formatDate, formatRefreshInterval } from "./shared";
 import "./dialogs.css";
@@ -532,7 +533,10 @@ function MoveFeedForm({
             value={folderId === null ? "" : String(folderId)}
             options={[
               { value: "", label: "Top level" },
-              ...folders.map((folder) => ({ value: String(folder.id), label: folder.name })),
+              ...folders.map((folder) => ({
+                value: String(folder.id),
+                label: folderPathLabel(folder.id, folders),
+              })),
             ]}
             onChange={(value) => setFolderId(value ? Number(value) : null)}
           />
@@ -690,6 +694,69 @@ function UnsubscribeForm({
   );
 }
 
+function DeleteFolderForm({
+  folder,
+  mutations,
+  onClose,
+  showToast,
+}: {
+  folder: FolderType;
+  mutations: ReaderDataMutations;
+  onClose: () => void;
+  showToast: (message: string) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await mutations.deleteFolder(folder.id);
+      showToast(`Deleted folder ${folder.name}`);
+      onClose();
+    } catch (caught) {
+      setError(errorMessage(caught));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <form className="management-dialog-form" onSubmit={(event) => void submit(event)}>
+      <div className="management-dialog-body unsubscribe-copy">
+        <p>
+          Deleting this folder moves its feeds and subfolders to the top level and deletes rules
+          that apply only to this folder. This cannot be undone.
+        </p>
+        {error ? <DialogError message={error} /> : null}
+      </div>
+      <div className="management-dialog-footer">
+        <span />
+        <div>
+          <button
+            className="secondary-button"
+            type="button"
+            data-dialog-initial-focus
+            disabled={busy}
+            onClick={onClose}
+          >
+            Keep folder
+          </button>
+          <button className="danger-button" type="submit" disabled={busy}>
+            {busy ? (
+              <LoaderCircle className="spin" aria-hidden="true" size={15} />
+            ) : (
+              <Trash2 aria-hidden="true" size={15} />
+            )}
+            Delete folder
+          </button>
+        </div>
+      </div>
+    </form>
+  );
+}
+
 export function ContextManagementDialog({
   request,
   bootstrap,
@@ -776,24 +843,36 @@ export function ContextManagementDialog({
             ? "Move to folder"
             : request.kind === "unsubscribe-feed"
               ? "Unsubscribe from this feed?"
-              : request.kind === "folder-settings"
-                ? "Folder settings"
-                : request.kind === "add-feed-to-folder"
-                  ? "Move feed to folder"
-                  : request.kind === "add-folder"
-                    ? "Add subfolder"
-                    : "Create rule";
+              : request.kind === "create-folder"
+                ? "Add folder"
+                : request.kind === "folder-settings"
+                  ? "Folder settings"
+                  : request.kind === "delete-folder"
+                    ? "Delete this folder?"
+                    : request.kind === "add-feed-to-folder"
+                      ? "Move feed to folder"
+                      : request.kind === "add-folder"
+                        ? "Add subfolder"
+                        : "Create rule";
   const detail =
     request.kind === "feed-settings"
       ? "Feed details and refresh status"
       : request.kind === "web-feed-selection"
         ? (feed?.title ?? "Web feed")
-        : (feed?.title ?? folder?.name ?? "Feed management");
+        : request.kind === "create-folder"
+          ? "Organize subscriptions"
+          : (feed?.title ?? folder?.name ?? "Feed management");
   const icon =
+    request.kind === "create-folder" ||
     request.kind === "folder-settings" ||
+    request.kind === "delete-folder" ||
     request.kind === "add-feed-to-folder" ||
     request.kind === "add-folder" ? (
-      <Folder size={16} />
+      request.kind === "delete-folder" ? (
+        <Trash2 size={16} />
+      ) : (
+        <Folder size={16} />
+      )
     ) : request.kind === "unsubscribe-feed" ? (
       <Trash2 size={16} />
     ) : request.kind === "web-feed-selection" ? (
@@ -865,6 +944,19 @@ export function ContextManagementDialog({
             />
           ) : request.kind === "unsubscribe-feed" && feed ? (
             <UnsubscribeForm feed={feed} onClose={close} onUnsubscribe={onUnsubscribe} />
+          ) : request.kind === "create-folder" ? (
+            <div className="management-dialog-body">
+              <FolderForm
+                folders={bootstrap.folders}
+                mutations={mutations}
+                onCancel={close}
+                onSaved={(savedFolder) => {
+                  showToast(`Created ${savedFolder.name}`);
+                  close();
+                }}
+                showToast={showToast}
+              />
+            </div>
           ) : request.kind === "folder-settings" && folder ? (
             <div className="management-dialog-body">
               <FolderForm
@@ -879,6 +971,13 @@ export function ContextManagementDialog({
                 showToast={showToast}
               />
             </div>
+          ) : request.kind === "delete-folder" && folder ? (
+            <DeleteFolderForm
+              folder={folder}
+              mutations={mutations}
+              onClose={close}
+              showToast={showToast}
+            />
           ) : request.kind === "add-feed-to-folder" && folder ? (
             <AddFeedToFolderForm
               folder={folder}
