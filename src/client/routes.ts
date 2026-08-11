@@ -119,6 +119,21 @@ export function appRoutePath(route: AppRoute): string {
   return queryString ? `${path}?${queryString}` : path;
 }
 
+export function routeAfterFeedDeletion(
+  currentRoute: AppRoute,
+  readerRoute: ReaderRoute,
+  feedId: number,
+): ReaderRoute | null {
+  const nextRoute =
+    readerRoute.scope === "feed" && readerRoute.scopeId === feedId
+      ? { ...readerRoute, scope: "all" as const, scopeId: null }
+      : readerRoute;
+  if (currentRoute.kind === "article") return nextRoute;
+  return currentRoute.kind === "reader" && appRoutePath(currentRoute) !== appRoutePath(nextRoute)
+    ? nextRoute
+    : null;
+}
+
 export function appRouteUrl(route: AppRoute, basePath: string): string {
   return `${normalizedBasePath(basePath)}${appRoutePath(route)}`;
 }

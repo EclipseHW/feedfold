@@ -51,7 +51,12 @@ import {
   readerScopeUnreadCount,
   refreshFeedIds,
 } from "./reader-state";
-import { appRoutePath, DEFAULT_READER_ROUTE, type ReaderRoute } from "./routes";
+import {
+  appRoutePath,
+  DEFAULT_READER_ROUTE,
+  type ReaderRoute,
+  routeAfterFeedDeletion,
+} from "./routes";
 
 const APP_BASE_PATH = import.meta.env.BASE_URL;
 const FeedsPage = lazy(() => import("./management/feeds"));
@@ -441,17 +446,9 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           currentRoute.kind === "reader" || currentRoute.kind === "article"
             ? route.readerRoute
             : DEFAULT_READER_ROUTE;
-        const nextRoute: ReaderRoute =
-          readerRoute.scope === "feed" && readerRoute.scopeId === feed.id
-            ? { ...readerRoute, scope: "all", scopeId: null }
-            : readerRoute;
+        const nextRoute = routeAfterFeedDeletion(currentRoute, readerRoute, feed.id);
         queue.invalidate();
-        if (
-          currentRoute.kind === "article" ||
-          appRoutePath(currentRoute) !== appRoutePath(nextRoute)
-        ) {
-          route.navigate(nextRoute, "replace");
-        }
+        if (nextRoute) route.navigate(nextRoute, "replace");
         return true;
       } catch (error) {
         showToast(`Could not unsubscribe from ${feed.title}: ${errorMessage(error)}`);

@@ -5,6 +5,7 @@ import {
   appRouteUrl,
   DEFAULT_READER_ROUTE,
   parseAppRoute,
+  routeAfterFeedDeletion,
 } from "../../src/client/routes.js";
 
 const BASE_PATH = "/echovale/";
@@ -68,5 +69,28 @@ describe("application routes", () => {
       kind: "add-feed",
       sourceUrl: "https://example.com/news/feed.xml",
     });
+  });
+
+  it("keeps the feeds management page open after deleting a subscription", () => {
+    expect(routeAfterFeedDeletion({ kind: "feeds" }, DEFAULT_READER_ROUTE, 7)).toBeNull();
+  });
+
+  it("leaves reader routes only when the deleted feed invalidates the page", () => {
+    const selectedFeedRoute = {
+      kind: "reader",
+      scope: "feed",
+      scopeId: 7,
+      state: "starred",
+      search: "sqlite",
+    } satisfies AppRoute;
+
+    expect(routeAfterFeedDeletion(selectedFeedRoute, selectedFeedRoute, 7)).toEqual({
+      kind: "reader",
+      scope: "all",
+      scopeId: null,
+      state: "starred",
+      search: "sqlite",
+    });
+    expect(routeAfterFeedDeletion(DEFAULT_READER_ROUTE, DEFAULT_READER_ROUTE, 7)).toBeNull();
   });
 });
