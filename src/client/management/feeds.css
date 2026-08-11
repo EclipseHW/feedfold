@@ -240,18 +240,58 @@
 .feed-row-identity {
   display: grid;
   min-width: 0;
-  grid-template-columns: 8px minmax(0, 1fr);
+  grid-template-columns: 24px minmax(0, 1fr);
   align-items: center;
-  gap: 9px;
+  gap: 10px;
 }
 
 .feed-row-identity > div {
   min-width: 0;
 }
 
+.feed-source-icon {
+  position: relative;
+  display: block;
+  width: 24px;
+  height: 24px;
+}
+
+.feed-source-icon-visual {
+  position: relative;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+}
+
+.feed-source-icon-fallback {
+  color: var(--text-secondary);
+  font-size: var(--type-label);
+  font-weight: var(--weight-semibold);
+  line-height: 1;
+}
+
+.feed-source-favicon {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 3px;
+  background: var(--surface-raised);
+  object-fit: contain;
+}
+
 .feed-health-dot {
-  width: 7px;
-  height: 7px;
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  width: 9px;
+  height: 9px;
+  border: 2px solid var(--surface);
   border-radius: 50%;
   background: var(--accent);
 }
@@ -265,8 +305,8 @@
 }
 
 .feed-health-dot[data-status="refreshing"] {
-  background: transparent;
-  border: 1px solid var(--accent);
+  background: var(--accent-surface);
+  box-shadow: inset 0 0 0 1px var(--accent);
 }
 
 .feed-row-title {
@@ -1061,6 +1101,10 @@
     background: var(--surface-hover);
   }
 
+  .feed-management-row:hover .feed-health-dot {
+    border-color: var(--surface-hover);
+  }
+
   .feed-row-identity a:hover {
     color: var(--accent);
   }
@@ -1161,7 +1205,7 @@
     grid-area: meta;
     align-items: center;
     gap: 5px;
-    margin-left: 17px;
+    margin-left: 34px;
     overflow: hidden;
     color: var(--muted);
     font-size: var(--type-label);

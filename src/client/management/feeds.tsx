@@ -203,6 +203,10 @@ function feedHost(value: string): string {
   return new URL(value).hostname.replace(/^www\./, "");
 }
 
+function feedFaviconUrl(value: string): string {
+  return new URL("/favicon.ico", value).toString();
+}
+
 function FeedsDesignContract() {
   const markerRef = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
@@ -1360,6 +1364,42 @@ function feedFailureLabel(feed: Feed): string {
   return "Refresh failed";
 }
 
+function FeedSourceIcon({
+  feed,
+  sourceUrl,
+  status,
+  statusLabel,
+}: {
+  feed: Feed;
+  sourceUrl: string;
+  status: ReturnType<typeof visibleFeedStatus>;
+  statusLabel: string;
+}) {
+  const faviconUrl = feedFaviconUrl(sourceUrl);
+  const [failedFavicon, setFailedFavicon] = useState<string | null>(null);
+  const fallbackLabel = Array.from(feed.title.trim())[0]?.toLocaleUpperCase() ?? "•";
+
+  return (
+    <span className="feed-source-icon">
+      <span className="feed-source-icon-visual" aria-hidden="true">
+        <span className="feed-source-icon-fallback">{fallbackLabel}</span>
+        {failedFavicon !== faviconUrl ? (
+          <img
+            className="feed-source-favicon"
+            src={faviconUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            onError={() => setFailedFavicon(faviconUrl)}
+          />
+        ) : null}
+      </span>
+      <span className="feed-health-dot" data-status={status} role="img" aria-label={statusLabel} />
+    </span>
+  );
+}
+
 function FeedRow({
   feed,
   folders,
@@ -1385,11 +1425,11 @@ function FeedRow({
   return (
     <li className="feed-management-row" data-feed-status={status}>
       <div className="feed-row-identity">
-        <span
-          className="feed-health-dot"
-          data-status={status}
-          role="img"
-          aria-label={statusLabel}
+        <FeedSourceIcon
+          feed={feed}
+          sourceUrl={sourceUrl}
+          status={status}
+          statusLabel={statusLabel}
         />
         <div>
           <span className="feed-row-title">
