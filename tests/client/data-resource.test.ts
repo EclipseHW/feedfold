@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { InjectOptions } from "fastify";
 import { afterEach, describe, expect, it } from "vitest";
-import { api, type FeedInput } from "../../src/client/api.js";
+import { api, type FeedInput, type FeedUpdateInput } from "../../src/client/api.js";
 import { ReaderDataResource } from "../../src/client/data-resource.js";
 import { createApp } from "../../src/server/app.js";
 import { AppDatabase } from "../../src/server/database.js";
@@ -51,6 +51,105 @@ const FEED_SOURCE = `<?xml version="1.0" encoding="UTF-8"?>
 </rss>`;
 
 describe("reader data resource", () => {
+  it("reloads feed-dependent data after moving a feed to a folder", async () => {
+    const database = new AppDatabase(":memory:");
+    cleanups.push(() => database.close());
+    const sourceFolder = database.folders.createFolder(1, { name: "Source" });
+    const destinationFolder = database.folders.createFolder(1, { name: "Destination" });
+    const feed = database.feeds.createFeed(1, {
+      title: "Moving feed",
+      feedUrl: "https://example.test/moving.xml",
+      folderId: sourceFolder.id,
+    });
+    database.feeds.completeRefresh(feed.id, {
+      httpStatus: 200,
+      etag: null,
+      lastModified: null,
+      pollIntervalMinutes: 20,
+      parsed: {
+        title: feed.title,
+        siteUrl: null,
+        articles: [
+          {
+            externalId: "moving-story",
+            title: "Moving story",
+            url: null,
+            author: null,
+            publishedAt: null,
+            summary: "",
+            imageUrl: null,
+            feedContentHtml: null,
+          },
+        ],
+      },
+    });
+    const rule = database.rules.createRule(1, {
+      name: "Hide moved stories",
+      folderId: destinationFolder.id,
+      conditions: [{ field: "title", pattern: "moving" }],
+      conditionOperator: "and",
+      action: "hide",
+    });
+    expect(rule.matchedCount).toBe(0);
+
+    const client = {
+      ...api,
+      bootstrap: async () => ({
+        ...database.bootstrap.getBootstrap(1),
+        aiSettings: {
+          credentialStorageAvailable: false,
+          providers: [],
+          features: { articleSummary: null },
+        },
+      }),
+      updateFeed: async (id: number, input: FeedUpdateInput) => {
+        const updated = database.feeds.updateFeed(1, id, input);
+        if (!updated) throw new Error("Feed was not found");
+        return updated;
+      },
+    };
+    const resource = new ReaderDataResource(client);
+    cleanups.push(() => resource.pause());
+    let latestBootstrap: BootstrapData | null = null;
+    let latestArticles: ArticlePage | null = null;
+    let latestRules: Rule[] | null = null;
+    resource.connect({
+      getBootstrap: () => latestBootstrap,
+      applyBootstrap: (bootstrap) => {
+        latestBootstrap = bootstrap;
+      },
+      setBootstrapError: (message) => {
+        if (message) throw new Error(message);
+      },
+      reloadArticles: async () => {
+        latestArticles = database.articles.listArticlePage(1, { state: "all" });
+      },
+      reloadRules: async () => {
+        latestRules = database.rules.listRules(1);
+      },
+    });
+    const currentBootstrap = () => {
+      if (!latestBootstrap) throw new Error("Bootstrap data was not reloaded");
+      return latestBootstrap;
+    };
+    const currentArticles = () => {
+      if (!latestArticles) throw new Error("Articles were not reloaded");
+      return latestArticles;
+    };
+    const currentRules = () => {
+      if (!latestRules) throw new Error("Rules were not reloaded");
+      return latestRules;
+    };
+
+    await resource.updateFeed(feed.id, { folderId: destinationFolder.id });
+
+    expect(currentBootstrap().feeds.find((candidate) => candidate.id === feed.id)?.folderId).toBe(
+      destinationFolder.id,
+    );
+    expect(currentArticles().articles).toEqual([]);
+    expect(currentRules()).toEqual([expect.objectContaining({ id: rule.id, matchedCount: 1 })]);
+  });
+
   it("cancels an obsolete article request when a newer query starts", async () => {
     const firstRequestStarted = deferred();
     const firstRequestAborted = deferred();
