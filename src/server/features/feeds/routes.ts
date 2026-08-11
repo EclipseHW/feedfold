@@ -136,13 +136,15 @@ export async function feedRoutes(
         .send({ error: "Web feed loading is unavailable. Check the server's Chromium setup." });
     }
     const extracted = await webFeedService.extract(body.webConfig as WebFeedConfig);
-    return feeds.createWebFeed(accountId, {
+    const feed = feeds.createWebFeed(accountId, {
       title: body.title ?? extracted.parsed.title,
       pageUrl: body.feedUrl,
       folderId: body.folderId ?? null,
       config: body.webConfig as WebFeedConfig,
       parsed: extracted.parsed,
     });
+    refreshService.notifyDataChanged(accountId);
+    return feed;
   });
 
   app.post("/api/feeds/:id/web-feed/analyze", async (request, reply) => {
@@ -184,7 +186,9 @@ export async function feedRoutes(
       config as WebFeedConfig,
       extracted.parsed,
     );
-    return updated ?? missing(reply, "Feed");
+    if (!updated) return missing(reply, "Feed");
+    refreshService.notifyDataChanged(accountId);
+    return updated;
   });
 
   app.patch("/api/feeds/:id", async (request, reply) => {

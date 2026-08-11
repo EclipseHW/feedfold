@@ -151,6 +151,36 @@ export interface RuleInput {
   enabled: boolean;
 }
 
+function subscribeReaderDataInvalidations(listener: () => void): () => void {
+  let active = true;
+  const invalidate = () => {
+    if (active) listener();
+  };
+  const bridge = window.echovaleDesktop;
+  const unsubscribe = bridge
+    ? bridge.onDataChanged(invalidate)
+    : (() => {
+        const events = new EventSource(appUrl("/api/refresh/events"), { withCredentials: true });
+        events.addEventListener("message", invalidate);
+        events.addEventListener("error", invalidate);
+        return () => events.close();
+      })();
+
+  const reconcileVisible = () => {
+    if (document.visibilityState === "visible") invalidate();
+  };
+  window.addEventListener("online", invalidate);
+  document.addEventListener("visibilitychange", reconcileVisible);
+
+  return () => {
+    if (!active) return;
+    active = false;
+    unsubscribe();
+    window.removeEventListener("online", invalidate);
+    document.removeEventListener("visibilitychange", reconcileVisible);
+  };
+}
+
 export const api = {
   async session(): Promise<SessionUser> {
     const body = await request<{ user: SessionUser }>("session", undefined, "/api/auth/session");
@@ -187,6 +217,8 @@ export const api = {
 
   bootstrap: (signal?: AbortSignal) =>
     request<BootstrapData>("bootstrap", undefined, "/api/bootstrap", { signal }),
+
+  subscribeReaderDataInvalidations,
 
   articles: (query: ArticleQuery, signal?: AbortSignal) =>
     request<ArticlePage>("articles", query, `/api/articles?${queryString(query)}`, { signal }),

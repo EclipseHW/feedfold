@@ -322,7 +322,7 @@ export function useArticleQueue({
       contextArticleReturn.current ||
       loadedReaderRequestKey.current !== requestKey
     ) {
-      void loadArticles();
+      void (articleListNeedsReload.current ? dataResource.reloadReader() : loadArticles());
     }
   }, [appRoute, bootstrapReady, dataResource, loadArticles, readingMode]);
 

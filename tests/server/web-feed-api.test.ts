@@ -172,6 +172,12 @@ describe("authenticated web-feed API", () => {
     };
     const readerCookie = await register("reader");
     const otherCookie = await register("other-reader");
+    const directDeliveryCounts: number[] = [];
+    cleanups.push(
+      refreshService.subscribe(1, () => {
+        directDeliveryCounts.push(database.bootstrap.getBootstrap(1).counts.unread);
+      }),
+    );
     const request = (cookie: string, options: InjectOptions) =>
       app.inject({ ...options, headers: { ...options.headers, cookie } });
 
@@ -240,6 +246,7 @@ describe("authenticated web-feed API", () => {
       lastMatchCount: 3,
       totalCount: 3,
     });
+    expect(directDeliveryCounts).toEqual([3]);
 
     const listArticles = async (): Promise<Article[]> => {
       const response = await request(readerCookie, {
@@ -332,6 +339,7 @@ describe("authenticated web-feed API", () => {
     if (!replacement) throw new Error("Expected the replacement-layout suggestion");
     expect(replacement.config.pageUrl).toBe(`${pageUrl}/changelog`);
 
+    const notificationsBeforeRepair = directDeliveryCounts.length;
     const repairResponse = await request(readerCookie, {
       method: "PATCH",
       url: `/api/feeds/${created.id}/web-feed`,
@@ -346,6 +354,7 @@ describe("authenticated web-feed API", () => {
       lastMatchCount: 3,
       totalCount: 7,
     });
+    expect(directDeliveryCounts).toHaveLength(notificationsBeforeRepair + 1);
     const repairedArticles = await listArticles();
     expect(repairedArticles).toHaveLength(7);
     expect(repairedArticles.find(({ url }) => url === `${pageUrl}/updates/alpha`)).toMatchObject({

@@ -38,6 +38,8 @@ export const DESKTOP_OPERATIONS = [
   "exportOpml",
 ] as const;
 
+export const DESKTOP_DATA_CHANGED_CHANNEL = "echovale:data-changed";
+
 export type DesktopOperation = (typeof DESKTOP_OPERATIONS)[number];
 
 export interface DesktopRequest {
@@ -60,4 +62,5 @@ export interface EchovaleDesktopBridge {
   readonly platform: "desktop";
   invoke(request: DesktopRequest): Promise<DesktopResponse>;
   exportOpml(): Promise<DesktopResponse>;
+  onDataChanged(listener: () => void): () => void;
 }

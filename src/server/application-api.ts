@@ -24,7 +24,8 @@ import type { TelegramMediaService } from "./telegram-media.js";
 import type { WebFeedService } from "./web-feed.js";
 import type { XMediaService } from "./x-media.js";
 
-const LOCAL_USER = { id: 1, username: "On this Mac" } as const;
+export const LOCAL_USER_ID = 1;
+const LOCAL_USER = { id: LOCAL_USER_ID, username: "On this Mac" } as const;
 
 const id = z.number().int().positive();
 const nullableId = id.nullable();
@@ -339,7 +340,7 @@ export class ApplicationApi {
         }
         const config = body.config as WebFeedConfig;
         const extracted = await this.#webFeedService.extract(config);
-        return notFound(
+        const updated = notFound(
           this.#database.feeds.updateWebFeedSelection(
             this.#userId,
             body.id,
@@ -348,6 +349,8 @@ export class ApplicationApi {
           ),
           "Feed",
         );
+        this.#refreshService.notifyDataChanged(this.#userId);
+        return updated;
       }
       case "createFolder": {
         const body = input(
@@ -546,13 +549,15 @@ export class ApplicationApi {
     }
     const config = body.webConfig as WebFeedConfig;
     const extracted = await this.#webFeedService.extract(config);
-    return this.#database.feeds.createWebFeed(this.#userId, {
+    const feed = this.#database.feeds.createWebFeed(this.#userId, {
       title: body.title ?? extracted.parsed.title,
       pageUrl: body.feedUrl,
       folderId: body.folderId,
       config,
       parsed: extracted.parsed,
     });
+    this.#refreshService.notifyDataChanged(this.#userId);
+    return feed;
   }
 
   async #telegramItems(articleId: number) {

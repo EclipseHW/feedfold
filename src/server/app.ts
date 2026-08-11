@@ -150,6 +150,7 @@ export async function createApp(services: AppServices): Promise<FastifyInstance>
   await app.register(refreshRoutes, {
     feeds: services.database.feeds,
     refreshService: services.refreshService,
+    authService: services.authService,
     userId,
   });
   await app.register(opmlRoutes, {

@@ -20,7 +20,7 @@ import {
 import { chromium } from "playwright";
 import { ZodError } from "zod";
 import { AiError } from "../server/ai/errors.js";
-import { ApplicationApi, ApplicationApiError } from "../server/application-api.js";
+import { ApplicationApi, ApplicationApiError, LOCAL_USER_ID } from "../server/application-api.js";
 import { AppDatabase } from "../server/database.js";
 import { InvalidRequestError } from "../server/errors.js";
 import { ExtractionQueue } from "../server/extraction.js";
@@ -32,6 +32,7 @@ import { TelegramMediaService } from "../server/telegram-media.js";
 import { WebFeedError, WebFeedService } from "../server/web-feed.js";
 import { XMediaService } from "../server/x-media.js";
 import {
+  DESKTOP_DATA_CHANGED_CHANNEL,
   DESKTOP_OPERATIONS,
   type DesktopRequest,
   type DesktopResponse,
@@ -120,6 +121,7 @@ class DesktopRuntime {
   readonly webFeedService: WebFeedService;
   readonly refreshService: FeedRefreshService;
   readonly application: ApplicationApi;
+  private readonly unsubscribeFromRefresh: () => void;
 
   constructor() {
     const databasePath = resolve(join(app.getPath("userData"), "echovale.db"));
@@ -170,6 +172,10 @@ class DesktopRuntime {
       feedFetchTimeoutMs,
       this.webFeedService,
     );
+    this.unsubscribeFromRefresh = this.refreshService.subscribe(
+      LOCAL_USER_ID,
+      notifyRendererDataChanged,
+    );
     const aiService = new AiService(this.database, {
       credentialCipher:
         !smokeTest && safeStorage.isEncryptionAvailable() ? new DesktopCredentialCipher() : null,
@@ -193,6 +199,7 @@ class DesktopRuntime {
   }
 
   async close(): Promise<void> {
+    this.unsubscribeFromRefresh();
     await Promise.all([this.refreshService.stop(), this.extractionQueue.stop()]);
     await this.webFeedService.close();
     await closePublicNetwork();
@@ -371,6 +378,14 @@ function trustedIpcSender(event: IpcMainInvokeEvent): boolean {
     frame === event.sender.mainFrame &&
     trustedRenderer(frame?.url ?? "")
   );
+}
+
+function notifyRendererDataChanged(): void {
+  const window = mainWindow;
+  if (!window || window.isDestroyed() || window.webContents.isDestroyed()) return;
+  const frame = window.webContents.mainFrame;
+  if (frame.isDestroyed() || frame.detached || !trustedRenderer(frame.url)) return;
+  frame.send(DESKTOP_DATA_CHANGED_CHANNEL);
 }
 
 function validDesktopRequest(value: unknown): value is DesktopRequest {

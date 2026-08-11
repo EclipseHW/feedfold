@@ -62,6 +62,9 @@ type ReaderDataClient = Pick<
   | "refresh"
 >;
 
+type ReaderDataInvalidationSubscriber = (listener: () => void) => () => void;
+const MAX_INVALIDATION_RETRY_MS = 30_000;
+
 class LatestRequest {
   private controller: AbortController | null = null;
 
@@ -96,12 +99,25 @@ export class ReaderDataResource implements ReaderDataMutations {
   private pollTask: Promise<void> | null = null;
   private pollTimer: ReturnType<typeof setTimeout> | null = null;
   private resolvePollDelay: (() => void) | null = null;
+  private invalidationUnsubscribe: (() => void) | null = null;
+  private invalidationPending = false;
+  private invalidationTask: Promise<void> | null = null;
+  private invalidationRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  private resolveInvalidationRetry: (() => void) | null = null;
+  private invalidationRetryMs: number;
+  private counterMutationCount = 0;
+  private bootstrapMutationRevision = 0;
+  private bootstrapRefreshDeferred = false;
   private active = true;
 
   constructor(
     private readonly client: ReaderDataClient = api,
     private readonly pollIntervalMs = 1_000,
-  ) {}
+    private readonly subscribeToInvalidations: ReaderDataInvalidationSubscriber = api.subscribeReaderDataInvalidations,
+    private readonly initialInvalidationRetryMs = 1_000,
+  ) {
+    this.invalidationRetryMs = initialInvalidationRetryMs;
+  }
 
   connect(binding: ReaderDataBinding): void {
     this.binding = binding;
@@ -109,11 +125,19 @@ export class ReaderDataResource implements ReaderDataMutations {
 
   resume(): void {
     this.active = true;
+    if (!this.invalidationUnsubscribe) {
+      this.invalidationUnsubscribe = this.subscribeToInvalidations(this.queueInvalidation);
+    }
     if (this.hasTrackedWork()) this.ensurePolling();
   }
 
   pause(): void {
     this.active = false;
+    this.invalidationUnsubscribe?.();
+    this.invalidationUnsubscribe = null;
+    this.invalidationPending = false;
+    this.finishInvalidationRetry();
+    this.invalidationRetryMs = this.initialInvalidationRetryMs;
     this.bootstrapRequest.cancel();
     this.articleRequest.cancel();
     this.ruleRequest.cancel();
@@ -144,11 +168,47 @@ export class ReaderDataResource implements ReaderDataMutations {
     }
   };
 
+  reloadReader = async (): Promise<void> => {
+    await this.loadArticles();
+    await this.refreshBootstrap();
+  };
+
   requestArticles = async <T>(
     request: (signal: AbortSignal) => Promise<T>,
   ): Promise<T | undefined> => {
     if (!this.active) return undefined;
     return this.articleRequest.run(request);
+  };
+
+  runCounterMutation = async <T>(request: () => Promise<T>): Promise<T> => {
+    this.counterMutationCount += 1;
+    this.bootstrapMutationRevision += 1;
+    let succeeded = false;
+    try {
+      const result = await request();
+      succeeded = true;
+      return result;
+    } finally {
+      this.counterMutationCount -= 1;
+      this.bootstrapMutationRevision += 1;
+      if (
+        succeeded &&
+        this.counterMutationCount === 0 &&
+        this.bootstrapRefreshDeferred &&
+        this.active
+      ) {
+        await this.refreshBootstrap();
+      }
+    }
+  };
+
+  mutateBootstrap = (update: (bootstrap: BootstrapData) => BootstrapData): void => {
+    const binding = this.binding;
+    const current = binding?.getBootstrap();
+    if (!binding || !current) return;
+    const next = update(current);
+    this.bootstrapMutationRevision += 1;
+    binding.applyBootstrap(next);
   };
 
   loadRules = async (): Promise<void> => {
@@ -286,18 +346,30 @@ export class ReaderDataResource implements ReaderDataMutations {
     if (waitForSettlement) await this.waitForTrackedSettlement(settled);
   }
 
-  private async refreshBootstrap(): Promise<BootstrapData | undefined> {
-    if (!this.active || !this.binding) return undefined;
+  private async refreshBootstrap(): Promise<boolean> {
+    if (!this.active || !this.binding) return true;
+    const bootstrapMutationRevision = this.bootstrapMutationRevision;
     this.binding.setBootstrapError(null);
     try {
       const bootstrap = await this.bootstrapRequest.run((signal) => this.client.bootstrap(signal));
-      if (!bootstrap || !this.binding) return undefined;
+      if (!bootstrap) return false;
+      if (!this.binding) return true;
+      if (
+        this.counterMutationCount > 0 ||
+        bootstrapMutationRevision !== this.bootstrapMutationRevision
+      ) {
+        this.bootstrapRefreshDeferred = true;
+        if (this.counterMutationCount === 0) this.queueInvalidation();
+        return true;
+      }
       this.binding.applyBootstrap(bootstrap);
+      this.bootstrapRefreshDeferred = false;
       this.reconcileTrackedFeeds(bootstrap);
-      return bootstrap;
+      return true;
     } catch (error) {
       this.binding?.setBootstrapError(errorMessage(error));
-      return undefined;
+      if (this.bootstrapRefreshDeferred) this.queueInvalidation();
+      return false;
     }
   }
 
@@ -315,15 +387,60 @@ export class ReaderDataResource implements ReaderDataMutations {
     }
   }
 
+  private queueInvalidation = (): void => {
+    if (!this.active) return;
+    this.invalidationPending = true;
+    this.finishInvalidationRetry();
+    if (this.invalidationTask) return;
+    const task = this.flushInvalidations();
+    this.invalidationTask = task;
+    void task.finally(() => {
+      if (this.invalidationTask !== task) return;
+      this.invalidationTask = null;
+      if (this.active && this.invalidationPending) this.queueInvalidation();
+    });
+  };
+
+  private async flushInvalidations(): Promise<void> {
+    while (this.active && this.invalidationPending) {
+      this.invalidationPending = false;
+      if (await this.refreshBootstrap()) {
+        this.invalidationRetryMs = this.initialInvalidationRetryMs;
+        continue;
+      }
+      if (!this.active) return;
+      this.invalidationPending = true;
+      await this.waitForInvalidationRetry();
+    }
+  }
+
+  private waitForInvalidationRetry(): Promise<void> {
+    return new Promise((resolve) => {
+      const delay = this.invalidationRetryMs;
+      this.invalidationRetryMs = Math.min(delay * 2, MAX_INVALIDATION_RETRY_MS);
+      this.resolveInvalidationRetry = resolve;
+      this.invalidationRetryTimer = setTimeout(() => {
+        this.invalidationRetryTimer = null;
+        this.resolveInvalidationRetry = null;
+        resolve();
+      }, delay);
+    });
+  }
+
+  private finishInvalidationRetry(): void {
+    if (this.invalidationRetryTimer !== null) clearTimeout(this.invalidationRetryTimer);
+    this.invalidationRetryTimer = null;
+    const resolve = this.resolveInvalidationRetry;
+    this.resolveInvalidationRetry = null;
+    resolve?.();
+  }
+
   private markRefreshing(feedIds: number[]): void {
-    const binding = this.binding;
-    const current = binding?.getBootstrap();
-    if (!binding || !current) return;
     const ids = new Set(feedIds);
-    binding.applyBootstrap({
+    this.mutateBootstrap((current) => ({
       ...current,
       feeds: current.feeds.map((feed) => (ids.has(feed.id) ? { ...feed, refreshing: true } : feed)),
-    });
+    }));
   }
 
   private hasTrackedWork(): boolean {

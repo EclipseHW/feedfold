@@ -1,11 +1,4 @@
-import {
-  type Dispatch,
-  type SetStateAction,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   AiSettings,
   AppSettings,
@@ -34,7 +27,6 @@ import {
 
 interface ArticleActionsOptions {
   bootstrap: BootstrapData | null;
-  setBootstrap: Dispatch<SetStateAction<BootstrapData | null>>;
   queue: ArticleQueueController;
   route: AppRouteController;
   dataResource: ReaderDataResource;
@@ -44,7 +36,6 @@ interface ArticleActionsOptions {
 
 export function useArticleActions({
   bootstrap,
-  setBootstrap,
   queue,
   route,
   dataResource,
@@ -140,12 +131,12 @@ export function useArticleActions({
           item.id === article.id ? { ...item, isRead: nextRead, isStarred: nextStarred } : item,
         ),
       );
-      setBootstrap((current) =>
-        current ? updateBootstrapCounts(current, article, unreadDelta, starredDelta) : current,
+      dataResource.mutateBootstrap((current) =>
+        updateBootstrapCounts(current, article, unreadDelta, starredDelta),
       );
 
       try {
-        await api.updateArticleState(article.id, change);
+        await dataResource.runCounterMutation(() => api.updateArticleState(article.id, change));
       } catch (caught) {
         if (wasManuallyUnread) manuallyUnreadArticleIds.current.add(article.id);
         else manuallyUnreadArticleIds.current.delete(article.id);
@@ -166,15 +157,15 @@ export function useArticleActions({
               : item,
           ),
         );
-        setBootstrap((current) =>
-          current ? updateBootstrapCounts(current, article, -unreadDelta, -starredDelta) : current,
+        dataResource.mutateBootstrap((current) =>
+          updateBootstrapCounts(current, article, -unreadDelta, -starredDelta),
         );
         showToast(`Could not update the article: ${errorMessage(caught)}`);
         await loadBootstrap();
         if (route.routedArticleId === null) await loadArticles();
       }
     },
-    [loadArticles, loadBootstrap, queue, route.routedArticleId, setBootstrap, showToast],
+    [dataResource, loadArticles, loadBootstrap, queue, route.routedArticleId, showToast],
   );
 
   const activateArticle = useCallback(
@@ -550,8 +541,7 @@ export function useArticleActions({
       queue.setArticles((current) =>
         current.map((article) => (ids.has(article.id) ? { ...article, isRead: true } : article)),
       );
-      setBootstrap((current) => {
-        if (!current) return current;
+      dataResource.mutateBootstrap((current) => {
         return unreadArticles.reduce(
           (next, article) => updateBootstrapCounts(next, article, -1, 0),
           current,
@@ -559,7 +549,7 @@ export function useArticleActions({
       });
 
       try {
-        await api.markRead({ articleIds: [...ids] });
+        await dataResource.runCounterMutation(() => api.markRead({ articleIds: [...ids] }));
         return true;
       } catch (caught) {
         for (const id of protectedIds) manuallyUnreadArticleIds.current.add(id);
@@ -568,7 +558,7 @@ export function useArticleActions({
         return false;
       }
     },
-    [loadArticles, loadBootstrap, queue, setBootstrap, showToast],
+    [dataResource, loadArticles, loadBootstrap, queue, showToast],
   );
 
   const markPassedArticlesRead = useCallback(
@@ -628,16 +618,16 @@ export function useArticleActions({
           invalidateArticleSummaries(current, invalidation.invalidatedSummaryPromptIds),
         );
       }
-      setBootstrap((current) => (current ? { ...current, settings } : current));
+      dataResource.mutateBootstrap((current) => ({ ...current, settings }));
     },
-    [bootstrap, queue, setBootstrap],
+    [bootstrap, dataResource, queue],
   );
 
   const applyAiSettings = useCallback(
     (aiSettings: AiSettings) => {
-      setBootstrap((current) => (current ? { ...current, aiSettings } : current));
+      dataResource.mutateBootstrap((current) => ({ ...current, aiSettings }));
     },
-    [setBootstrap],
+    [dataResource],
   );
 
   return {

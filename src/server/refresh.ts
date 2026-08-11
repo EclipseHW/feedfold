@@ -84,6 +84,7 @@ function failureDetails(
 export class FeedRefreshService {
   private readonly pending: FeedRecord[] = [];
   private readonly requestedIds = new Set<number>();
+  private readonly listeners = new Map<number, Set<() => void>>();
   private active = 0;
   private timer: NodeJS.Timeout | null = null;
   private stopped = false;
@@ -119,6 +120,16 @@ export class FeedRefreshService {
     return { requested: accepted.length, refreshingFeedIds: accepted.map((feed) => feed.id) };
   }
 
+  subscribe(userId: number, listener: () => void): () => void {
+    const listeners = this.listeners.get(userId) ?? new Set<() => void>();
+    listeners.add(listener);
+    this.listeners.set(userId, listeners);
+    return () => {
+      listeners.delete(listener);
+      if (listeners.size === 0) this.listeners.delete(userId);
+    };
+  }
+
   private pump(): void {
     while (!this.stopped && this.active < this.concurrency && this.pending.length > 0) {
       const feed = this.pending.shift();
@@ -127,6 +138,7 @@ export class FeedRefreshService {
       void this.refresh(feed).finally(() => {
         this.active -= 1;
         this.requestedIds.delete(feed.id);
+        this.notifyDataChanged(feed.userId);
         this.pump();
         this.resolveIdleIfNeeded();
       });
@@ -275,5 +287,15 @@ export class FeedRefreshService {
     const resolvers = this.idleResolvers;
     this.idleResolvers = [];
     for (const resolve of resolvers) resolve();
+  }
+
+  notifyDataChanged(userId: number): void {
+    for (const listener of this.listeners.get(userId) ?? []) {
+      try {
+        listener();
+      } catch {
+        // A disconnected client must not leave the refresh queue permanently active.
+      }
+    }
   }
 }

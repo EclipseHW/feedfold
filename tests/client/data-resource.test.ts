@@ -188,6 +188,399 @@ describe("reader data resource", () => {
     expect(appliedResponses).toEqual(["new query"]);
   });
 
+  it("reloads unread counts with the article list after background delivery", async () => {
+    const database = new AppDatabase(":memory:");
+    cleanups.push(() => database.close());
+    const feed = database.feeds.createFeed(1, {
+      title: "Background feed",
+      feedUrl: "https://example.test/background.xml",
+      folderId: null,
+    });
+    const client = {
+      ...api,
+      bootstrap: async () => ({
+        ...database.bootstrap.getBootstrap(1),
+        aiSettings: {
+          credentialStorageAvailable: false,
+          providers: [],
+          features: { articleSummary: null },
+        },
+      }),
+    };
+    const resource = new ReaderDataResource(client);
+    cleanups.push(() => resource.pause());
+    let latestBootstrap: BootstrapData | null = null;
+    let latestArticles: ArticlePage | null = null;
+    let deliverDuringReload = false;
+    resource.connect({
+      getBootstrap: () => latestBootstrap,
+      applyBootstrap: (bootstrap) => {
+        latestBootstrap = bootstrap;
+      },
+      setBootstrapError: (message) => {
+        if (message) throw new Error(message);
+      },
+      reloadArticles: async () => {
+        if (deliverDuringReload) {
+          deliverDuringReload = false;
+          database.feeds.completeRefresh(feed.id, {
+            httpStatus: 200,
+            etag: null,
+            lastModified: null,
+            pollIntervalMinutes: 20,
+            parsed: {
+              title: feed.title,
+              siteUrl: null,
+              articles: [
+                {
+                  externalId: "background-story",
+                  title: "Delivered while reading",
+                  url: null,
+                  author: null,
+                  publishedAt: null,
+                  summary: "",
+                  imageUrl: null,
+                  feedContentHtml: null,
+                },
+              ],
+            },
+          });
+        }
+        latestArticles = database.articles.listArticlePage(1, { state: "unread" });
+      },
+      reloadRules: async () => {},
+    });
+    const currentBootstrap = () => {
+      if (!latestBootstrap) throw new Error("Bootstrap data was not reloaded");
+      return latestBootstrap;
+    };
+    const currentArticles = () => {
+      if (!latestArticles) throw new Error("Articles were not reloaded");
+      return latestArticles;
+    };
+
+    await resource.loadBootstrap();
+    expect(currentBootstrap().counts.unread).toBe(0);
+
+    deliverDuringReload = true;
+    await resource.reloadReader();
+
+    expect(currentArticles().articles.map((article) => article.title)).toEqual([
+      "Delivered while reading",
+    ]);
+    expect(currentBootstrap().counts.unread).toBe(1);
+    expect(currentBootstrap().feeds[0]?.unreadCount).toBe(1);
+  });
+
+  it("updates every unread count when a delivery invalidation arrives", async () => {
+    const database = new AppDatabase(":memory:");
+    cleanups.push(() => database.close());
+    const folder = database.folders.createFolder(1, { name: "Live deliveries" });
+    const feed = database.feeds.createFeed(1, {
+      title: "Live feed",
+      feedUrl: "https://example.test/live.xml",
+      folderId: folder.id,
+    });
+    let bootstrapCalls = 0;
+    const client = {
+      ...api,
+      bootstrap: async () => {
+        bootstrapCalls += 1;
+        if (bootstrapCalls === 2) throw new Error("transient bootstrap failure");
+        return {
+          ...database.bootstrap.getBootstrap(1),
+          aiSettings: {
+            credentialStorageAvailable: false,
+            providers: [],
+            features: { articleSummary: null },
+          },
+        };
+      },
+    };
+    let invalidate = () => {};
+    let unsubscribed = false;
+    const resource = new ReaderDataResource(
+      client,
+      5,
+      (listener) => {
+        invalidate = listener;
+        return () => {
+          unsubscribed = true;
+        };
+      },
+      5,
+    );
+    cleanups.push(() => resource.pause());
+    let latestBootstrap: BootstrapData | null = null;
+    let bootstrapError: string | null = null;
+    const liveCountApplied = deferred();
+    resource.connect({
+      getBootstrap: () => latestBootstrap,
+      applyBootstrap: (bootstrap) => {
+        latestBootstrap = bootstrap;
+        if (bootstrap.counts.unread === 1) liveCountApplied.resolve();
+      },
+      setBootstrapError: (message) => {
+        bootstrapError = message;
+      },
+      reloadArticles: async () => {},
+      reloadRules: async () => {},
+    });
+    const currentBootstrap = () => {
+      if (!latestBootstrap) throw new Error("Bootstrap data was not reloaded");
+      return latestBootstrap;
+    };
+
+    resource.resume();
+    await resource.loadBootstrap();
+    expect(currentBootstrap().counts.unread).toBe(0);
+
+    database.feeds.completeRefresh(feed.id, {
+      httpStatus: 200,
+      etag: null,
+      lastModified: null,
+      pollIntervalMinutes: 20,
+      parsed: {
+        title: feed.title,
+        siteUrl: null,
+        articles: [
+          {
+            externalId: "live-story",
+            title: "Delivered without a click",
+            url: null,
+            author: null,
+            publishedAt: null,
+            summary: "",
+            imageUrl: null,
+            feedContentHtml: null,
+          },
+        ],
+      },
+    });
+    expect(database.bootstrap.getBootstrap(1).counts.unread).toBe(1);
+    expect(currentBootstrap().counts.unread).toBe(0);
+
+    invalidate();
+    await liveCountApplied.promise;
+
+    expect(currentBootstrap().counts.unread).toBe(1);
+    expect(currentBootstrap().feeds[0]?.unreadCount).toBe(1);
+    expect(currentBootstrap().folders[0]?.unreadCount).toBe(1);
+    expect(bootstrapCalls).toBe(3);
+    expect(bootstrapError).toBeNull();
+
+    resource.pause();
+    expect(unsubscribed).toBe(true);
+  });
+
+  it("discards a live counter snapshot that overlaps an optimistic read", async () => {
+    const database = new AppDatabase(":memory:");
+    cleanups.push(() => database.close());
+    const feed = database.feeds.createFeed(1, {
+      title: "Concurrent feed",
+      feedUrl: "https://example.test/concurrent.xml",
+      folderId: null,
+    });
+    database.feeds.completeRefresh(feed.id, {
+      httpStatus: 200,
+      etag: null,
+      lastModified: null,
+      pollIntervalMinutes: 20,
+      parsed: {
+        title: feed.title,
+        siteUrl: null,
+        articles: [
+          {
+            externalId: "existing-story",
+            title: "Existing unread story",
+            url: null,
+            author: null,
+            publishedAt: null,
+            summary: "",
+            imageUrl: null,
+            feedContentHtml: null,
+          },
+        ],
+      },
+    });
+    const existingArticle = database.articles.listArticlePage(1, { state: "unread" }).articles[0];
+    if (!existingArticle) throw new Error("The existing article was not stored");
+
+    const staleSnapshotStarted = deferred();
+    const releaseStaleSnapshot = deferred();
+    let holdNextSnapshot = false;
+    const client = {
+      ...api,
+      bootstrap: async () => {
+        const snapshot = {
+          ...database.bootstrap.getBootstrap(1),
+          aiSettings: {
+            credentialStorageAvailable: false,
+            providers: [],
+            features: { articleSummary: null },
+          },
+        };
+        if (holdNextSnapshot) {
+          holdNextSnapshot = false;
+          staleSnapshotStarted.resolve();
+          await releaseStaleSnapshot.promise;
+        }
+        return snapshot;
+      },
+    };
+    let invalidate = () => {};
+    const resource = new ReaderDataResource(client, 5, (listener) => {
+      invalidate = listener;
+      return () => {};
+    });
+    cleanups.push(() => resource.pause());
+    let latestBootstrap: BootstrapData | null = null;
+    const appliedUnreadCounts: number[] = [];
+    resource.connect({
+      getBootstrap: () => latestBootstrap,
+      applyBootstrap: (bootstrap) => {
+        latestBootstrap = bootstrap;
+        appliedUnreadCounts.push(bootstrap.counts.unread);
+      },
+      setBootstrapError: (message) => {
+        if (message) throw new Error(message);
+      },
+      reloadArticles: async () => {},
+      reloadRules: async () => {},
+    });
+    const currentBootstrap = () => {
+      if (!latestBootstrap) throw new Error("Bootstrap data was not reloaded");
+      return latestBootstrap;
+    };
+
+    resource.resume();
+    await resource.loadBootstrap();
+    expect(currentBootstrap().counts.unread).toBe(1);
+
+    database.feeds.completeRefresh(feed.id, {
+      httpStatus: 200,
+      etag: null,
+      lastModified: null,
+      pollIntervalMinutes: 20,
+      parsed: {
+        title: feed.title,
+        siteUrl: null,
+        articles: [
+          {
+            externalId: "delivered-story",
+            title: "Newly delivered story",
+            url: null,
+            author: null,
+            publishedAt: null,
+            summary: "",
+            imageUrl: null,
+            feedContentHtml: null,
+          },
+        ],
+      },
+    });
+    expect(database.bootstrap.getBootstrap(1).counts.unread).toBe(2);
+
+    holdNextSnapshot = true;
+    invalidate();
+    await staleSnapshotStarted.promise;
+
+    const optimistic = currentBootstrap();
+    latestBootstrap = {
+      ...optimistic,
+      counts: { ...optimistic.counts, unread: 0 },
+      feeds: optimistic.feeds.map((item) =>
+        item.id === feed.id ? { ...item, unreadCount: 0 } : item,
+      ),
+    };
+    appliedUnreadCounts.push(0);
+    const releaseMutation = deferred();
+    const mutation = resource.runCounterMutation(async () => {
+      await releaseMutation.promise;
+      database.articles.updateArticleState(1, existingArticle.id, { isRead: true });
+    });
+
+    releaseStaleSnapshot.resolve();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    expect(currentBootstrap().counts.unread).toBe(0);
+
+    releaseMutation.resolve();
+    await mutation;
+
+    expect(appliedUnreadCounts).not.toContain(2);
+    expect(currentBootstrap().counts.unread).toBe(1);
+    expect(currentBootstrap().feeds[0]?.unreadCount).toBe(1);
+  });
+
+  it("does not let a delayed delivery snapshot revert saved settings", async () => {
+    const database = new AppDatabase(":memory:");
+    cleanups.push(() => database.close());
+    const staleSnapshotStarted = deferred();
+    const releaseStaleSnapshot = deferred();
+    let holdNextSnapshot = false;
+    const client = {
+      ...api,
+      bootstrap: async () => {
+        const snapshot = {
+          ...database.bootstrap.getBootstrap(1),
+          aiSettings: {
+            credentialStorageAvailable: false,
+            providers: [],
+            features: { articleSummary: null },
+          },
+        };
+        if (holdNextSnapshot) {
+          holdNextSnapshot = false;
+          staleSnapshotStarted.resolve();
+          await releaseStaleSnapshot.promise;
+        }
+        return snapshot;
+      },
+    };
+    let invalidate = () => {};
+    const resource = new ReaderDataResource(client, 5, (listener) => {
+      invalidate = listener;
+      return () => {};
+    });
+    cleanups.push(() => resource.pause());
+    let latestBootstrap: BootstrapData | null = null;
+    const appliedSettings: boolean[] = [];
+    const reconciled = deferred();
+    resource.connect({
+      getBootstrap: () => latestBootstrap,
+      applyBootstrap: (bootstrap) => {
+        latestBootstrap = bootstrap;
+        appliedSettings.push(bootstrap.settings.singleKeyShortcuts);
+        if (appliedSettings.filter((value) => !value).length === 2) reconciled.resolve();
+      },
+      setBootstrapError: (message) => {
+        if (message) throw new Error(message);
+      },
+      reloadArticles: async () => {},
+      reloadRules: async () => {},
+    });
+    const currentBootstrap = () => {
+      if (!latestBootstrap) throw new Error("Bootstrap data was not reloaded");
+      return latestBootstrap;
+    };
+
+    resource.resume();
+    await resource.loadBootstrap();
+    expect(currentBootstrap().settings.singleKeyShortcuts).toBe(true);
+
+    holdNextSnapshot = true;
+    invalidate();
+    await staleSnapshotStarted.promise;
+    const savedSettings = database.settings.updateSettings(1, { singleKeyShortcuts: false });
+    resource.mutateBootstrap((current) => ({ ...current, settings: savedSettings }));
+
+    releaseStaleSnapshot.resolve();
+    await reconciled.promise;
+
+    expect(appliedSettings.slice(1)).toEqual([false, false]);
+    expect(currentBootstrap().settings.singleKeyShortcuts).toBe(false);
+  });
+
   it("replaces a stale add-feed snapshot after ingestion and reloads articles", async () => {
     const directory = await mkdtemp(join(tmpdir(), "echovale-data-resource-test-"));
     const database = new AppDatabase(join(directory, "echovale.db"));

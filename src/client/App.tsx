@@ -290,7 +290,6 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
   });
   const articleActions = useArticleActions({
     bootstrap,
-    setBootstrap,
     queue,
     route,
     dataResource,

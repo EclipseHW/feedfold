@@ -22,6 +22,7 @@ import { InvalidRequestError } from "../errors.js";
 
 export interface FeedRecordBase {
   id: number;
+  userId: number;
   folderId: number | null;
   title: string;
   feedUrl: string;
@@ -203,6 +204,7 @@ export function mapFeed(row: Row): Feed {
 export function mapFeedRecord(row: Row): FeedRecord {
   const base: FeedRecordBase = {
     id: Number(row.id),
+    userId: Number(row.userId),
     folderId: row.folderId === null ? null : Number(row.folderId),
     title: String(row.title),
     feedUrl: String(row.feedUrl),
@@ -237,7 +239,8 @@ export function mapFeedRecord(row: Row): FeedRecord {
   };
 }
 
-export const feedRecordColumns = `feeds.id, feeds.folder_id AS folderId, feeds.title,
+export const feedRecordColumns = `feeds.id, feeds.user_id AS userId,
+  feeds.folder_id AS folderId, feeds.title,
   feeds.feed_url AS feedUrl, feeds.site_url AS siteUrl, feeds.source_kind AS sourceKind,
   feeds.paused, feeds.etag, feeds.last_modified AS lastModified,
   ${feedPollIntervalSql} AS pollIntervalMinutes,
