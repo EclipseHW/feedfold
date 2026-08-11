@@ -23,6 +23,9 @@
   --font-ui:
     "IBM Plex Sans Variable", ui-sans-serif, -apple-system, BlinkMacSystemFont, "SF Pro Text",
     "Segoe UI Variable", "Segoe UI", sans-serif;
+  --font-wordmark:
+    "Instrument Sans Variable", "IBM Plex Sans Variable", ui-sans-serif, -apple-system,
+    BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable", "Segoe UI", sans-serif;
   --font-prose: var(--font-ui);
   --font-reading: Iowan Old Style, Charter, "Palatino Linotype", Georgia, serif;
   --font-code: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, monospace;
@@ -477,6 +480,7 @@ kbd {
 }
 
 .brand-wordmark {
+  font-family: var(--font-wordmark);
   font-size: var(--type-wordmark);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-wordmark);
@@ -841,10 +845,6 @@ kbd {
 .login-brand,
 .session-loading {
   color: var(--text);
-}
-
-.login-brand {
-  --type-wordmark: 1.0625rem;
 }
 
 .login-heading {
