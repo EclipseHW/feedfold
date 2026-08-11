@@ -29,6 +29,7 @@ import type {
   FolderManagementAction,
   ManagementRequest,
 } from "./feed-management";
+import { folderPathLabel } from "./folder-hierarchy";
 import type { RuleFormDraft } from "./management/rules";
 import { type AppView, ReaderToolbar, Sidebar } from "./navigation";
 import {
@@ -436,6 +437,21 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     }
   }, []);
 
+  const moveFeed = useCallback(
+    async (feed: Feed, folderId: number | null): Promise<boolean> => {
+      try {
+        await dataResource.updateFeed(feed.id, { folderId });
+        const destination = folderPathLabel(folderId, bootstrapRef.current?.folders ?? []);
+        showToast(`Moved ${feed.title} to ${destination}`);
+        return true;
+      } catch (error) {
+        showToast(`Could not move ${feed.title}: ${errorMessage(error)}`);
+        return false;
+      }
+    },
+    [dataResource],
+  );
+
   const unsubscribeFromFeed = useCallback(
     async (feed: Feed): Promise<boolean> => {
       try {
@@ -670,6 +686,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         onNavigate={navigateTo}
         onFeedAction={openFeedManagement}
         onFolderAction={openFolderManagement}
+        onMoveFeed={moveFeed}
         onRefresh={() => void refresh()}
         onLogout={onLogout}
       />

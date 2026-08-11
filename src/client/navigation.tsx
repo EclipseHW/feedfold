@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import {
   type FormEvent,
+  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type SyntheticEvent,
@@ -140,8 +141,26 @@ interface SidebarProps {
   onNavigate: (view: AppView) => void;
   onFeedAction: (feed: Feed, action: FeedManagementAction) => void;
   onFolderAction: (folder: FolderType, action: FolderManagementAction) => void;
+  onMoveFeed: (feed: Feed, folderId: number | null) => Promise<boolean>;
   onRefresh: () => void;
   onLogout: () => Promise<void>;
+}
+
+type FeedDropTarget = number | "top-level";
+
+interface SidebarFeedDrag {
+  draggedFeed: Feed | null;
+  dropTarget: FeedDropTarget | null;
+  movingFeedId: number | null;
+  start: (feed: Feed, event: ReactDragEvent<HTMLButtonElement>) => void;
+  end: () => void;
+  enterTarget: (folderId: number | null, event: ReactDragEvent<HTMLElement>) => boolean;
+  leaveTarget: (folderId: number | null, event: ReactDragEvent<HTMLElement>) => void;
+  dropOnTarget: (folderId: number | null, event: ReactDragEvent<HTMLElement>) => Promise<boolean>;
+}
+
+function feedDropTarget(folderId: number | null): FeedDropTarget {
+  return folderId ?? "top-level";
 }
 
 type SidebarContextMenuState =
@@ -178,12 +197,17 @@ export function Sidebar({
   onNavigate,
   onFeedAction,
   onFolderAction,
+  onMoveFeed,
   onRefresh,
   onLogout,
 }: SidebarProps) {
   const [contextMenu, setContextMenu] = useState<SidebarContextMenuState | null>(null);
+  const [draggedFeedId, setDraggedFeedId] = useState<number | null>(null);
+  const [dropTarget, setDropTarget] = useState<FeedDropTarget | null>(null);
+  const [movingFeedId, setMovingFeedId] = useState<number | null>(null);
   const rootFolders = bootstrap.folders.filter((folder) => folder.parentId === null);
   const uncategorized = bootstrap.feeds.filter((feed) => feed.folderId === null);
+  const draggedFeed = bootstrap.feeds.find((feed) => feed.id === draggedFeedId) ?? null;
   const hasFeedErrors = bootstrap.feeds.some((feed) => feed.lastError);
   const refreshing = bootstrap.feeds.some((feed) => feed.refreshing);
   const selectedFolderPathIds = selectedFolderPath(
@@ -214,9 +238,84 @@ export function Sidebar({
     [],
   );
 
+  const endFeedDrag = useCallback(() => {
+    setDraggedFeedId(null);
+    setDropTarget(null);
+  }, []);
+
+  const startFeedDrag = useCallback(
+    (feed: Feed, event: ReactDragEvent<HTMLButtonElement>) => {
+      if (movingFeedId !== null) {
+        event.preventDefault();
+        return;
+      }
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("application/x-echovale-feed", String(feed.id));
+      setDraggedFeedId(feed.id);
+      setDropTarget(null);
+    },
+    [movingFeedId],
+  );
+
+  const enterFeedDropTarget = useCallback(
+    (folderId: number | null, event: ReactDragEvent<HTMLElement>) => {
+      const target = feedDropTarget(folderId);
+      if (!draggedFeed || movingFeedId !== null || draggedFeed.folderId === folderId) {
+        event.dataTransfer.dropEffect = "none";
+        setDropTarget((current) => (current === target ? null : current));
+        return false;
+      }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+      setDropTarget(target);
+      return true;
+    },
+    [draggedFeed, movingFeedId],
+  );
+
+  const leaveFeedDropTarget = useCallback(
+    (folderId: number | null, event: ReactDragEvent<HTMLElement>) => {
+      const relatedTarget = event.relatedTarget;
+      if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) return;
+      const target = feedDropTarget(folderId);
+      setDropTarget((current) => (current === target ? null : current));
+    },
+    [],
+  );
+
+  const dropFeedOnTarget = useCallback(
+    async (folderId: number | null, event: ReactDragEvent<HTMLElement>) => {
+      if (!draggedFeed || movingFeedId !== null || draggedFeed.folderId === folderId) return false;
+      event.preventDefault();
+      event.stopPropagation();
+      const feed = draggedFeed;
+      endFeedDrag();
+      setMovingFeedId(feed.id);
+      try {
+        return await onMoveFeed(feed, folderId);
+      } finally {
+        setMovingFeedId((current) => (current === feed.id ? null : current));
+      }
+    },
+    [draggedFeed, endFeedDrag, movingFeedId, onMoveFeed],
+  );
+
+  const feedDrag: SidebarFeedDrag = {
+    draggedFeed,
+    dropTarget,
+    movingFeedId,
+    start: startFeedDrag,
+    end: endFeedDrag,
+    enterTarget: enterFeedDropTarget,
+    leaveTarget: leaveFeedDropTarget,
+    dropOnTarget: dropFeedOnTarget,
+  };
+  const topLevelDropAvailable = draggedFeed !== null && draggedFeed.folderId !== null;
+  const topLevelDropActive = dropTarget === "top-level";
+
   return (
     <aside
-      className={`sidebar${open ? " is-open" : ""}${collapsed ? " is-collapsed" : ""}`}
+      className={`sidebar${open ? " is-open" : ""}${collapsed ? " is-collapsed" : ""}${draggedFeed ? " is-dragging-feed" : ""}`}
       aria-label="Primary navigation"
     >
       <div className="brand-row">
@@ -282,8 +381,21 @@ export function Sidebar({
         </ul>
 
         <div className="sidebar-scroll">
-          <div className="sidebar-section-heading">
-            <span>Subscriptions</span>
+          <fieldset
+            className={`sidebar-section-heading sidebar-top-level-drop${topLevelDropAvailable ? " is-feed-drop-available" : ""}${topLevelDropActive ? " is-feed-drop-target" : ""}`}
+            aria-label={topLevelDropAvailable ? "Move feed to top level" : "Subscription actions"}
+            onDragEnter={(event) => feedDrag.enterTarget(null, event)}
+            onDragOver={(event) => feedDrag.enterTarget(null, event)}
+            onDragLeave={(event) => feedDrag.leaveTarget(null, event)}
+            onDrop={(event) => void feedDrag.dropOnTarget(null, event)}
+          >
+            <span>
+              {topLevelDropActive
+                ? "Drop at top level"
+                : topLevelDropAvailable
+                  ? "Top level"
+                  : "Subscriptions"}
+            </span>
             <span className="sidebar-section-actions">
               <button
                 type="button"
@@ -298,7 +410,7 @@ export function Sidebar({
                 <Plus aria-hidden="true" size={15} />
               </button>
             </span>
-          </div>
+          </fieldset>
 
           {bootstrap.feeds.length === 0 ? (
             <button className="sidebar-empty" type="button" onClick={onAddFeed}>
@@ -317,6 +429,7 @@ export function Sidebar({
                   selectedFolderId={selectedFolderId}
                   selectedFolderPathIds={selectedFolderPathIds}
                   currentView={currentView}
+                  feedDrag={feedDrag}
                   onSelectScope={onSelectScope}
                   onOpenFeedMenu={openFeedMenu}
                   onOpenFolderMenu={openFolderMenu}
@@ -327,6 +440,7 @@ export function Sidebar({
                   key={feed.id}
                   feed={feed}
                   selected={currentView === "reader" && selectedFeedId === feed.id}
+                  feedDrag={feedDrag}
                   onSelect={() => onSelectScope(feed.id, null)}
                   onOpenMenu={openFeedMenu}
                 />
@@ -490,6 +604,7 @@ function SidebarFolder({
   selectedFolderId,
   selectedFolderPathIds,
   currentView,
+  feedDrag,
   onSelectScope,
   onOpenFeedMenu,
   onOpenFolderMenu,
@@ -501,6 +616,7 @@ function SidebarFolder({
   selectedFolderId: number | null;
   selectedFolderPathIds: Set<number>;
   currentView: AppView;
+  feedDrag: SidebarFeedDrag;
   onSelectScope: (feedId: number | null, folderId: number | null) => void;
   onOpenFeedMenu: (feed: Feed, trigger: HTMLButtonElement, left: number, top: number) => void;
   onOpenFolderMenu: (
@@ -521,6 +637,9 @@ function SidebarFolder({
       : selectedFolderId !== null
         ? `folder:${selectedFolderId}`
         : null;
+  const dropAvailable =
+    feedDrag.draggedFeed !== null && feedDrag.draggedFeed.folderId !== folder.id;
+  const dropActive = feedDrag.dropTarget === folder.id;
 
   useEffect(() => {
     if (revealsSelection && selectedScope) setExpanded(true);
@@ -528,7 +647,9 @@ function SidebarFolder({
 
   return (
     <li>
-      <div className="tree-row">
+      <div
+        className={`tree-row${dropAvailable ? " is-feed-drop-available" : ""}${dropActive ? " is-feed-drop-target" : ""}`}
+      >
         <button
           className="tree-toggle"
           type="button"
@@ -552,6 +673,14 @@ function SidebarFolder({
               : undefined
           }
           type="button"
+          onDragEnter={(event) => feedDrag.enterTarget(folder.id, event)}
+          onDragOver={(event) => feedDrag.enterTarget(folder.id, event)}
+          onDragLeave={(event) => feedDrag.leaveTarget(folder.id, event)}
+          onDrop={(event) => {
+            void feedDrag.dropOnTarget(folder.id, event).then((moved) => {
+              if (moved) setExpanded(true);
+            });
+          }}
           onClick={() => onSelectScope(null, folder.id)}
           onContextMenu={(event) => {
             event.preventDefault();
@@ -597,6 +726,7 @@ function SidebarFolder({
               selectedFolderId={selectedFolderId}
               selectedFolderPathIds={selectedFolderPathIds}
               currentView={currentView}
+              feedDrag={feedDrag}
               onSelectScope={onSelectScope}
               onOpenFeedMenu={onOpenFeedMenu}
               onOpenFolderMenu={onOpenFolderMenu}
@@ -607,6 +737,7 @@ function SidebarFolder({
               key={feed.id}
               feed={feed}
               selected={currentView === "reader" && selectedFeedId === feed.id}
+              feedDrag={feedDrag}
               onSelect={() => onSelectScope(feed.id, null)}
               onOpenMenu={onOpenFeedMenu}
             />
@@ -620,11 +751,13 @@ function SidebarFolder({
 function SidebarFeed({
   feed,
   selected,
+  feedDrag,
   onSelect,
   onOpenMenu,
 }: {
   feed: Feed;
   selected: boolean;
+  feedDrag: SidebarFeedDrag;
   onSelect: () => void;
   onOpenMenu: (feed: Feed, trigger: HTMLButtonElement, left: number, top: number) => void;
 }) {
@@ -632,16 +765,24 @@ function SidebarFeed({
     feed.healthStatus !== "healthy" ? "failed" : feed.paused ? "paused" : "healthy";
   const healthLabel =
     feed.healthStatus !== "healthy" ? "Needs attention" : feed.paused ? "Paused" : "Healthy";
+  const dragging = feedDrag.draggedFeed?.id === feed.id;
+  const moving = feedDrag.movingFeedId === feed.id;
 
   return (
     <li>
-      <div className="feed-tree-row">
+      <div
+        className={`feed-tree-row${dragging ? " is-dragging" : ""}${moving ? " is-moving" : ""}`}
+      >
         <button
           data-management-feed-id={feed.id}
           className="nav-item feed-nav-item"
           aria-current={selected ? "page" : undefined}
           aria-haspopup="menu"
+          aria-busy={moving || undefined}
+          draggable={feedDrag.movingFeedId === null}
           type="button"
+          onDragStart={(event) => feedDrag.start(feed, event)}
+          onDragEnd={feedDrag.end}
           onClick={onSelect}
           onContextMenu={(event) => {
             event.preventDefault();

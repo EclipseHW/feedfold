@@ -564,14 +564,21 @@ kbd {
 
 .sidebar-section-heading {
   display: flex;
+  min-width: 0;
   align-items: center;
   justify-content: space-between;
+  margin: 0;
   padding: 12px 8px 5px 9px;
+  border: 0;
   color: var(--muted);
   font-size: var(--type-label);
   font-weight: var(--weight-bold);
   letter-spacing: 0.07em;
   text-transform: uppercase;
+}
+
+.sidebar-top-level-drop {
+  border-radius: var(--radius-md);
 }
 
 .sidebar-section-heading button {
@@ -621,6 +628,20 @@ kbd {
   padding-left: 4px;
 }
 
+.sidebar.is-dragging-feed .tree-row.is-feed-drop-available .tree-nav-item,
+.sidebar.is-dragging-feed .sidebar-top-level-drop.is-feed-drop-available {
+  color: var(--text);
+  cursor: move;
+}
+
+.tree-row.is-feed-drop-target .tree-nav-item,
+.sidebar-top-level-drop.is-feed-drop-target {
+  background: var(--accent-surface);
+  color: var(--accent-strong);
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
 .nested-tree {
   margin-left: 11px;
   padding-left: 11px;
@@ -632,8 +653,22 @@ kbd {
   padding-left: 5px;
 }
 
+.feed-nav-item[draggable="true"] {
+  cursor: grab;
+}
+
 .feed-tree-row {
   position: relative;
+}
+
+.feed-tree-row.is-dragging .feed-nav-item {
+  opacity: 0.36;
+  cursor: grabbing;
+}
+
+.feed-tree-row.is-moving .feed-nav-item {
+  opacity: 0.55;
+  cursor: progress;
 }
 
 .feed-tree-row .feed-nav-item {
@@ -4819,7 +4854,9 @@ kbd {
   }
   .article-list-item.is-active,
   .expanded-article.is-active,
-  .rule-action-option.is-selected {
+  .rule-action-option.is-selected,
+  .tree-row.is-feed-drop-target .tree-nav-item,
+  .sidebar-top-level-drop.is-feed-drop-target {
     outline: 2px solid Highlight;
     outline-offset: -2px;
   }

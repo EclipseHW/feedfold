@@ -185,7 +185,7 @@ export class ReaderDataResource implements ReaderDataMutations {
 
   updateFeed = async (id: number, input: FeedUpdateInput): Promise<Feed> => {
     const feed = await this.client.updateFeed(id, input);
-    await this.invalidateNow({ articles: true, rules: true });
+    await this.invalidateNow({ articles: true, rules: input.folderId !== undefined });
     return feed;
   };
 
