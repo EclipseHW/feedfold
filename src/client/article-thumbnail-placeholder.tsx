@@ -7,14 +7,15 @@ export function ArticleThumbnailPlaceholder() {
       aria-hidden="true"
       preserveAspectRatio="none"
     >
-      <path
-        className="thumbnail-valley thumbnail-valley-far"
-        d="M0 78c23-22 44-21 65 6 18 24 38 8 53-12 12-16 24-19 36-12v60H0Z"
-      />
-      <path
-        className="thumbnail-valley thumbnail-valley-near"
-        d="M0 97c22-19 43-19 65 2 20 20 38 12 56-8 15-17 25-16 33-12v41H0Z"
-      />
+      <g className="thumbnail-grid-field">
+        <rect x="38" y="22" width="22" height="22" rx="5" />
+        <rect x="66" y="22" width="22" height="22" rx="5" />
+        <rect x="94" y="22" width="22" height="22" rx="5" />
+        <rect x="38" y="50" width="22" height="22" rx="5" />
+        <rect x="66" y="50" width="22" height="22" rx="5" />
+        <rect x="38" y="78" width="22" height="22" rx="5" />
+      </g>
+      <path className="thumbnail-grid-fold-line" d="M94 50h22v22H94z" />
     </svg>
   );
 }

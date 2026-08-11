@@ -1766,7 +1766,7 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: color-mix(in srgb, var(--accent) 18%, var(--muted));
+  color: color-mix(in srgb, var(--accent) 40%, var(--muted));
 }
 
 .article-thumbnail-placeholder-artwork {
@@ -1774,16 +1774,26 @@ kbd {
   height: 100%;
 }
 
-.thumbnail-valley {
+.thumbnail-grid-field {
   fill: currentColor;
+  opacity: 0.22;
 }
 
-.thumbnail-valley-far {
-  opacity: 0.04;
+.thumbnail-grid-field rect:nth-child(2),
+.thumbnail-grid-field rect:nth-child(4) {
+  opacity: 0.72;
 }
 
-.thumbnail-valley-near {
-  opacity: 0.075;
+.thumbnail-grid-field rect:nth-child(5) {
+  opacity: 0.42;
+}
+
+.thumbnail-grid-fold-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-dasharray: 3 4;
+  stroke-width: 1.2;
+  opacity: 0.24;
 }
 
 .article-list-copy {
