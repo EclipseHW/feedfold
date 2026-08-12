@@ -12,6 +12,7 @@ import {
 import { createServer } from "node:net";
 import { basename, dirname, join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
+import Database from "better-sqlite3";
 
 const devCommand = ["npm", "run", "dev"];
 const startupTimeoutMs = 60_000;
@@ -28,9 +29,10 @@ if (commonGitResult.status !== 0) {
 }
 const commonGitPath = realpathSync(commonGitResult.stdout.trim());
 const sharedEnvPath = join(dirname(commonGitPath), ".env");
-const sharedDatabasePath = join(commonGitPath, "codex", "feedfold.db");
+const mainDatabasePath = join(commonGitPath, "codex", "feedfold.db");
 if (existsSync(sharedEnvPath)) process.loadEnvFile(sharedEnvPath);
 const runtimePath = join(worktreePath, ".codex", "runtime");
+const worktreeDatabasePath = join(runtimePath, "feedfold.db");
 const statePath = join(runtimePath, "dev-server.json");
 const logPath = join(runtimePath, "dev-server.log");
 const operation = process.argv[2] ?? "start";
@@ -205,6 +207,16 @@ function copyUrl(url) {
   if (result.status !== 0) throw new Error("Could not copy the dev-server URL");
 }
 
+async function copyMainDatabase() {
+  if (existsSync(worktreeDatabasePath)) return;
+  const database = new Database(mainDatabasePath, { readonly: true, fileMustExist: true });
+  try {
+    await database.backup(worktreeDatabasePath);
+  } finally {
+    database.close();
+  }
+}
+
 async function start() {
   const existingState = readState();
   if (existingState && isAlive(existingState.pid)) {
@@ -221,6 +233,7 @@ async function start() {
   const readyUrl = `http://127.0.0.1:${webPort}/feedfold/`;
   const healthUrl = `${apiOrigin}/health`;
   mkdirSync(runtimePath, { recursive: true });
+  await copyMainDatabase();
   const logDescriptor = openSync(logPath, "w");
   const child = spawn(devCommand[0], devCommand.slice(1), {
     cwd: worktreePath,
@@ -230,7 +243,7 @@ async function start() {
       COMPOSE_PROJECT_NAME: basename(sourceTreePath),
       FEEDFOLD_DEV_API_ORIGIN: apiOrigin,
       FEEDFOLD_DEV_PORT: String(webPort),
-      DATABASE_PATH: sharedDatabasePath,
+      DATABASE_PATH: worktreeDatabasePath,
       PORT: String(apiPort),
     },
     stdio: ["ignore", logDescriptor, logDescriptor],

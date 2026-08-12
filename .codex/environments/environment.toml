@@ -4,26 +4,14 @@ name = "Feedfold"
 
 [setup]
 script = '''
-npm ci
-npm_config_ignore_scripts=false npm rebuild better-sqlite3
-node .codex/scripts/dev-server.mjs start --open
+ln -sfn "$CODEX_SOURCE_TREE_PATH/node_modules" node_modules
+node .codex/scripts/dev-server.mjs start
 '''
 
 [setup.darwin]
 script = '''
-fnm exec --using=.node-version npm ci
-npm_config_ignore_scripts=false fnm exec --using=.node-version npm rebuild better-sqlite3
-COMMON_GIT_DIR="$(git rev-parse --path-format=absolute --git-common-dir)"
-SHARED_DB="$COMMON_GIT_DIR/codex/feedfold.db"
-SOURCE_DB="$(dirname "$COMMON_GIT_DIR")/data/feedfold.db"
-mkdir -p "$(dirname "$SHARED_DB")"
-if [ ! -f "$SHARED_DB" ] && [ -f "$SOURCE_DB" ]; then
-  fnm exec --using=.node-version node --input-type=module -e 'import Database from "better-sqlite3"; const [, sourcePath, targetPath] = process.argv; const source = new Database(sourcePath, { readonly: true }); await source.backup(targetPath); source.close();' "$SOURCE_DB" "$SHARED_DB"
-fi
-if [ -x ./node_modules/.bin/playwright ]; then
-  fnm exec --using=.node-version ./node_modules/.bin/playwright install chromium
-fi
-fnm exec --using=.node-version node .codex/scripts/dev-server.mjs start --copy
+ln -sfn "$CODEX_SOURCE_TREE_PATH/node_modules" node_modules
+fnm exec --using=.node-version node .codex/scripts/dev-server.mjs start
 '''
 
 [cleanup]
