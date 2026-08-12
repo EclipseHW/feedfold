@@ -51,11 +51,6 @@ function staticDemoPlugin(): Plugin {
         fileName: "og.png",
         source: readFileSync(demoSocialImagePath),
       });
-      this.emitFile({
-        type: "asset",
-        fileName: "_redirects",
-        source: "/* /index.html 200\n",
-      });
     },
   };
 }
