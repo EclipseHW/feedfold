@@ -4,7 +4,7 @@ import type { ReadingMode } from "../shared/types.js";
 export type Theme = "auto" | "dark" | "light";
 type ResolvedTheme = Exclude<Theme, "auto">;
 
-export const ARTICLE_FONT_MIN = 15;
+export const ARTICLE_FONT_MIN = 16;
 export const ARTICLE_FONT_MAX = 23;
 const ARTICLE_FONT_DEFAULT = 18;
 
