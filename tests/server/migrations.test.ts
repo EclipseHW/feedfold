@@ -12,6 +12,7 @@ import {
   DEFAULT_ARTICLE_TRANSLATION_PROMPT,
   DEFAULT_CUSTOM_PROMPTS,
 } from "../../src/shared/ai-prompts.js";
+import { removeSavedArticleTimestampMigration } from "./migration-fixtures.js";
 
 const directories: string[] = [];
 
@@ -68,6 +69,7 @@ describe("database migrations", () => {
         )
         .run(feed.id);
       database.connection.prepare("DELETE FROM migrations WHERE version >= 29").run();
+      removeSavedArticleTimestampMigration(database.connection);
       database.connection.exec("ALTER TABLE feeds DROP COLUMN last_scheduled_observation_at");
       database.connection.exec("ALTER TABLE feeds DROP COLUMN activity_rate_per_hour");
       database.connection.exec("ALTER TABLE feeds DROP COLUMN poll_interval_minutes");
@@ -180,6 +182,7 @@ Return only the summary in plain text.`,
       });
 
       database.connection.prepare("DELETE FROM migrations WHERE version >= 22").run();
+      removeSavedArticleTimestampMigration(database.connection);
       database.connection.exec("ALTER TABLE settings DROP COLUMN show_youtube_descriptions");
       database.connection.exec("DROP TABLE ignored_feed_articles");
       database.connection.exec("ALTER TABLE feeds DROP COLUMN last_scheduled_observation_at");
@@ -329,6 +332,7 @@ Return only the summary in plain text.`,
         (5, 2, 'social-post', 'The complete social post body',
          'https://nitter.net/person/status/5', '2026-07-13T00:00:00.000Z',
          '<p>The complete social post body</p>', NULL, 'feed', 'feed', NULL);
+      UPDATE articles SET is_starred = 1 WHERE id = 3;
 
       CREATE TABLE rules (
         id INTEGER PRIMARY KEY,
@@ -522,8 +526,11 @@ Return only the summary in plain text.`,
         sortDirection: "newest",
       });
       expect(database.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
-        30,
+        31,
       );
+      expect(
+        database.connection.prepare("SELECT starred_at FROM articles WHERE id = 3").pluck().get(),
+      ).toBe("2026-07-13T00:00:00.000Z");
       expect(
         database.connection
           .prepare(
@@ -572,7 +579,7 @@ Return only the summary in plain text.`,
         username: "reader",
       });
       expect(reopened.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
-        30,
+        31,
       );
       expect(
         reopened.connection.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),

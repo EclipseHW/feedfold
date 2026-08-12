@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { AppDatabase, type ParsedFeed } from "../../src/server/database.js";
 import type { WebFeedConfig } from "../../src/shared/types.js";
+import { removeSavedArticleTimestampMigration } from "./migration-fixtures.js";
 
 const directories: string[] = [];
 const TEST_USER_ID = 1;
@@ -357,6 +358,7 @@ describe("web feed persistence", () => {
       .prepare("UPDATE feeds SET last_attempt_at = ?, next_poll_at = ? WHERE id = ?")
       .run("2026-07-27T12:00:00.000Z", "2026-07-27T12:20:00.000Z", webFeed.id);
     database.connection.prepare("DELETE FROM migrations WHERE version >= 20").run();
+    removeSavedArticleTimestampMigration(database.connection);
     database.connection.exec("ALTER TABLE settings DROP COLUMN show_youtube_descriptions");
     database.connection.exec("DROP TABLE ignored_feed_articles");
     database.connection.exec("ALTER TABLE feeds DROP COLUMN last_scheduled_observation_at");

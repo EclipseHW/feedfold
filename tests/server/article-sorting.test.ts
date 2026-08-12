@@ -171,6 +171,39 @@ describe("folder article sorting", () => {
     const allArticles = (
       await request({ method: "GET", url: "/api/articles?state=all" })
     ).json<ArticlePage>();
+    for (const title of ["News newer", "Social older", "News older"]) {
+      const articleId = allArticles.articles.find((article) => article.title === title)?.id;
+      if (!articleId) throw new Error(`${title} was not stored`);
+      const response = await request({
+        method: "PATCH",
+        url: `/api/articles/${articleId}/state`,
+        payload: { isStarred: true },
+      });
+      expect(response.statusCode).toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    expect(await articleTitles("/api/articles?state=starred")).toEqual([
+      "News older",
+      "Social older",
+      "News newer",
+    ]);
+    const firstSavedPage = (
+      await request({ method: "GET", url: "/api/articles?state=starred&limit=2" })
+    ).json<ArticlePage>();
+    expect(firstSavedPage.articles.map(({ title }) => title)).toEqual([
+      "News older",
+      "Social older",
+    ]);
+    expect(firstSavedPage.nextCursor).not.toBeNull();
+    const secondSavedPage = (
+      await request({
+        method: "GET",
+        url: `/api/articles?state=starred&limit=2&cursor=${firstSavedPage.nextCursor}`,
+      })
+    ).json<ArticlePage>();
+    expect(secondSavedPage.articles.map(({ title }) => title)).toEqual(["News newer"]);
+    expect(secondSavedPage.nextCursor).toBeNull();
+
     const anchorId = allArticles.articles.find((article) => article.title === "Social newer")?.id;
     if (!anchorId) throw new Error("Anchor article was not stored");
     const anchoredPage = (

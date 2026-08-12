@@ -839,6 +839,15 @@ const migrations: Migration[] = [
           );
     `,
   },
+  {
+    sql: `
+      ALTER TABLE articles ADD COLUMN starred_at TEXT;
+      UPDATE articles SET starred_at = discovered_at WHERE is_starred = 1;
+
+      DROP INDEX articles_starred_idx;
+      CREATE INDEX articles_starred_at_idx ON articles(is_starred, starred_at DESC);
+    `,
+  },
 ];
 
 export function migrateDatabase(

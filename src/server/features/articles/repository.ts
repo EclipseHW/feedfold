@@ -81,6 +81,10 @@ export class ArticleRepository {
   }
 
   listArticlePage(userId: number, query: ArticleQuery): ArticlePage {
+    const savedOrder = query.state === "starred";
+    const sortAtSql = savedOrder
+      ? "articles.starred_at"
+      : "COALESCE(articles.published_at, articles.discovered_at)";
     const where = ["feeds.user_id = ?"];
     const values: Array<string | number> = [userId];
     if (query.feedId !== undefined) {
@@ -124,40 +128,52 @@ export class ArticleRepository {
     const limit = Math.max(1, Math.min(query.limit ?? 200, 500));
     const anchor =
       query.anchorId !== undefined && !query.cursor
-        ? this.articlePageAnchor(where, values, query.anchorId, Math.floor(limit / 2))
+        ? this.articlePageAnchor(where, values, query.anchorId, Math.floor(limit / 2), savedOrder)
         : null;
     const cursor = query.cursor ? decodeArticleCursor(query.cursor) : (anchor?.cursor ?? new Map());
-    const buckets = this.sqlite
-      .prepare(
-        `SELECT feeds.folder_id AS folderId,
-                COALESCE(folders.sort_direction, 'newest') AS sortDirection
-         FROM articles
-         JOIN feeds ON feeds.id = articles.feed_id
-         LEFT JOIN folders ON folders.id = feeds.folder_id
-         WHERE ${where.join(" AND ")}
-         GROUP BY feeds.folder_id, folders.sort_direction
-         ORDER BY feeds.folder_id`,
-      )
-      .all(...values) as Array<{
+    const buckets: Array<{
       folderId: number | null;
       sortDirection: FolderSortDirection;
-    }>;
+      allFolders?: boolean;
+    }> = savedOrder
+      ? [{ folderId: null, sortDirection: "newest", allFolders: true }]
+      : (this.sqlite
+          .prepare(
+            `SELECT feeds.folder_id AS folderId,
+                    COALESCE(folders.sort_direction, 'newest') AS sortDirection
+             FROM articles
+             JOIN feeds ON feeds.id = articles.feed_id
+             LEFT JOIN folders ON folders.id = feeds.folder_id
+             WHERE ${where.join(" AND ")}
+             GROUP BY feeds.folder_id, folders.sort_direction
+             ORDER BY feeds.folder_id`,
+          )
+          .all(...values) as Array<{
+          folderId: number | null;
+          sortDirection: FolderSortDirection;
+        }>);
     const queues = buckets.map((bucket) => {
-      const key = bucket.folderId === null ? "top" : String(bucket.folderId);
+      const key = bucket.allFolders
+        ? "saved"
+        : bucket.folderId === null
+          ? "top"
+          : String(bucket.folderId);
       const boundary = cursor.get(key);
       const bucketWhere = [...where];
       const bucketValues = [...values];
-      if (bucket.folderId === null) {
-        bucketWhere.push("feeds.folder_id IS NULL");
-      } else {
-        bucketWhere.push("feeds.folder_id = ?");
-        bucketValues.push(bucket.folderId);
+      if (!bucket.allFolders) {
+        if (bucket.folderId === null) {
+          bucketWhere.push("feeds.folder_id IS NULL");
+        } else {
+          bucketWhere.push("feeds.folder_id = ?");
+          bucketValues.push(bucket.folderId);
+        }
       }
       if (boundary) {
         const comparison = bucket.sortDirection === "oldest" ? ">" : "<";
         bucketWhere.push(
-          `(COALESCE(articles.published_at, articles.discovered_at) ${comparison} ?
-            OR (COALESCE(articles.published_at, articles.discovered_at) = ?
+          `(${sortAtSql} ${comparison} ?
+            OR (${sortAtSql} = ?
               AND articles.id ${comparison} ?))`,
         );
         bucketValues.push(boundary.sortAt, boundary.sortAt, boundary.id);
@@ -194,14 +210,14 @@ export class ArticleRepository {
                 ${query.includeContent ? "article_ai_summaries.output_tokens" : "NULL"} AS aiSummaryOutputTokens,
                 articles.is_read AS isRead,
                 articles.is_starred AS isStarred,
-                COALESCE(articles.published_at, articles.discovered_at) AS sortAt
+                ${sortAtSql} AS sortAt
            FROM articles
            JOIN feeds ON feeds.id = articles.feed_id
            LEFT JOIN article_ai_summaries
              ON article_ai_summaries.article_id = articles.id
             AND article_ai_summaries.source_revision = articles.content_revision
            WHERE ${bucketWhere.join(" AND ")}
-           ORDER BY COALESCE(articles.published_at, articles.discovered_at) ${order},
+           ORDER BY ${sortAtSql} ${order},
                     articles.id ${order}
            LIMIT ?`,
         )
@@ -255,17 +271,25 @@ export class ArticleRepository {
     values: Array<string | number>,
     anchorId: number,
     precedingArticles: number,
+    savedOrder: boolean,
   ): { cursor: ArticleCursor; index: number } | null {
+    const bucketKeySql = savedOrder
+      ? "'saved'"
+      : `CASE
+           WHEN feeds.folder_id IS NULL THEN 'top'
+           ELSE CAST(feeds.folder_id AS TEXT)
+         END`;
+    const sortDirectionSql = savedOrder ? "'newest'" : "COALESCE(folders.sort_direction, 'newest')";
+    const sortAtSql = savedOrder
+      ? "articles.starred_at"
+      : "COALESCE(articles.published_at, articles.discovered_at)";
     const rows = this.sqlite
       .prepare(
         `WITH filtered_articles AS (
            SELECT articles.id,
-                  CASE
-                    WHEN feeds.folder_id IS NULL THEN 'top'
-                    ELSE CAST(feeds.folder_id AS TEXT)
-                  END AS bucketKey,
-                  COALESCE(folders.sort_direction, 'newest') AS sortDirection,
-                  COALESCE(articles.published_at, articles.discovered_at) AS sortAt
+                  ${bucketKeySql} AS bucketKey,
+                  ${sortDirectionSql} AS sortDirection,
+                  ${sortAtSql} AS sortAt
            FROM articles
            JOIN feeds ON feeds.id = articles.feed_id
            LEFT JOIN folders ON folders.id = feeds.folder_id
@@ -410,11 +434,23 @@ export class ArticleRepository {
   ): Article | null {
     const existing = this.getArticle(userId, id);
     if (!existing) return null;
+    const isStarred = input.isStarred ?? existing.isStarred;
     this.sqlite
-      .prepare("UPDATE articles SET is_read = ?, is_starred = ? WHERE id = ?")
+      .prepare(
+        `UPDATE articles
+         SET is_read = ?,
+             is_starred = ?,
+             starred_at = CASE
+               WHEN is_starred = 0 AND ? = 1 THEN ?
+               ELSE starred_at
+             END
+         WHERE id = ?`,
+      )
       .run(
         (input.isRead ?? existing.isRead) ? 1 : 0,
-        (input.isStarred ?? existing.isStarred) ? 1 : 0,
+        isStarred ? 1 : 0,
+        isStarred ? 1 : 0,
+        now(),
         id,
       );
     return this.getArticle(userId, id);
