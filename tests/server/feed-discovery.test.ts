@@ -2,7 +2,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it } from "vitest";
 import { discoverFeed } from "../../src/server/feed-discovery.js";
-import { nitterFeedUrl } from "../../src/server/feed-http.js";
+import { githubFeedUrl, nitterFeedUrl } from "../../src/server/feed-http.js";
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -29,6 +29,31 @@ function rss(baseUrl: string): string {
 }
 
 describe("feed discovery", () => {
+  it("turns GitHub activity pages into their published Atom endpoints", () => {
+    expect(githubFeedUrl("https://github.com/egornomic/feedfold/releases")).toBe(
+      "https://github.com/egornomic/feedfold/releases.atom",
+    );
+    expect(githubFeedUrl("https://github.com/egornomic/feedfold/tags/")).toBe(
+      "https://github.com/egornomic/feedfold/tags.atom",
+    );
+    expect(githubFeedUrl("https://github.com/egornomic/feedfold/commits/master/")).toBe(
+      "https://github.com/egornomic/feedfold/commits/master.atom",
+    );
+    expect(
+      githubFeedUrl(
+        "https://github.com/egornomic/feedfold/commits/master/src/server/feed-discovery.ts",
+      ),
+    ).toBe(
+      "https://github.com/egornomic/feedfold/commits/master/src/server/feed-discovery.ts.atom",
+    );
+    expect(githubFeedUrl("https://github.com/egornomic")).toBe("https://github.com/egornomic.atom");
+    expect(githubFeedUrl("https://gist.github.com/egornomic#recent")).toBe(
+      "https://gist.github.com/egornomic.atom",
+    );
+    expect(githubFeedUrl("https://github.com/egornomic/feedfold")).toBeNull();
+    expect(githubFeedUrl("https://github.com/egornomic/feedfold/issues")).toBeNull();
+  });
+
   it("turns supported Nitter timelines into their published RSS endpoints", () => {
     expect(nitterFeedUrl("https://nitter.net/banteg")).toBe("https://nitter.net/banteg/rss");
     expect(nitterFeedUrl("https://nitter.net/banteg/rss#latest")).toBe(

@@ -2,7 +2,7 @@ import { JSDOM } from "jsdom";
 import { FEED_PREVIEW_ARTICLE_LIMIT } from "../shared/feed-preview.js";
 import type { FeedDiscoveryResult, FeedErrorKind, FeedPreview } from "../shared/types.js";
 import type { ParsedFeed } from "./features/shared.js";
-import { fetchFeed, nitterFeedUrl } from "./feed-http.js";
+import { fetchFeed, githubFeedUrl, nitterFeedUrl } from "./feed-http.js";
 import { parseAndNormalizeFeed } from "./feed-parser.js";
 import { PublicNetworkError } from "./public-network.js";
 import { parseAndNormalizeTelegramFeed, telegramChannelUrls } from "./telegram-feed.js";
@@ -76,6 +76,7 @@ function feedCandidates(source: string, pageUrl: string): string[] {
     seen.add(value);
     candidates.push(value);
   };
+  add(githubFeedUrl(pageUrl));
   const dom = new JSDOM(source, { url: pageUrl });
   try {
     for (const link of dom.window.document.querySelectorAll<HTMLLinkElement>(
