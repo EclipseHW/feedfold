@@ -55,16 +55,20 @@ describe("article HTML", () => {
         <figcaption>Small labels</figcaption>
       </figure>
       <a href="https://example.test/source"><img src="https://images.test/chart.png" alt="Chart"></a>
+      <img src="https://images.test/tracker.gif" alt="" width="1" height="1">
     `;
 
     try {
       await act(async () => root.render(createElement(ArticleHtml, { sanitizedHtml: html })));
 
       const images = container.querySelectorAll<HTMLImageElement>(".article-content img");
-      expect(images).toHaveLength(2);
+      expect(images).toHaveLength(3);
+      expect(container.querySelectorAll("[data-image-lightbox-trigger]")).toHaveLength(3);
       expect(images[0]?.tabIndex).toBe(0);
       expect(images[0]?.getAttribute("role")).toBe("button");
       expect(images[0]?.getAttribute("aria-label")).toContain("Detailed diagram");
+      expect(images[2]?.hasAttribute("data-image-lightbox-trigger")).toBe(false);
+      expect(images[2]?.getAttribute("role")).toBeNull();
 
       await act(async () => {
         images[0]?.dispatchEvent(
@@ -89,26 +93,65 @@ describe("article HTML", () => {
         images[0],
       );
       expect(images[0]?.getAttribute("role")).toBe("button");
-      expect(dialog?.querySelector('[aria-label="View actual size"]')).toBeNull();
-      expect(dialog?.querySelector('[aria-label="Fit image to window"]')).toBeNull();
+      expect(dialog?.querySelector('[aria-label="Fit image to viewer"]')).not.toBeNull();
+      expect(dialog?.querySelectorAll(".image-lightbox-thumbnail")).toHaveLength(2);
+      expect(
+        dialog?.querySelector('.image-lightbox-thumbnail[aria-current="true"]')?.textContent,
+      ).toContain("1");
 
       const zoomOut = dialog?.querySelector<HTMLButtonElement>('[aria-label="Zoom out"]');
       const zoomIn = dialog?.querySelector<HTMLButtonElement>('[aria-label="Zoom in"]');
+      const fitImage = dialog?.querySelector<HTMLButtonElement>(
+        '[aria-label="Fit image to viewer"]',
+      );
       const stage = dialog?.querySelector<HTMLDivElement>(".image-lightbox-stage");
-      const scrollViewer = (deltaY: number) =>
-        act(async () => {
+      const viewerImage = stage?.querySelector<HTMLImageElement>("img");
+      if (!stage || !viewerImage) throw new Error("Lightbox image is missing");
+      Object.defineProperties(stage, {
+        clientWidth: { configurable: true, value: 1000 },
+        clientHeight: { configurable: true, value: 800 },
+      });
+      Object.defineProperties(viewerImage, {
+        naturalWidth: { configurable: true, value: 800 },
+        naturalHeight: { configurable: true, value: 600 },
+      });
+      await act(async () => {
+        viewerImage.dispatchEvent(new dom.window.Event("load", { bubbles: true }));
+      });
+      const scrollViewer = async (deltaY: number, ctrlKey = false) => {
+        let dispatched = true;
+        await act(async () => {
           const wheel = new dom.window.WheelEvent("wheel", {
             deltaY,
+            ctrlKey,
             bubbles: true,
             cancelable: true,
           });
-          expect(stage?.dispatchEvent(wheel)).toBe(false);
+          dispatched = stage?.dispatchEvent(wheel) ?? true;
         });
+        return dispatched;
+      };
       expect(zoomOut?.disabled).toBe(true);
-      await scrollViewer(-100);
+      expect(await scrollViewer(-100)).toBe(true);
+      expect(dialog?.textContent).not.toContain("100%");
+      expect(await scrollViewer(-100, true)).toBe(false);
       expect(dialog?.textContent).toContain("100%");
+      expect(viewerImage.style.width).toBe("800px");
       expect(zoomOut?.disabled).toBe(false);
-      await scrollViewer(100);
+      expect(await scrollViewer(-100, true)).toBe(false);
+      expect(dialog?.textContent).toContain("125%");
+      expect(viewerImage.style.width).toBe("1000px");
+      await act(async () => fitImage?.click());
+      expect(dialog?.textContent).not.toContain("%");
+      expect(viewerImage.style.width).toBe("");
+      await act(async () => zoomIn?.click());
+      expect(dialog?.textContent).toContain("100%");
+      expect(viewerImage.style.width).toBe("800px");
+      await act(async () => fitImage?.click());
+      expect(await scrollViewer(-100, true)).toBe(false);
+      expect(dialog?.textContent).toContain("100%");
+      expect(viewerImage.style.width).toBe("800px");
+      expect(await scrollViewer(100, true)).toBe(false);
       expect(dialog?.textContent).not.toContain("%");
       expect(zoomOut?.disabled).toBe(true);
       await act(async () => zoomIn?.click());
@@ -132,14 +175,29 @@ describe("article HTML", () => {
       expect(dialog?.textContent).toContain("2 of 2");
       expect(articleNavigationCount).toBe(0);
       expect(dialog?.querySelectorAll("a")).toHaveLength(1);
-      expect(dialog?.textContent).toContain("Open image");
+      expect(dialog?.textContent).toContain("Open original");
       expect(dialog?.textContent).not.toContain("Open link");
+
+      await act(async () => {
+        dialog
+          ?.querySelector<HTMLImageElement>(".image-lightbox-stage img")
+          ?.dispatchEvent(new dom.window.Event("error", { bubbles: true }));
+      });
+      expect(dialog?.textContent).toContain("Image unavailable");
+      expect(dialog?.textContent).toContain("Try the original image");
 
       dom.window.document.documentElement.dataset.inputModality = "keyboard";
       await pressViewerKey("Escape");
       expect(container.querySelector("dialog.image-lightbox")).toBeNull();
       expect(articleEscapeCount).toBe(0);
       expect(dom.window.document.activeElement).toBe(images[0]);
+
+      await act(async () => {
+        images[2]?.dispatchEvent(
+          new dom.window.MouseEvent("click", { bubbles: true, cancelable: true }),
+        );
+      });
+      expect(container.querySelector("dialog.image-lightbox")).toBeNull();
     } finally {
       dom.window.removeEventListener("keydown", handleArticleShortcuts);
       await act(async () => root.unmount());

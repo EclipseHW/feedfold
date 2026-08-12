@@ -16,6 +16,8 @@ import {
   type ImageLightboxState,
 } from "./image-lightbox.js";
 
+const TRACKING_PIXEL_SIZE = 1;
+
 function eventElement(target: EventTarget | null): Element | null {
   return target && typeof (target as Element).closest === "function" ? (target as Element) : null;
 }
@@ -24,7 +26,30 @@ function imageLabel(image: HTMLImageElement): string {
   return (
     image.alt.trim() ||
     image.closest("figure")?.querySelector("figcaption")?.textContent?.trim() ||
-    "Article image"
+    image.title.trim()
+  );
+}
+
+function isPreviewableImage(image: HTMLImageElement): boolean {
+  const declaredWidth = Number.parseFloat(image.getAttribute("width") ?? "");
+  const declaredHeight = Number.parseFloat(image.getAttribute("height") ?? "");
+  const isDeclaredTrackingPixel =
+    declaredWidth > 0 &&
+    declaredHeight > 0 &&
+    declaredWidth <= TRACKING_PIXEL_SIZE &&
+    declaredHeight <= TRACKING_PIXEL_SIZE;
+  const isLoadedTrackingPixel =
+    image.complete &&
+    image.naturalWidth > 0 &&
+    image.naturalHeight > 0 &&
+    image.naturalWidth <= TRACKING_PIXEL_SIZE &&
+    image.naturalHeight <= TRACKING_PIXEL_SIZE;
+  return !isDeclaredTrackingPixel && !isLoadedTrackingPixel;
+}
+
+function previewableImages(container: HTMLElement): HTMLImageElement[] {
+  return Array.from(container.querySelectorAll<HTMLImageElement>("img[src]")).filter(
+    isPreviewableImage,
   );
 }
 
@@ -55,25 +80,58 @@ export const ArticleHtml = memo(function ArticleHtml({
     if (!sanitizedHtml.includes("<img")) return;
     const container = containerRef.current;
     if (!container) return;
+    const cleanups: Array<() => void> = [];
     for (const image of container.querySelectorAll<HTMLImageElement>("img[src]")) {
-      image.dataset.imageLightboxTrigger = "";
       const trigger = imageTrigger(image, container);
-      trigger.dataset.imageLightboxTrigger = "";
-      const label = `Enlarge image: ${imageLabel(image)}`;
-      if (trigger === image) {
-        image.tabIndex = 0;
-        image.setAttribute("role", "button");
-        image.setAttribute("aria-label", label);
-      } else if (!trigger.getAttribute("aria-label") && !trigger.textContent?.trim()) {
-        trigger.setAttribute("aria-label", label);
+      const label = `Enlarge image: ${imageLabel(image) || "Article image"}`;
+      const originalTabIndex = image.getAttribute("tabindex");
+      const originalRole = image.getAttribute("role");
+      const originalImageLabel = image.getAttribute("aria-label");
+      const originalTriggerLabel = trigger.getAttribute("aria-label");
+      const updateTrigger = () => {
+        if (isPreviewableImage(image)) {
+          image.dataset.imageLightboxTrigger = "";
+          trigger.dataset.imageLightboxTrigger = "";
+          if (trigger === image) {
+            image.tabIndex = 0;
+            image.setAttribute("role", "button");
+            image.setAttribute("aria-label", label);
+          } else if (!trigger.getAttribute("aria-label") && !trigger.textContent?.trim()) {
+            trigger.setAttribute("aria-label", label);
+          }
+          return;
+        }
+
+        delete image.dataset.imageLightboxTrigger;
+        delete trigger.dataset.imageLightboxTrigger;
+        if (trigger === image) {
+          if (originalTabIndex === null) image.removeAttribute("tabindex");
+          else image.setAttribute("tabindex", originalTabIndex);
+          if (originalRole === null) image.removeAttribute("role");
+          else image.setAttribute("role", originalRole);
+          if (originalImageLabel === null) image.removeAttribute("aria-label");
+          else image.setAttribute("aria-label", originalImageLabel);
+        } else if (originalTriggerLabel === null) {
+          trigger.removeAttribute("aria-label");
+        } else {
+          trigger.setAttribute("aria-label", originalTriggerLabel);
+        }
+      };
+      updateTrigger();
+      if (!image.complete) {
+        image.addEventListener("load", updateTrigger);
+        cleanups.push(() => image.removeEventListener("load", updateTrigger));
       }
     }
+    return () => {
+      for (const cleanup of cleanups) cleanup();
+    };
   }, [sanitizedHtml]);
 
   const openImage = useCallback((image: HTMLImageElement) => {
     const container = containerRef.current;
     if (!container) return;
-    const imageElements = Array.from(container.querySelectorAll<HTMLImageElement>("img[src]"));
+    const imageElements = previewableImages(container);
     const index = imageElements.indexOf(image);
     if (index < 0) return;
     setLightbox({
@@ -85,7 +143,9 @@ export const ArticleHtml = memo(function ArticleHtml({
 
   const handleClick = useCallback(
     (event: ReactMouseEvent<HTMLDivElement>) => {
-      const image = eventElement(event.target)?.closest<HTMLImageElement>("img[src]");
+      const image = eventElement(event.target)?.closest<HTMLImageElement>(
+        "img[data-image-lightbox-trigger]",
+      );
       if (!image || !event.currentTarget.contains(image)) return;
       event.preventDefault();
       event.stopPropagation();
@@ -99,7 +159,7 @@ export const ArticleHtml = memo(function ArticleHtml({
       if (event.key !== "Enter" && event.key !== " ") return;
       const target = eventElement(event.target);
       if (!target) return;
-      const image = target.matches("img[src]")
+      const image = target.matches("img[data-image-lightbox-trigger]")
         ? (target as HTMLImageElement)
         : target.matches("a[data-image-lightbox-trigger]")
           ? target.querySelector<HTMLImageElement>("img[src]")

@@ -38,9 +38,12 @@ export function ImageLightbox({
   const [index, setIndex] = useState(state.index);
   const [zoom, setZoom] = useState<number | null>(null);
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
+  const [loadState, setLoadState] = useState<"loading" | "loaded" | "error">("loading");
   const stageRef = useRef<HTMLDivElement>(null);
+  const thumbnailRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const wheelDelta = useRef(0);
-  const titleId = useId();
+  const viewerTitleId = useId();
+  const captionId = useId();
   const finishClose = useCallback(() => {
     onClose();
     window.requestAnimationFrame(() => state.returnFocus?.focus());
@@ -48,10 +51,10 @@ export function ImageLightbox({
   const dialog = useAnimatedDialog(finishClose);
   const image = state.images[index] ?? state.images[0];
   const multiple = state.images.length > 1;
+  const caption = image?.alt.trim() ?? "";
 
   const resetView = useCallback(() => {
     setZoom(null);
-    setNaturalSize(null);
     wheelDelta.current = 0;
     if (typeof stageRef.current?.scrollTo === "function") {
       stageRef.current.scrollTo({ top: 0, left: 0 });
@@ -62,10 +65,17 @@ export function ImageLightbox({
     (nextIndex: number) => {
       const count = state.images.length;
       if (count < 1) return;
-      setIndex((nextIndex + count) % count);
+      const normalizedIndex = (nextIndex + count) % count;
+      if (normalizedIndex !== index) {
+        if (state.images[normalizedIndex]?.src !== state.images[index]?.src) {
+          setLoadState("loading");
+          setNaturalSize(null);
+        }
+        setIndex(normalizedIndex);
+      }
       resetView();
     },
-    [resetView, state.images.length],
+    [index, resetView, state.images],
   );
 
   const zoomIn = useCallback(() => {
@@ -105,7 +115,7 @@ export function ImageLightbox({
     const stage = stageRef.current;
     if (!stage) return;
     const handleWheel = (event: WheelEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || event.deltaY === 0) return;
+      if ((!event.metaKey && !event.ctrlKey) || event.altKey || event.deltaY === 0) return;
       event.preventDefault();
       event.stopPropagation();
       const delta =
@@ -124,6 +134,14 @@ export function ImageLightbox({
     return () => stage.removeEventListener("wheel", handleWheel);
   }, [zoomIn, zoomOut]);
 
+  useEffect(() => {
+    thumbnailRefs.current[index]?.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  }, [index]);
+
+  useEffect(() => {
+    dialog.dialogRef.current?.focus({ preventScroll: true });
+  }, [dialog.dialogRef]);
+
   if (!image) return null;
   const imageUrl = externalHttpUrl(image.src);
   const imageStyle =
@@ -135,13 +153,21 @@ export function ImageLightbox({
           maxHeight: "none",
         }
       : undefined;
+  const thumbnailOccurrences = new Map<string, number>();
+  const thumbnails = state.images.map((item) => {
+    const occurrence = (thumbnailOccurrences.get(item.src) ?? 0) + 1;
+    thumbnailOccurrences.set(item.src, occurrence);
+    return { item, key: `${item.src}#${occurrence}` };
+  });
 
   return (
     <dialog
       ref={dialog.dialogRef}
       className="image-lightbox"
+      tabIndex={-1}
       data-state={dialog.closing ? "closing" : "open"}
-      aria-labelledby={titleId}
+      aria-labelledby={viewerTitleId}
+      aria-describedby={caption ? captionId : undefined}
       onCancel={dialog.handleCancel}
       onClose={dialog.handleClose}
       onKeyDownCapture={(event) => {
@@ -161,6 +187,8 @@ export function ImageLightbox({
           zoomIn();
         } else if (key === "-") {
           zoomOut();
+        } else if (key === "0") {
+          resetView();
         } else {
           return;
         }
@@ -171,34 +199,22 @@ export function ImageLightbox({
         if (event.target === event.currentTarget) dialog.close();
       }}
     >
-      <div className="image-lightbox-shell">
+      <div className={`image-lightbox-shell${multiple ? "" : " is-single"}`}>
         <header className="image-lightbox-toolbar">
-          <div className="image-lightbox-title">
-            <strong id={titleId}>{image.alt || "Article image"}</strong>
-            {multiple || zoom !== null ? (
-              <span aria-live="polite">
-                {multiple ? `${index + 1} of ${state.images.length}` : ""}
-                {zoom !== null ? `${multiple ? " · " : ""}${Math.round(zoom * 100)}%` : ""}
-              </span>
-            ) : null}
+          <div className="image-lightbox-context">
+            <strong id={viewerTitleId}>Article images</strong>
+            <span>{multiple ? `${state.images.length} images` : "1 image"}</span>
           </div>
           <div className="image-lightbox-actions">
-            <button
-              type="button"
-              onClick={zoomOut}
-              aria-label="Zoom out"
-              title="Zoom out (−)"
-              disabled={zoom === null}
-            >
-              <Minus aria-hidden="true" size={18} />
-            </button>
-            <button type="button" onClick={zoomIn} aria-label="Zoom in" title="Zoom in (+)">
-              <Plus aria-hidden="true" size={18} />
-            </button>
             {imageUrl ? (
-              <a href={imageUrl} target="_blank" rel="noopener noreferrer">
+              <a
+                href={imageUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Open original image in a new tab"
+              >
                 <ExternalLink aria-hidden="true" size={16} />
-                <span>Open image</span>
+                <span>Open original</span>
               </a>
             ) : null}
             <button
@@ -206,49 +222,143 @@ export function ImageLightbox({
               onClick={dialog.close}
               aria-label="Close image viewer"
               title="Close (Esc)"
+              aria-keyshortcuts="Escape"
             >
               <X aria-hidden="true" size={20} />
             </button>
           </div>
         </header>
 
+        {multiple ? (
+          <nav className="image-lightbox-index" aria-label="Article images">
+            <div className="image-lightbox-index-heading">
+              <span>Images</span>
+              <span>{state.images.length}</span>
+            </div>
+            <div className="image-lightbox-thumbnails">
+              {thumbnails.map(({ item, key }, itemIndex) => (
+                <button
+                  key={key}
+                  ref={(element) => {
+                    thumbnailRefs.current[itemIndex] = element;
+                  }}
+                  type="button"
+                  className="image-lightbox-thumbnail"
+                  aria-current={itemIndex === index ? "true" : undefined}
+                  aria-label={`View image ${itemIndex + 1}: ${item.alt || "Article image"}`}
+                  onClick={() => showImage(itemIndex)}
+                >
+                  <img src={item.src} alt="" draggable={false} loading="lazy" />
+                  <span>{itemIndex + 1}</span>
+                </button>
+              ))}
+            </div>
+          </nav>
+        ) : null}
+
         <div ref={stageRef} className="image-lightbox-stage">
-          <img
-            key={image.src}
-            className={zoom === null ? "is-fit" : "is-zoomed"}
-            src={image.src}
-            alt={image.alt}
-            style={imageStyle}
-            draggable={false}
-            onLoad={(event) =>
-              setNaturalSize({
-                width: event.currentTarget.naturalWidth,
-                height: event.currentTarget.naturalHeight,
-              })
-            }
-          />
+          {loadState === "loading" ? (
+            <div className="image-lightbox-loading" role="status">
+              Loading image…
+            </div>
+          ) : null}
+          {loadState !== "error" ? (
+            <img
+              key={image.src}
+              className={zoom === null ? "is-fit" : "is-zoomed"}
+              data-loading={loadState === "loading" ? "true" : undefined}
+              src={image.src}
+              alt={image.alt}
+              style={imageStyle}
+              draggable={false}
+              onLoad={(event) => {
+                setLoadState("loaded");
+                setNaturalSize({
+                  width: event.currentTarget.naturalWidth,
+                  height: event.currentTarget.naturalHeight,
+                });
+              }}
+              onError={() => setLoadState("error")}
+            />
+          ) : (
+            <div className="image-lightbox-error" role="alert">
+              <strong>Image unavailable</strong>
+              <span>The source may no longer be available.</span>
+              {imageUrl ? (
+                <a href={imageUrl} target="_blank" rel="noopener noreferrer">
+                  Try the original image
+                  <ExternalLink aria-hidden="true" size={15} />
+                </a>
+              ) : null}
+            </div>
+          )}
+
+          {multiple ? (
+            <>
+              <button
+                className="image-lightbox-navigation is-previous"
+                type="button"
+                onClick={() => showImage(index - 1)}
+                aria-label="Previous image"
+                title="Previous image (← or K)"
+                aria-keyshortcuts="ArrowLeft K"
+              >
+                <ChevronLeft aria-hidden="true" size={22} />
+              </button>
+              <button
+                className="image-lightbox-navigation is-next"
+                type="button"
+                onClick={() => showImage(index + 1)}
+                aria-label="Next image"
+                title="Next image (→ or J)"
+                aria-keyshortcuts="ArrowRight J"
+              >
+                <ChevronRight aria-hidden="true" size={22} />
+              </button>
+            </>
+          ) : null}
         </div>
 
-        {multiple ? (
-          <>
+        <footer className="image-lightbox-caption">
+          <span className="image-lightbox-position" aria-live="polite">
+            {multiple ? `${index + 1} of ${state.images.length}` : "Image"}
+            {naturalSize ? ` · ${naturalSize.width} × ${naturalSize.height}` : ""}
+          </span>
+          {caption ? <p id={captionId}>{caption}</p> : null}
+          <fieldset className="image-lightbox-zoom">
+            <legend className="sr-only">Image zoom</legend>
             <button
-              className="image-lightbox-navigation is-previous"
               type="button"
-              onClick={() => showImage(index - 1)}
-              aria-label="Previous image"
+              onClick={zoomOut}
+              aria-label="Zoom out"
+              title="Zoom out (−)"
+              aria-keyshortcuts="-"
+              disabled={zoom === null}
             >
-              <ChevronLeft aria-hidden="true" size={26} />
+              <Minus aria-hidden="true" size={17} />
             </button>
             <button
-              className="image-lightbox-navigation is-next"
               type="button"
-              onClick={() => showImage(index + 1)}
-              aria-label="Next image"
+              className="image-lightbox-zoom-level"
+              onClick={resetView}
+              aria-label="Fit image to viewer"
+              title="Fit image to viewer (0)"
+              aria-keyshortcuts="0"
             >
-              <ChevronRight aria-hidden="true" size={26} />
+              {zoom === null ? "Fit" : `${Math.round(zoom * 100)}%`}
             </button>
-          </>
-        ) : null}
+            <button
+              type="button"
+              onClick={zoomIn}
+              aria-label="Zoom in"
+              title="Zoom in (+)"
+              aria-keyshortcuts="+"
+              disabled={zoom === ZOOM_STEPS.at(-1)}
+            >
+              <Plus aria-hidden="true" size={17} />
+            </button>
+          </fieldset>
+        </footer>
       </div>
     </dialog>
   );
