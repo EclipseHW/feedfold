@@ -8,7 +8,7 @@ const shortcuts = [
   ["K / ←", "Previous article"],
   ["Space", "Scroll one article page"],
   ["U", "Toggle read state"],
-  ["S", "Star or unstar article"],
+  ["S", "Save or remove from Saved"],
   ["C", "Copy the active article link"],
   ["O", "Open active article source"],
   ["W", "Toggle feed text and full article"],

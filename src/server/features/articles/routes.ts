@@ -198,7 +198,7 @@ export async function articleRoutes(
     const body = z
       .object({ isRead: z.boolean().optional(), isStarred: z.boolean().optional() })
       .refine((value) => value.isRead !== undefined || value.isStarred !== undefined, {
-        message: "Choose whether to update read state or star state.",
+        message: "Choose whether to update read state or saved state.",
       })
       .parse(request.body);
     const article = articles.updateArticleState(userId(request), id, body);

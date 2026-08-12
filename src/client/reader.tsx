@@ -781,10 +781,10 @@ export function ArticleList({
                 type="button"
                 aria-label={
                   article.isStarred
-                    ? `Remove star from ${articleLabel(article)}`
-                    : `Star ${articleLabel(article)}`
+                    ? `Remove ${articleLabel(article)} from Saved`
+                    : `Save ${articleLabel(article)}`
                 }
-                title={article.isStarred ? "Remove star" : "Star"}
+                title={article.isStarred ? "Remove from Saved" : "Save"}
                 aria-pressed={article.isStarred}
                 onClick={() => onToggleStar(article)}
               >
@@ -925,7 +925,7 @@ function ArticleActions({
         ? `Retry ${translationLanguage} translation`
         : `Translate to ${translationLanguage}`;
   const readTooltip = article.isRead ? "Mark as unread (U)" : "Mark as read (U)";
-  const starTooltip = article.isStarred ? "Remove star (S)" : "Star article (S)";
+  const savedTooltip = article.isStarred ? "Remove from Saved (S)" : "Save article (S)";
   return (
     <div className="article-actions" role="toolbar" aria-label="Article actions">
       {onPrevious ? (
@@ -1075,8 +1075,8 @@ function ArticleActions({
         type="button"
         aria-pressed={article.isStarred}
         onClick={() => onToggleStar(article)}
-        aria-label={starTooltip}
-        data-tooltip={starTooltip}
+        aria-label={savedTooltip}
+        data-tooltip={savedTooltip}
       >
         <Star aria-hidden="true" size={16} fill={article.isStarred ? "currentColor" : "none"} />
       </button>

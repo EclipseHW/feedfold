@@ -589,7 +589,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
           void articleActions.changeArticleState(activeArticle, {
             isStarred: !activeArticle.isStarred,
           });
-          showToast(activeArticle.isStarred ? "Star removed from article" : "Article starred");
+          showToast(activeArticle.isStarred ? "Removed from Saved" : "Article saved");
         },
         c: () => void articleActions.copyArticleUrl(activeArticle),
         o: () => articleActions.openArticleSource(activeArticle),

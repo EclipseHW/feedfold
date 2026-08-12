@@ -247,7 +247,7 @@ export class ApplicationApi {
             .strict()
             .refine(
               ({ state }) => state.isRead !== undefined || state.isStarred !== undefined,
-              "Choose whether to update read state or star state.",
+              "Choose whether to update read state or saved state.",
             ),
           request.payload,
         );
