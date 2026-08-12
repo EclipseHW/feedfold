@@ -67,7 +67,8 @@
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  background: var(--bg);
+  background: var(--paper-canvas);
+  background-blend-mode: var(--paper-blend);
 }
 
 .web-feed-confirmation-slot {
@@ -86,7 +87,8 @@
   padding: 0;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--paper-surface);
+  background-blend-mode: var(--paper-blend);
 }
 
 .web-feed-compact-group h5 {
@@ -180,7 +182,8 @@
   gap: 12px;
   padding: 8px 11px;
   border-bottom: 1px solid var(--border);
-  background: var(--surface-raised);
+  background: var(--paper-raised);
+  background-blend-mode: var(--paper-blend);
 }
 
 .web-feed-page-toolbar > div {
@@ -260,7 +263,8 @@
   min-width: 0;
   min-height: 0;
   flex-direction: column;
-  background: var(--surface);
+  background: var(--paper-surface);
+  background-blend-mode: var(--paper-blend);
 }
 
 .web-feed-suggestions-heading {
@@ -285,7 +289,8 @@
   flex: 0 0 auto;
   padding: 10px 11px;
   border-top: 1px solid var(--border);
-  background: var(--surface-raised);
+  background: var(--paper-raised);
+  background-blend-mode: var(--paper-blend);
 }
 
 .web-feed-review-selection .primary-button {

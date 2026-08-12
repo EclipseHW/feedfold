@@ -24,7 +24,8 @@
   padding: 14px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  background: var(--bg);
+  background: var(--paper-canvas);
+  background-blend-mode: var(--paper-blend);
 }
 
 .shortcut-dialog {
@@ -34,7 +35,8 @@
   overflow: auto;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: var(--surface-raised);
+  background: var(--paper-raised);
+  background-blend-mode: var(--paper-blend);
   color: var(--text);
   box-shadow: 0 8px 8px oklch(0 0 0 / 0.34);
   opacity: 0;

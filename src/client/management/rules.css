@@ -60,7 +60,8 @@
   border: 1px solid var(--border);
   border-bottom: 0;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
-  background: var(--surface-raised);
+  background: var(--paper-raised);
+  background-blend-mode: var(--paper-blend);
   color: var(--muted);
   font-size: var(--type-label);
   font-weight: var(--weight-semibold);
@@ -71,7 +72,8 @@
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 0 0 var(--radius-md) var(--radius-md);
-  background: var(--bg);
+  background: var(--paper-canvas);
+  background-blend-mode: var(--paper-blend);
   list-style: none;
 }
 
@@ -319,7 +321,8 @@
   padding: 30px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--paper-surface);
+  background-blend-mode: var(--paper-blend);
 }
 
 .section-error {

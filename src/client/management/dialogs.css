@@ -5,7 +5,8 @@
   overflow: auto;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
-  background: var(--surface-raised);
+  background: var(--paper-raised);
+  background-blend-mode: var(--paper-blend);
   color: var(--text);
   box-shadow: 0 8px 8px oklch(0 0 0 / 0.34);
   opacity: 0;
@@ -69,7 +70,8 @@
   gap: 10px;
   padding: 15px 17px;
   border-bottom: 1px solid var(--border);
-  background: var(--surface-raised);
+  background: var(--paper-raised);
+  background-blend-mode: var(--paper-blend);
 }
 
 .management-dialog-heading h2 {
@@ -117,7 +119,8 @@
   gap: 14px;
   padding: 13px 17px;
   border-top: 1px solid var(--border);
-  background: var(--surface-raised);
+  background: var(--paper-raised);
+  background-blend-mode: var(--paper-blend);
 }
 
 .management-dialog-footer > div {
@@ -284,7 +287,8 @@
   margin: 0;
   padding: 15px 17px;
   border-bottom: 1px solid var(--border);
-  background: var(--surface-raised);
+  background: var(--paper-raised);
+  background-blend-mode: var(--paper-blend);
 }
 
 .management-dialog > .rule-form > .rule-form-sections {
@@ -298,7 +302,8 @@
   margin: 0;
   padding: 13px 17px;
   border-top: 1px solid var(--border);
-  background: var(--surface-raised);
+  background: var(--paper-raised);
+  background-blend-mode: var(--paper-blend);
 }
 
 .dialog-icon {

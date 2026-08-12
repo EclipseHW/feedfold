@@ -4,7 +4,8 @@
 .settings-section {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--paper-surface);
+  background-blend-mode: var(--paper-blend);
 }
 
 .ai-settings-warning,

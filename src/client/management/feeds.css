@@ -1,5 +1,6 @@
 .feeds-management-page .page-header {
-  background: color-mix(in srgb, var(--bg) 96%, transparent);
+  background: var(--paper-canvas-translucent);
+  background-blend-mode: var(--paper-blend);
   -webkit-backdrop-filter: blur(14px) saturate(120%);
   backdrop-filter: blur(14px) saturate(120%);
 }
@@ -17,7 +18,8 @@
   margin-inline: -34px;
   padding-inline: 34px;
   border-bottom: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg) 96%, transparent);
+  background: var(--paper-canvas-translucent);
+  background-blend-mode: var(--paper-blend);
   -webkit-backdrop-filter: blur(14px) saturate(120%);
   backdrop-filter: blur(14px) saturate(120%);
 }
@@ -197,7 +199,8 @@
   overflow: hidden;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--paper-surface);
+  background-blend-mode: var(--paper-blend);
 }
 
 .feed-management-rows {
@@ -219,7 +222,8 @@
 .feed-management-list-header {
   min-height: 36px;
   padding: 7px 12px;
-  background: var(--surface-raised);
+  background: var(--paper-raised);
+  background-blend-mode: var(--paper-blend);
   color: var(--muted);
   font-size: var(--type-label);
   font-weight: var(--weight-semibold);
@@ -591,7 +595,8 @@
   overflow: hidden;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  background: var(--surface);
+  background: var(--paper-surface);
+  background-blend-mode: var(--paper-blend);
 }
 
 .add-feed-source-row {
@@ -699,7 +704,8 @@
   padding: 11px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--paper-surface);
+  background-blend-mode: var(--paper-blend);
 }
 
 .add-feed-selected-source > span:nth-child(2) {
@@ -840,7 +846,8 @@
   padding: 16px;
   border: 1px solid var(--border-strong);
   border-radius: var(--radius-lg);
-  background: var(--surface);
+  background: var(--paper-surface);
+  background-blend-mode: var(--paper-blend);
 }
 
 .add-feed-fallback strong {
@@ -965,7 +972,8 @@
   padding: 14px 16px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface-raised);
+  background: var(--paper-raised);
+  background-blend-mode: var(--paper-blend);
 }
 
 .feed-confirmation-status {
@@ -1039,7 +1047,8 @@
   padding: 0;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--paper-surface);
+  background-blend-mode: var(--paper-blend);
   list-style: none;
 }
 
@@ -1146,7 +1155,8 @@
     padding: 10px;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    background: var(--surface);
+    background: var(--paper-surface);
+    background-blend-mode: var(--paper-blend);
   }
 
   .feed-filter-panel[data-open="true"] {
@@ -1410,7 +1420,8 @@
     padding: 10px;
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    background: var(--surface);
+    background: var(--paper-surface);
+    background-blend-mode: var(--paper-blend);
   }
 
   .feed-filter-panel[data-open="true"] {
@@ -1638,12 +1649,14 @@
   .feeds-management-page .page-header,
   .management-tabs-shell,
   .management-actions-popover {
-    background: var(--bg);
+    background: var(--paper-canvas);
+    background-blend-mode: var(--paper-blend);
     -webkit-backdrop-filter: none;
     backdrop-filter: none;
   }
 
   .management-actions-popover {
-    background: var(--surface-raised);
+    background: var(--paper-raised);
+    background-blend-mode: var(--paper-blend);
   }
 }

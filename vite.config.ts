@@ -52,7 +52,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,png}"],
+        globPatterns: ["**/*.{js,css,html,png,webp}"],
         navigateFallback: "/feedfold/index.html",
         navigateFallbackDenylist: [/^\/feedfold\/(?:api|health)(?:\/|$)/],
         runtimeCaching: [
