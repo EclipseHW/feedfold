@@ -778,7 +778,7 @@ function AiSettingsSection({
   );
 }
 
-export function SettingsPage({
+function SettingsPage({
   settings,
   aiSettings,
   theme,

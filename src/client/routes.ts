@@ -10,17 +10,17 @@ export interface ReaderRoute {
   search: string;
 }
 
-export interface ArticleRoute {
+interface ArticleRoute {
   kind: "article";
   articleId: number;
 }
 
-export interface AddFeedRoute {
+interface AddFeedRoute {
   kind: "add-feed";
   sourceUrl: string;
 }
 
-export interface ManagementRoute {
+interface ManagementRoute {
   kind: "feeds" | "rules" | "settings";
 }
 

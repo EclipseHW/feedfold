@@ -757,7 +757,7 @@ function DeleteFolderForm({
   );
 }
 
-export function ContextManagementDialog({
+function ContextManagementDialog({
   request,
   bootstrap,
   mutations,

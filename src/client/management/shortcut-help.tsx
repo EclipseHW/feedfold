@@ -81,7 +81,7 @@ export function ShortcutReference({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export function ShortcutHelp({ enabled, onClose }: { enabled: boolean; onClose: () => void }) {
+function ShortcutHelp({ enabled, onClose }: { enabled: boolean; onClose: () => void }) {
   const dialog = useAnimatedDialog(onClose);
 
   return (

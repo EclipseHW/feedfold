@@ -1,7 +1,7 @@
 const POSITION_THRESHOLD = 0.5;
 const VELOCITY_THRESHOLD = 5;
 
-export interface HorizontalSpringUpdate {
+interface HorizontalSpringUpdate {
   position: number;
   velocity: number;
   progress: number;

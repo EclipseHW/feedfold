@@ -1,6 +1,6 @@
 import type { AiGrounding, AiModelOption, AiProvider, AiUsage } from "../../shared/types.js";
 
-export interface AiGenerationRequest {
+interface AiGenerationRequest {
   apiKey: string;
   model: string;
   system: string;

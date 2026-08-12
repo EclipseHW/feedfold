@@ -608,60 +608,6 @@
   }
 }
 
-.web-feed-offer {
-  display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  margin-top: 18px;
-  padding-top: 18px;
-  border-top: 1px solid var(--border);
-  opacity: 1;
-  transform: translateY(0);
-  transform-origin: top center;
-  transition:
-    opacity var(--duration-surface) var(--ease-out),
-    transform var(--duration-surface) var(--ease-out);
-}
-
-.web-feed-offer-mark {
-  display: flex;
-  width: 42px;
-  height: 42px;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  background: var(--accent-surface);
-  color: var(--accent);
-}
-
-.web-feed-offer h3 {
-  margin: 0 0 3px;
-  font-size: var(--type-ui-title);
-}
-
-.web-feed-offer h3:focus {
-  outline: none;
-}
-
-.web-feed-offer p,
-.web-feed-offer small {
-  display: block;
-  max-width: 74ch;
-  margin: 0;
-}
-
-.web-feed-offer p {
-  color: var(--text-secondary);
-  font-size: var(--type-supporting);
-}
-
-.web-feed-offer small {
-  margin-top: 4px;
-  color: var(--muted);
-  font-size: var(--type-label);
-}
-
 .web-feed-confirmation-form {
   margin-top: 18px;
   padding-top: 18px;
@@ -722,18 +668,11 @@
 }
 
 @starting-style {
-  .web-feed-offer,
   .web-feed-confirmation-form,
   .web-feed-selection-dialog > .web-feed-setup {
     opacity: 0;
     transform: translateY(4px);
   }
-}
-
-.feed-status-actions {
-  display: grid;
-  justify-items: start;
-  gap: 5px;
 }
 
 .feed-repair-button {
@@ -752,18 +691,6 @@
   }
 }
 
-@media (max-width: 760px) {
-  .web-feed-offer {
-    grid-template-columns: 42px minmax(0, 1fr);
-    align-items: start;
-  }
-
-  .web-feed-offer > button {
-    grid-column: 2;
-    justify-self: start;
-  }
-}
-
 @media (max-width: 620px) {
   .feed-repair-button {
     min-height: 40px;
@@ -771,7 +698,6 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .web-feed-offer,
   .web-feed-confirmation-form,
   .web-feed-selection-dialog > .web-feed-setup {
     transform: none;

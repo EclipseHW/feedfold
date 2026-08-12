@@ -343,7 +343,7 @@ function FeedTransferMenu({
   );
 }
 
-export function FeedsPage({
+function FeedsPage({
   bootstrap,
   mutations,
   onMenu,

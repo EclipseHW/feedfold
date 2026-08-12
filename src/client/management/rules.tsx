@@ -80,7 +80,7 @@ export interface RuleFormPreset {
   pattern?: string;
 }
 
-export function RulesPage({
+function RulesPage({
   bootstrap,
   rules,
   loading,

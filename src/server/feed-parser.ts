@@ -63,7 +63,7 @@ function decodeTextEntities(value: string): string {
     .replaceAll("&amp;", "&");
 }
 
-export function structuredPlainText(value: string | null): string {
+function structuredPlainText(value: string | null): string {
   if (!value) return "";
   const text = sanitizeHtml(
     value.replace(/<br\b[^>]*>/gi, "\n").replace(/<\/(?:p|div|li|h[1-6]|blockquote|tr)>/gi, "\n\n"),

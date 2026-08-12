@@ -1,7 +1,7 @@
 export type ArticleState = "all" | "unread" | "read" | "starred";
 export type FolderSortDirection = "newest" | "oldest";
 export type ReadingMode = "magazine" | "expanded";
-export type ExtractionStatus = "pending" | "processing" | "complete" | "failed" | "feed";
+type ExtractionStatus = "pending" | "processing" | "complete" | "failed" | "feed";
 export type FeedSourceKind = "published" | "web";
 export type FeedHealthStatus = "healthy" | "failing" | "needs_attention";
 export type FeedErrorKind =
@@ -30,7 +30,7 @@ export interface AiModelOption {
   label: string;
 }
 
-export interface AiProviderOption {
+interface AiProviderOption {
   id: AiProvider;
   label: string;
   configured: boolean;
@@ -62,12 +62,12 @@ export interface AiCustomPrompt {
   prompt: string;
 }
 
-export interface AiGroundingSource {
+interface AiGroundingSource {
   uri: string;
   title: string;
 }
 
-export interface AiGroundingSupport {
+interface AiGroundingSupport {
   startIndex: number;
   endIndex: number;
   sourceIndices: number[];
@@ -119,7 +119,7 @@ export interface ArticleMedia {
   } | null;
 }
 
-export interface TelegramArticleMediaItem {
+interface TelegramArticleMediaItem {
   kind: "image" | "video";
   sourceUrl: string;
   posterUrl: string | null;
@@ -190,7 +190,7 @@ export interface FeedPreview {
   articles: FeedPreviewArticle[];
 }
 
-export interface PublishedFeedDiscovery {
+interface PublishedFeedDiscovery {
   kind: "published";
   preview: FeedPreview;
 }

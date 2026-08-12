@@ -130,7 +130,7 @@ export async function resolvePublicAddress(hostnameInput: string): Promise<Pinne
   return addresses.find(({ family }) => family === 4) ?? (addresses[0] as PinnedAddress);
 }
 
-export function publicHttpUrl(value: string): URL {
+function publicHttpUrl(value: string): URL {
   let url: URL;
   try {
     url = new URL(value);
@@ -150,11 +150,6 @@ export function publicHttpUrl(value: string): URL {
     );
   }
   return url;
-}
-
-export async function assertPublicHttpUrl(value: string): Promise<void> {
-  const url = publicHttpUrl(value);
-  await resolvePublicAddress(url.hostname);
 }
 
 function proxyError(response: ServerResponse): void {

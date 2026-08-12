@@ -1,7 +1,7 @@
 import { Check, ChevronDown } from "lucide-react";
 import { type KeyboardEvent, type SyntheticEvent, useEffect, useId, useRef, useState } from "react";
 
-export interface DropdownOption {
+interface DropdownOption {
   value: string;
   label: string;
   group?: string;

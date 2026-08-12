@@ -20,7 +20,7 @@ import type {
 } from "../../shared/types.js";
 import { InvalidRequestError } from "../errors.js";
 
-export interface FeedRecordBase {
+interface FeedRecordBase {
   id: number;
   userId: number;
   folderId: number | null;
@@ -105,7 +105,7 @@ export function now(): string {
   return new Date().toISOString();
 }
 
-export interface ArticleCursorBoundary {
+interface ArticleCursorBoundary {
   sortAt: string;
   id: number;
   consumed: number;
@@ -282,7 +282,7 @@ export function mapArticle(row: Row): Article {
   };
 }
 
-export function mapArticleAiSummary(row: Row): ArticleAiSummary | null {
+function mapArticleAiSummary(row: Row): ArticleAiSummary | null {
   if (row.aiSummaryText === null || row.aiSummaryText === undefined) return null;
   return {
     text: String(row.aiSummaryText),
