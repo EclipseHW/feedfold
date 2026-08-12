@@ -67,7 +67,10 @@ describe("database migrations", () => {
            WHERE feed_id = ?`,
         )
         .run(feed.id);
-      database.connection.prepare("DELETE FROM migrations WHERE version = 29").run();
+      database.connection.prepare("DELETE FROM migrations WHERE version >= 29").run();
+      database.connection.exec("ALTER TABLE feeds DROP COLUMN last_scheduled_observation_at");
+      database.connection.exec("ALTER TABLE feeds DROP COLUMN activity_rate_per_hour");
+      database.connection.exec("ALTER TABLE feeds DROP COLUMN poll_interval_minutes");
 
       migrateDatabase(database.connection, 180);
 
@@ -146,7 +149,6 @@ Return only the summary in plain text.`,
         httpStatus: 200,
         etag: null,
         lastModified: null,
-        pollIntervalMinutes: 20,
         parsed: {
           title: "AI news",
           siteUrl: "https://example.test",
@@ -180,6 +182,9 @@ Return only the summary in plain text.`,
       database.connection.prepare("DELETE FROM migrations WHERE version >= 22").run();
       database.connection.exec("ALTER TABLE settings DROP COLUMN show_youtube_descriptions");
       database.connection.exec("DROP TABLE ignored_feed_articles");
+      database.connection.exec("ALTER TABLE feeds DROP COLUMN last_scheduled_observation_at");
+      database.connection.exec("ALTER TABLE feeds DROP COLUMN activity_rate_per_hour");
+      database.connection.exec("ALTER TABLE feeds DROP COLUMN poll_interval_minutes");
       migrateDatabase(database.connection, 20);
 
       expect(database.settings.getSettings(reader.id).summaryPrompt).toBe(
@@ -517,18 +522,28 @@ Return only the summary in plain text.`,
         sortDirection: "newest",
       });
       expect(database.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
-        29,
+        30,
       );
       expect(
         database.connection
           .prepare(
             `SELECT name FROM pragma_table_info('feeds')
-             WHERE name IN ('source_kind', 'health_status', 'last_error_kind')
+             WHERE name IN (
+               'source_kind', 'health_status', 'last_error_kind', 'poll_interval_minutes',
+               'activity_rate_per_hour', 'last_scheduled_observation_at'
+             )
              ORDER BY name`,
           )
           .pluck()
           .all(),
-      ).toEqual(["health_status", "last_error_kind", "source_kind"]);
+      ).toEqual([
+        "activity_rate_per_hour",
+        "health_status",
+        "last_error_kind",
+        "last_scheduled_observation_at",
+        "poll_interval_minutes",
+        "source_kind",
+      ]);
       expect(
         database.connection
           .prepare(
@@ -557,7 +572,7 @@ Return only the summary in plain text.`,
         username: "reader",
       });
       expect(reopened.connection.prepare("SELECT MAX(version) FROM migrations").pluck().get()).toBe(
-        29,
+        30,
       );
       expect(
         reopened.connection.prepare("SELECT image_url FROM articles WHERE id = 2").pluck().get(),

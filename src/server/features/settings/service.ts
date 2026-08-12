@@ -1,5 +1,5 @@
 import type Sqlite from "better-sqlite3";
-import type { AppSettings } from "../../../shared/types.js";
+import { type AppSettings, normalizeFeedPollInterval } from "../../../shared/types.js";
 import type { AiRepository } from "../ai/repository.js";
 import type { SettingsRepository } from "./repository.js";
 
@@ -17,7 +17,10 @@ export class SettingsService {
   updateSettings(userId: number, input: Partial<AppSettings>): AppSettings {
     const current = this.repository.getSettings(userId);
     const next: AppSettings = {
-      pollIntervalMinutes: input.pollIntervalMinutes ?? current.pollIntervalMinutes,
+      pollIntervalMinutes:
+        input.pollIntervalMinutes === undefined
+          ? current.pollIntervalMinutes
+          : normalizeFeedPollInterval(input.pollIntervalMinutes),
       duplicateArticleWindowDays:
         input.duplicateArticleWindowDays ?? current.duplicateArticleWindowDays,
       singleKeyShortcuts: input.singleKeyShortcuts ?? current.singleKeyShortcuts,

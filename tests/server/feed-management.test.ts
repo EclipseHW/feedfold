@@ -112,7 +112,7 @@ describe("feed and folder management", () => {
       .prepare("SELECT poll_interval_minutes FROM settings WHERE user_id = 1")
       .pluck()
       .get();
-    expect(storedPollInterval).toBe(37);
+    expect(storedPollInterval).toBe(60);
     expect(createdFeed).toMatchObject({
       title: "Original name",
       folderId: inbox.id,

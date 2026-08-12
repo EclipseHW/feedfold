@@ -485,13 +485,11 @@ describe("feed refresh and full-text extraction", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
     });
     database.feeds.completeRefresh(feed.id, {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed,
     });
 
@@ -573,7 +571,6 @@ describe("feed refresh and full-text extraction", () => {
         httpStatus: 200,
         etag: null,
         lastModified: null,
-        pollIntervalMinutes: 20,
         parsed: { title: "Feed", siteUrl: "https://example.test", articles },
       });
     const sourceFeed = database.feeds.createFeed(reader.id, {
@@ -688,7 +685,6 @@ describe("feed refresh and full-text extraction", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: { title: "Feed", siteUrl: "https://example.test", articles: [parsedArticle] },
     });
     const articleId = database.articles.listArticles(TEST_USER_ID, { state: "all" })[0]?.id;
@@ -707,7 +703,6 @@ describe("feed refresh and full-text extraction", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: "Feed",
         siteUrl: "https://example.test",
@@ -743,7 +738,6 @@ describe("feed refresh and full-text extraction", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: { title: "Feed", siteUrl: "https://example.test", articles: [article] },
     });
     const articleId = database.articles.listArticles(TEST_USER_ID, { state: "all" })[0]?.id;
@@ -755,7 +749,6 @@ describe("feed refresh and full-text extraction", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: "Feed",
         siteUrl: "https://example.test",
@@ -801,7 +794,6 @@ describe("feed refresh and full-text extraction", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: "Video feed",
         siteUrl: "https://www.youtube.com/channel/UCexample",
@@ -903,7 +895,6 @@ describe("feed refresh and full-text extraction", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: "Priority",
         siteUrl: baseUrl,

@@ -107,7 +107,6 @@ describe("folder article sorting", () => {
         httpStatus: 200,
         etag: null,
         lastModified: null,
-        pollIntervalMinutes: 20,
         parsed: {
           title,
           siteUrl: null,

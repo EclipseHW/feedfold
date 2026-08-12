@@ -77,7 +77,6 @@ describe("web feed persistence", () => {
         httpStatus: 200,
         etag: null,
         lastModified: null,
-        pollIntervalMinutes: 180,
         parsed: {
           title: "Updates",
           siteUrl: pageUrl,
@@ -123,7 +122,7 @@ describe("web feed persistence", () => {
         title: "Tracked releases",
         folderId: folder.id,
         sourceKind: "web",
-        pollIntervalMinutes: 180,
+        pollIntervalMinutes: 60,
         healthStatus: "healthy",
         lastErrorKind: null,
         lastMatchCount: 3,
@@ -132,7 +131,7 @@ describe("web feed persistence", () => {
       const record = database.feeds.getFeedRecord(feed.id);
       expect(record).toMatchObject({
         sourceKind: "web",
-        pollIntervalMinutes: 180,
+        pollIntervalMinutes: 60,
         webConfig: config(pageUrl),
         selectionRevision: 1,
         lastMatchCount: 3,
@@ -161,6 +160,9 @@ describe("web feed persistence", () => {
         isStarred: true,
       });
       const firstPublishedAt = first.publishedAt;
+      expect(database.feeds.getFeed(TEST_USER_ID, feed.id)?.lastPostAt).toBe(
+        initialArticles[0]?.publishedAt,
+      );
 
       const revised: ParsedFeed = {
         title: "Example releases",
@@ -173,6 +175,14 @@ describe("web feed persistence", () => {
           article("web:third", "Corrected title", "https://example.test/releases/three"),
         ],
       };
+      database.connection
+        .prepare(
+          `UPDATE feeds
+           SET poll_interval_minutes = 5, activity_rate_per_hour = 12,
+               last_scheduled_observation_at = '2026-08-12T10:00:00.000Z'
+           WHERE id = ?`,
+        )
+        .run(feed.id);
       expect(
         database.feeds.updateWebFeedSelection(
           TEST_USER_ID,
@@ -180,13 +190,14 @@ describe("web feed persistence", () => {
           config(pageUrl, "article.release"),
           revised,
         ),
-      ).toMatchObject({ lastMatchCount: 2, totalCount: 3 });
+      ).toMatchObject({ lastMatchCount: 2, totalCount: 3, pollIntervalMinutes: 60 });
 
       expect(database.feeds.getFeedRecord(feed.id)).toMatchObject({
         sourceKind: "web",
         webConfig: config(pageUrl, "article.release"),
         selectionRevision: 2,
         lastMatchCount: 2,
+        pollIntervalMinutes: 60,
       });
       expect(database.articles.getArticle(TEST_USER_ID, first.id)).toMatchObject({
         title: "Corrected title",
@@ -218,7 +229,6 @@ describe("web feed persistence", () => {
         httpStatus: 200,
         etag: null,
         lastModified: null,
-        pollIntervalMinutes: 20,
         parsed: {
           title: "Stale result",
           siteUrl: pageUrl,
@@ -277,7 +287,6 @@ describe("web feed persistence", () => {
         httpStatus: 200,
         etag: null,
         lastModified: null,
-        pollIntervalMinutes: 20,
         parsed: revised,
         webMatchCount: 2,
       });
@@ -310,7 +319,7 @@ describe("web feed persistence", () => {
     }
   });
 
-  it("keeps web feeds on a three-hour schedule independently of published feeds", async () => {
+  it("uses settings only as the starting interval for new feeds", async () => {
     const directory = await mkdtemp(join(tmpdir(), "feedfold-web-feed-schedule-test-"));
     directories.push(directory);
     const path = join(directory, "feedfold.db");
@@ -332,12 +341,17 @@ describe("web feed persistence", () => {
       feedUrl: "https://example.test/feed.xml",
     });
 
-    expect(webFeed.pollIntervalMinutes).toBe(180);
+    expect(webFeed.pollIntervalMinutes).toBe(60);
     expect(publishedFeed.pollIntervalMinutes).toBe(20);
 
     database.settings.updateSettings(TEST_USER_ID, { pollIntervalMinutes: 60 });
-    expect(database.feeds.getFeed(TEST_USER_ID, webFeed.id)?.pollIntervalMinutes).toBe(180);
-    expect(database.feeds.getFeed(TEST_USER_ID, publishedFeed.id)?.pollIntervalMinutes).toBe(60);
+    const laterFeed = database.feeds.createFeed(TEST_USER_ID, {
+      title: "Later published feed",
+      feedUrl: "https://example.test/later.xml",
+    });
+    expect(database.feeds.getFeed(TEST_USER_ID, webFeed.id)?.pollIntervalMinutes).toBe(60);
+    expect(database.feeds.getFeed(TEST_USER_ID, publishedFeed.id)?.pollIntervalMinutes).toBe(20);
+    expect(laterFeed.pollIntervalMinutes).toBe(60);
 
     database.connection
       .prepare("UPDATE feeds SET last_attempt_at = ?, next_poll_at = ? WHERE id = ?")
@@ -345,13 +359,16 @@ describe("web feed persistence", () => {
     database.connection.prepare("DELETE FROM migrations WHERE version >= 20").run();
     database.connection.exec("ALTER TABLE settings DROP COLUMN show_youtube_descriptions");
     database.connection.exec("DROP TABLE ignored_feed_articles");
+    database.connection.exec("ALTER TABLE feeds DROP COLUMN last_scheduled_observation_at");
+    database.connection.exec("ALTER TABLE feeds DROP COLUMN activity_rate_per_hour");
+    database.connection.exec("ALTER TABLE feeds DROP COLUMN poll_interval_minutes");
     database.close();
 
     const migrated = new AppDatabase(path);
     try {
       expect(migrated.feeds.getFeed(TEST_USER_ID, webFeed.id)).toMatchObject({
-        pollIntervalMinutes: 180,
-        nextPollAt: "2026-07-27T15:00:00.000Z",
+        pollIntervalMinutes: 60,
+        nextPollAt: "2026-07-27T13:00:00.000Z",
       });
     } finally {
       migrated.close();

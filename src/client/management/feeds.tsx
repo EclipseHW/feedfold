@@ -70,6 +70,7 @@ import { WebFeedSetup } from "../web-feed-setup";
 import {
   ExportOpmlLink,
   formatDate,
+  formatRefreshInterval,
   formatRelativeDate,
   ImportOpmlButton,
   PageHeader,
@@ -205,6 +206,10 @@ function feedHost(value: string): string {
 
 function feedFaviconUrl(value: string): string {
   return new URL("/favicon.ico", value).toString();
+}
+
+function formatCompactRefreshInterval(minutes: number): string {
+  return minutes < 60 ? `${minutes}m` : `${minutes / 60}h`;
 }
 
 function FeedsDesignContract() {
@@ -596,8 +601,8 @@ function FeedsPage({
                   <span>Feed</span>
                   <span>Folder</span>
                   <span>Status</span>
-                  <span>Updated</span>
-                  <span>Unread</span>
+                  <span>Update</span>
+                  <span>Last Post</span>
                   <span />
                 </div>
                 <ul className="feed-management-rows" aria-label="Subscriptions">
@@ -1470,22 +1475,29 @@ function FeedRow({
             </button>
           ) : null}
         </div>
-        <time
-          className="feed-updated"
-          dateTime={feed.lastSuccessAt ?? undefined}
-          title={formatDate(feed.lastSuccessAt)}
+        <span
+          className="feed-update-interval"
+          title={`Updates every ${formatRefreshInterval(feed.pollIntervalMinutes)}`}
         >
-          {formatRelativeDate(feed.lastSuccessAt)}
-          {status === "needs_attention" && feed.lastAttemptAt ? (
-            <small title={formatDate(feed.lastAttemptAt)}>
-              Tried {formatRelativeDate(feed.lastAttemptAt)}
-            </small>
-          ) : null}
-        </time>
-        <span className="feed-unread" data-zero={feed.unreadCount === 0 || undefined}>
-          <strong>{feed.unreadCount}</strong>
-          <span> unread</span>
+          <span className="sr-only">
+            Updates every {formatRefreshInterval(feed.pollIntervalMinutes)}
+          </span>
+          <span aria-hidden="true">
+            <span className="feed-mobile-meta-label">every </span>
+            {formatCompactRefreshInterval(feed.pollIntervalMinutes)}
+          </span>
         </span>
+        <time
+          className="feed-last-post"
+          dateTime={feed.lastPostAt ?? undefined}
+          title={formatDate(feed.lastPostAt)}
+        >
+          <span className="sr-only">Last post {formatRelativeDate(feed.lastPostAt)}</span>
+          <span aria-hidden="true">
+            <span className="feed-mobile-meta-label">post </span>
+            {formatRelativeDate(feed.lastPostAt)}
+          </span>
+        </time>
       </div>
       <div className="feed-row-actions">
         <button

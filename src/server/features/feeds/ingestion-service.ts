@@ -11,7 +11,7 @@ export interface SuccessfulFeedRefresh {
   httpStatus: number;
   etag: string | null;
   lastModified: string | null;
-  pollIntervalMinutes: number;
+  scheduled?: boolean;
   parsed?: ParsedFeed;
   webMatchCount?: number;
   expectedSelectionRevision?: number;
@@ -50,20 +50,20 @@ export class FeedIngestionService {
       }
 
       const changedArticleIds = new Set<number>();
+      let insertedArticleCount = 0;
+      const initialRefresh = this.feeds.isInitialRefresh(feedId);
       if (parsed) {
         this.feeds.updateFromParsedFeed(feedId, parsed);
-        const initialArticleLimit = this.feeds.isInitialRefresh(feedId)
-          ? INITIAL_ARTICLE_LIMIT
-          : undefined;
-        for (const articleId of this.articles.storeParsedFeedArticles(
-          feedId,
-          parsed,
-          initialArticleLimit,
-        )) {
-          changedArticleIds.add(articleId);
-        }
+        const initialArticleLimit = initialRefresh ? INITIAL_ARTICLE_LIMIT : undefined;
+        const stored = this.articles.storeParsedFeedArticles(feedId, parsed, initialArticleLimit);
+        insertedArticleCount = stored.insertedArticleCount;
+        for (const articleId of stored.changedArticleIds) changedArticleIds.add(articleId);
       }
-      this.feeds.completeSuccessfulRefresh(feedId, input);
+      this.feeds.completeSuccessfulRefresh(feedId, {
+        ...input,
+        scheduled: input.scheduled === true && !initialRefresh,
+        insertedArticleCount,
+      });
       this.rules.recomputeRulesForArticles(changedArticleIds);
       return true;
     })();

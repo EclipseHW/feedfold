@@ -4,6 +4,8 @@ import { AI_PROMPT_MAX_LENGTH } from "../../../shared/ai-prompts.js";
 import {
   DUPLICATE_ARTICLE_WINDOW_DAYS,
   type DuplicateArticleWindowDays,
+  FEED_POLL_INTERVAL_MINUTES,
+  type FeedPollIntervalMinutes,
 } from "../../../shared/types.js";
 import type { UserId } from "../routes.js";
 import type { SettingsService } from "./service.js";
@@ -13,6 +15,12 @@ const duplicateArticleWindowDays = z.custom<DuplicateArticleWindowDays>(
     typeof value === "number" &&
     DUPLICATE_ARTICLE_WINDOW_DAYS.includes(value as DuplicateArticleWindowDays),
   "Choose 1, 7, or 30 days.",
+);
+const feedPollIntervalMinutes = z.custom<FeedPollIntervalMinutes>(
+  (value) =>
+    typeof value === "number" &&
+    FEED_POLL_INTERVAL_MINUTES.includes(value as FeedPollIntervalMinutes),
+  "Choose 5, 10, 20, 30, or 60 minutes.",
 );
 
 export async function settingsRoutes(
@@ -24,7 +32,7 @@ export async function settingsRoutes(
   app.patch("/api/settings", async (request) => {
     const body = z
       .object({
-        pollIntervalMinutes: z.number().int().min(1).max(1_440).optional(),
+        pollIntervalMinutes: feedPollIntervalMinutes.optional(),
         duplicateArticleWindowDays: duplicateArticleWindowDays.optional(),
         singleKeyShortcuts: z.boolean().optional(),
         markReadOnScroll: z.boolean().optional(),

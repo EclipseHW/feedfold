@@ -9,6 +9,7 @@ import type {
   Feed,
   FeedErrorKind,
   FeedHealthStatus,
+  FeedPollIntervalMinutes,
   FeedSourceKind,
   Folder,
   FolderSortDirection,
@@ -30,7 +31,7 @@ interface FeedRecordBase {
   paused: boolean;
   etag: string | null;
   lastModified: string | null;
-  pollIntervalMinutes: number;
+  pollIntervalMinutes: FeedPollIntervalMinutes;
 }
 
 export type FeedRecord =
@@ -95,11 +96,8 @@ export interface StoredArticleAiTranslation extends ArticleAiTranslation {
 
 export type Row = Record<string, unknown>;
 
-export const WEB_FEED_POLL_INTERVAL_MINUTES = 180;
-export const feedPollIntervalSql = `CASE
-  WHEN feeds.source_kind = 'web' THEN ${WEB_FEED_POLL_INTERVAL_MINUTES}
-  ELSE settings.poll_interval_minutes
-END`;
+export const WEB_FEED_POLL_INTERVAL_MINUTES = 60;
+export const feedPollIntervalSql = "feeds.poll_interval_minutes";
 
 export function now(): string {
   return new Date().toISOString();
@@ -193,6 +191,7 @@ export function mapFeed(row: Row): Feed {
     totalCount: Number(row.totalCount),
     paused: toBoolean(row.paused),
     refreshing: toBoolean(row.refreshing),
+    lastPostAt: row.lastPostAt === null ? null : String(row.lastPostAt),
     lastAttemptAt: row.lastAttemptAt === null ? null : String(row.lastAttemptAt),
     lastSuccessAt: row.lastSuccessAt === null ? null : String(row.lastSuccessAt),
     lastHttpStatus: row.lastHttpStatus === null ? null : Number(row.lastHttpStatus),
@@ -212,7 +211,7 @@ export function mapFeedRecord(row: Row): FeedRecord {
     paused: toBoolean(row.paused),
     etag: row.etag === null ? null : String(row.etag),
     lastModified: row.lastModified === null ? null : String(row.lastModified),
-    pollIntervalMinutes: Number(row.pollIntervalMinutes),
+    pollIntervalMinutes: Number(row.pollIntervalMinutes) as FeedPollIntervalMinutes,
   };
   const sourceKind = row.sourceKind as FeedSourceKind;
   if (sourceKind === "published") {

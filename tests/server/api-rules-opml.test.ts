@@ -168,7 +168,6 @@ describe("live API, OPML, and filtering rules", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: "Reader copy",
         siteUrl: null,
@@ -260,7 +259,6 @@ describe("live API, OPML, and filtering rules", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: "Reader copy",
         siteUrl: null,
@@ -352,6 +350,7 @@ describe("live API, OPML, and filtering rules", () => {
       url: "/api/settings",
       headers: { cookie: readerCookie },
       payload: {
+        pollIntervalMinutes: 30,
         markReadOnScroll: false,
         showYouTubeDescriptions: true,
         duplicateArticleWindowDays: 30,
@@ -368,6 +367,7 @@ describe("live API, OPML, and filtering rules", () => {
       },
     });
     expect(savedSettings.json()).toMatchObject({
+      pollIntervalMinutes: 30,
       markReadOnScroll: false,
       showYouTubeDescriptions: true,
       duplicateArticleWindowDays: 30,
@@ -389,6 +389,16 @@ describe("live API, OPML, and filtering rules", () => {
           url: "/api/settings",
           headers: { cookie: readerCookie },
           payload: { translationLanguage: "   " },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: "PATCH",
+          url: "/api/settings",
+          headers: { cookie: readerCookie },
+          payload: { pollIntervalMinutes: 15 },
         })
       ).statusCode,
     ).toBe(400);

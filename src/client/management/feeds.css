@@ -214,7 +214,7 @@
   display: grid;
   grid-template-columns:
     minmax(240px, 2.2fr) minmax(120px, 0.85fr) minmax(142px, 1fr)
-    minmax(104px, 0.75fr) 66px 78px;
+    66px minmax(104px, 0.75fr) 78px;
   align-items: center;
   gap: 12px;
 }
@@ -359,8 +359,8 @@
 }
 
 .feed-folder-path,
-.feed-updated,
-.feed-unread {
+.feed-last-post,
+.feed-update-interval {
   min-width: 0;
   color: var(--text-secondary);
 }
@@ -419,28 +419,17 @@
   font-weight: var(--weight-semibold);
 }
 
-.feed-updated {
-  display: flex;
-  flex-direction: column;
+.feed-last-post,
+.feed-update-interval {
   font-size: var(--type-label);
   font-variant-numeric: tabular-nums;
 }
 
-.feed-updated small {
-  color: var(--muted);
-  font-size: var(--type-kbd);
+.feed-update-interval {
+  white-space: nowrap;
 }
 
-.feed-unread {
-  font-variant-numeric: tabular-nums;
-}
-
-.feed-unread strong {
-  color: var(--text-secondary);
-  font-weight: var(--weight-semibold);
-}
-
-.feed-unread > span {
+.feed-mobile-meta-label {
   display: none;
 }
 
@@ -1210,9 +1199,11 @@
   }
 
   .feed-row-meta {
-    display: flex;
+    display: grid;
     min-width: 0;
     grid-area: meta;
+    grid-template-areas: "folder update last-post";
+    grid-template-columns: minmax(0, 1fr) auto auto;
     align-items: center;
     gap: 5px;
     margin-left: 34px;
@@ -1229,6 +1220,7 @@
   }
 
   .feed-folder-path {
+    grid-area: folder;
     flex: 0 1 auto;
     color: var(--muted);
   }
@@ -1238,8 +1230,23 @@
   }
 
   .feed-health {
+    grid-area: health;
     flex: 0 1 auto;
     flex-wrap: nowrap;
+  }
+
+  .feed-management-row:not([data-feed-status="healthy"]) {
+    min-height: 82px;
+  }
+
+  .feed-management-row:not([data-feed-status="healthy"]) .feed-row-meta {
+    grid-template-areas:
+      "health health health"
+      "folder update last-post";
+  }
+
+  .feed-management-row:not([data-feed-status="healthy"]) .feed-health::before {
+    display: none;
   }
 
   .feed-health > small {
@@ -1250,34 +1257,22 @@
     min-height: 28px;
   }
 
-  .feed-updated {
+  .feed-last-post,
+  .feed-update-interval {
     display: block;
     flex: 0 0 auto;
     color: var(--muted);
   }
 
-  .feed-updated::before {
-    content: "updated ";
+  .feed-last-post {
+    grid-area: last-post;
   }
 
-  .feed-updated small {
-    display: none;
+  .feed-update-interval {
+    grid-area: update;
   }
 
-  .feed-unread {
-    flex: 0 0 auto;
-    color: var(--accent);
-  }
-
-  .feed-unread[data-zero="true"] {
-    display: none;
-  }
-
-  .feed-unread strong {
-    color: currentColor;
-  }
-
-  .feed-unread > span {
+  .feed-mobile-meta-label {
     display: inline;
   }
 

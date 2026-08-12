@@ -46,6 +46,7 @@ function feed(id: number, folderId: number | null, title: string): Feed {
     totalCount: 1,
     paused: false,
     refreshing: false,
+    lastPostAt: null,
     lastAttemptAt: null,
     lastSuccessAt: null,
     lastHttpStatus: null,
@@ -234,7 +235,6 @@ describe("reader state", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: feed.title,
         siteUrl: null,

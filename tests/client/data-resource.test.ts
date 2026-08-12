@@ -65,7 +65,6 @@ describe("reader data resource", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: feed.title,
         siteUrl: null,
@@ -227,7 +226,6 @@ describe("reader data resource", () => {
             httpStatus: 200,
             etag: null,
             lastModified: null,
-            pollIntervalMinutes: 20,
             parsed: {
               title: feed.title,
               siteUrl: null,
@@ -351,7 +349,6 @@ describe("reader data resource", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: feed.title,
         siteUrl: null,
@@ -400,7 +397,6 @@ describe("reader data resource", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: feed.title,
         siteUrl: null,
@@ -476,7 +472,6 @@ describe("reader data resource", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: feed.title,
         siteUrl: null,

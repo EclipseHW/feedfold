@@ -29,6 +29,7 @@ function feed(id: number, folderId: number | null): Feed {
     refreshing: false,
     paused: false,
     pollIntervalMinutes: 20,
+    lastPostAt: null,
     createdAt: "2026-07-27T12:00:00.000Z",
     unreadCount: 0,
     totalCount: 0,

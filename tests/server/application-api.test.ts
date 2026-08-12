@@ -59,7 +59,6 @@ describe("local application API", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: feed.title,
         siteUrl: "https://example.test/",

@@ -996,16 +996,16 @@ function SettingsPage({
         </div>
         <div className="setting-row">
           <label htmlFor="poll-interval">
-            <strong>Published feed interval</strong>
+            <strong>New feed interval</strong>
             <p>
-              How often feedfold checks RSS, Atom, and JSON feeds. Web feeds refresh every 3 hours.
+              Published feeds start here, then adapt between 5 and 60 minutes based on new posts.
             </p>
           </label>
           <DropdownSelect
             id="poll-interval"
             value={String(settings.pollIntervalMinutes)}
             disabled={saving}
-            options={[5, 10, 15, 30, 60, 120].map((minutes) => ({
+            options={[5, 10, 20, 30, 60].map((minutes) => ({
               value: String(minutes),
               label: formatRefreshInterval(minutes),
             }))}

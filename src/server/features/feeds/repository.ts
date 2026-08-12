@@ -3,6 +3,7 @@ import type {
   Feed,
   FeedErrorKind,
   FeedHealthStatus,
+  FeedPollIntervalMinutes,
   WebFeedConfig,
 } from "../../../shared/types.js";
 import type { FolderRepository } from "../folders/repository.js";
@@ -16,7 +17,9 @@ import {
   type ParsedFeed,
   type Row,
   visibleClause,
+  WEB_FEED_POLL_INTERVAL_MINUTES,
 } from "../shared.js";
+import { observeScheduledRefresh } from "./schedule.js";
 
 export class FeedRepository {
   constructor(
@@ -45,6 +48,7 @@ export class FeedRepository {
                 ${feedPollIntervalSql} AS pollIntervalMinutes,
                 feeds.paused,
                 feeds.refreshing,
+                MAX(COALESCE(articles.published_at, articles.discovered_at)) AS lastPostAt,
                 feeds.last_attempt_at AS lastAttemptAt,
                 feeds.last_success_at AS lastSuccessAt,
                 feeds.last_http_status AS lastHttpStatus,
@@ -53,7 +57,6 @@ export class FeedRepository {
                 SUM(CASE WHEN articles.id IS NOT NULL AND articles.is_read = 0 AND ${visibleClause} THEN 1 ELSE 0 END) AS unreadCount,
                 SUM(CASE WHEN articles.id IS NOT NULL AND ${visibleClause} THEN 1 ELSE 0 END) AS totalCount
          FROM feeds
-         JOIN settings ON settings.user_id = feeds.user_id
          LEFT JOIN web_feed_configs ON web_feed_configs.feed_id = feeds.id
          LEFT JOIN articles ON articles.feed_id = feeds.id
          WHERE feeds.user_id = ?
@@ -85,8 +88,10 @@ export class FeedRepository {
     const result = this.sqlite
       .prepare(
         `INSERT INTO feeds (
-           user_id, folder_id, title, feed_url, site_url, paused, next_poll_at, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           user_id, folder_id, title, feed_url, site_url, paused, poll_interval_minutes,
+           next_poll_at, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?,
+                   (SELECT poll_interval_minutes FROM settings WHERE user_id = ?), ?, ?, ?)`,
       )
       .run(
         userId,
@@ -95,6 +100,7 @@ export class FeedRepository {
         feedUrl,
         input.siteUrl ?? null,
         input.paused ? 1 : 0,
+        userId,
         timestamp,
         timestamp,
         timestamp,
@@ -127,6 +133,16 @@ export class FeedRepository {
          SET title = ?, feed_url = ?, site_url = ?, folder_id = ?, paused = ?,
              etag = CASE WHEN feed_url != ? THEN NULL ELSE etag END,
              last_modified = CASE WHEN feed_url != ? THEN NULL ELSE last_modified END,
+             poll_interval_minutes = CASE
+               WHEN feed_url != ? THEN (
+                 SELECT poll_interval_minutes FROM settings WHERE user_id = ?
+               )
+               ELSE poll_interval_minutes
+             END,
+             activity_rate_per_hour = CASE WHEN feed_url != ? THEN NULL ELSE activity_rate_per_hour END,
+             last_scheduled_observation_at = CASE
+               WHEN feed_url != ? THEN NULL ELSE last_scheduled_observation_at
+             END,
              next_poll_at = CASE WHEN ? = 1 THEN next_poll_at ELSE ? END,
              updated_at = ?
          WHERE id = ? AND user_id = ?`,
@@ -137,6 +153,10 @@ export class FeedRepository {
         input.siteUrl === undefined ? existing.siteUrl : input.siteUrl,
         input.folderId === undefined ? existing.folderId : input.folderId,
         (input.paused ?? existing.paused) ? 1 : 0,
+        feedUrl,
+        feedUrl,
+        feedUrl,
+        userId,
         feedUrl,
         feedUrl,
         (input.paused ?? existing.paused) ? 1 : 0,
@@ -160,7 +180,6 @@ export class FeedRepository {
       .prepare(
         `SELECT ${feedRecordColumns}
          FROM feeds
-         JOIN settings ON settings.user_id = feeds.user_id
          LEFT JOIN web_feed_configs ON web_feed_configs.feed_id = feeds.id
          WHERE feeds.id = ?`,
       )
@@ -189,7 +208,6 @@ export class FeedRepository {
         .prepare(
           `SELECT ${feedRecordColumns}
            FROM feeds
-           JOIN settings ON settings.user_id = feeds.user_id
            LEFT JOIN web_feed_configs ON web_feed_configs.feed_id = feeds.id
            WHERE feeds.id IN (${placeholders})`,
         )
@@ -199,7 +217,6 @@ export class FeedRepository {
         .prepare(
           `SELECT ${feedRecordColumns}
            FROM feeds
-           JOIN settings ON settings.user_id = feeds.user_id
            LEFT JOIN web_feed_configs ON web_feed_configs.feed_id = feeds.id
            WHERE feeds.paused = 0`,
         )
@@ -256,8 +273,8 @@ export class FeedRepository {
       .prepare(
         `INSERT INTO feeds (
            user_id, folder_id, title, feed_url, site_url, source_kind, paused, refreshing,
-           last_attempt_at, next_poll_at, created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, 'web', 0, 1, ?, ?, ?, ?)`,
+           poll_interval_minutes, last_attempt_at, next_poll_at, created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, 'web', 0, 1, ?, ?, ?, ?, ?)`,
       )
       .run(
         userId,
@@ -265,6 +282,7 @@ export class FeedRepository {
         input.title.trim() || input.parsed.title.trim() || input.pageUrl,
         input.pageUrl,
         input.parsed.siteUrl ?? input.pageUrl,
+        WEB_FEED_POLL_INTERVAL_MINUTES,
         timestamp,
         timestamp,
         timestamp,
@@ -301,10 +319,19 @@ export class FeedRepository {
     this.sqlite
       .prepare(
         `UPDATE feeds
-         SET feed_url = ?, site_url = ?, refreshing = 1, last_attempt_at = ?, updated_at = ?
+         SET feed_url = ?, site_url = ?, refreshing = 1, poll_interval_minutes = ?,
+             activity_rate_per_hour = NULL, last_scheduled_observation_at = NULL,
+             last_attempt_at = ?, updated_at = ?
          WHERE id = ?`,
       )
-      .run(config.pageUrl, parsed.siteUrl ?? config.pageUrl, timestamp, timestamp, id);
+      .run(
+        config.pageUrl,
+        parsed.siteUrl ?? config.pageUrl,
+        WEB_FEED_POLL_INTERVAL_MINUTES,
+        timestamp,
+        timestamp,
+        id,
+      );
   }
 
   selectionRevisionMatches(id: number, expectedRevision: number): boolean {
@@ -338,13 +365,32 @@ export class FeedRepository {
       httpStatus: number;
       etag: string | null;
       lastModified: string | null;
-      pollIntervalMinutes: number;
+      scheduled: boolean;
+      insertedArticleCount: number;
       webMatchCount?: number;
     },
   ): void {
     const completedAt = now();
+    const current = this.sqlite
+      .prepare(
+        `SELECT poll_interval_minutes AS pollIntervalMinutes,
+                activity_rate_per_hour AS activityRatePerHour,
+                last_scheduled_observation_at AS lastScheduledObservationAt
+         FROM feeds WHERE id = ?`,
+      )
+      .get(id) as {
+      pollIntervalMinutes: FeedPollIntervalMinutes;
+      activityRatePerHour: number | null;
+      lastScheduledObservationAt: string | null;
+    };
+    const schedule = input.scheduled
+      ? observeScheduledRefresh(current, {
+          completedAt,
+          insertedArticleCount: input.insertedArticleCount,
+        })
+      : current;
     const nextPollAt = new Date(
-      Date.parse(completedAt) + input.pollIntervalMinutes * 60_000,
+      Date.parse(completedAt) + schedule.pollIntervalMinutes * 60_000,
     ).toISOString();
     this.sqlite
       .prepare(
@@ -352,10 +398,21 @@ export class FeedRepository {
          SET refreshing = 0, health_status = 'healthy', last_success_at = ?,
              last_http_status = ?, last_error_kind = NULL, last_error = NULL,
              etag = COALESCE(?, etag), last_modified = COALESCE(?, last_modified),
-             next_poll_at = ?
+             poll_interval_minutes = ?, activity_rate_per_hour = ?,
+             last_scheduled_observation_at = ?, next_poll_at = ?
          WHERE id = ?`,
       )
-      .run(completedAt, input.httpStatus, input.etag, input.lastModified, nextPollAt, id);
+      .run(
+        completedAt,
+        input.httpStatus,
+        input.etag,
+        input.lastModified,
+        schedule.pollIntervalMinutes,
+        schedule.activityRatePerHour,
+        schedule.lastScheduledObservationAt,
+        nextPollAt,
+        id,
+      );
     if (input.webMatchCount !== undefined) {
       this.sqlite
         .prepare(

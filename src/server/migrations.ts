@@ -803,6 +803,42 @@ const migrations: Migration[] = [
       SET config_json = json_remove(config_json, '$.minimumItemCount');
     `,
   },
+  {
+    sql: `
+      UPDATE settings
+      SET poll_interval_minutes = CASE
+        WHEN poll_interval_minutes <= 5 THEN 5
+        WHEN poll_interval_minutes <= 10 THEN 10
+        WHEN poll_interval_minutes <= 20 THEN 20
+        WHEN poll_interval_minutes <= 30 THEN 30
+        ELSE 60
+      END;
+
+      ALTER TABLE feeds ADD COLUMN poll_interval_minutes INTEGER NOT NULL DEFAULT 60
+        CHECK(poll_interval_minutes IN (5, 10, 20, 30, 60));
+      ALTER TABLE feeds ADD COLUMN activity_rate_per_hour REAL
+        CHECK(activity_rate_per_hour IS NULL OR activity_rate_per_hour >= 0);
+      ALTER TABLE feeds ADD COLUMN last_scheduled_observation_at TEXT;
+
+      UPDATE feeds
+      SET poll_interval_minutes = CASE
+            WHEN source_kind = 'web' THEN 60
+            ELSE (SELECT settings.poll_interval_minutes
+                  FROM settings
+                  WHERE settings.user_id = feeds.user_id)
+          END,
+          next_poll_at = strftime(
+            '%Y-%m-%dT%H:%M:%fZ',
+            COALESCE(last_attempt_at, last_success_at, created_at),
+            CASE
+              WHEN source_kind = 'web' THEN '+60 minutes'
+              ELSE '+' || (SELECT settings.poll_interval_minutes
+                            FROM settings
+                            WHERE settings.user_id = feeds.user_id) || ' minutes'
+            END
+          );
+    `,
+  },
 ];
 
 export function migrateDatabase(

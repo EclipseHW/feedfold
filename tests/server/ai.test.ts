@@ -62,7 +62,6 @@ function addArticle(database: AppDatabase, userId: number): { feedId: number; ar
     httpStatus: 200,
     etag: null,
     lastModified: null,
-    pollIntervalMinutes: 20,
     parsed,
   });
   const articleId = database.articles.listArticles(userId, { state: "all" })[0]?.id;
@@ -82,7 +81,6 @@ function addYouTubeArticle(database: AppDatabase, userId: number): number {
     httpStatus: 200,
     etag: null,
     lastModified: null,
-    pollIntervalMinutes: 20,
     parsed: {
       title: "Videos",
       siteUrl: "https://www.youtube.com",
@@ -791,7 +789,6 @@ describe("AI article summaries", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: "Engineering",
         siteUrl: "https://example.test",
@@ -806,7 +803,6 @@ describe("AI article summaries", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: "Engineering",
         siteUrl: "https://example.test",

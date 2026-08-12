@@ -24,7 +24,9 @@ export function formatRelativeDate(value: string | null): string {
   if (Math.abs(hours) < 24) return formatter.format(Math.round(hours), "hour");
   const days = hours / 24;
   if (Math.abs(days) < 30) return formatter.format(Math.round(days), "day");
-  return formatDate(value);
+  const months = days / 30;
+  if (Math.abs(months) < 12) return formatter.format(Math.round(months), "month");
+  return formatter.format(Math.round(months / 12), "year");
 }
 
 export function formatRefreshInterval(minutes: number): string {

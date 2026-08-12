@@ -1,5 +1,5 @@
 import { createHash, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import type { SessionUser } from "../../../shared/types.js";
+import { normalizeFeedPollInterval, type SessionUser } from "../../../shared/types.js";
 import type { AuthRepository, StoredSession } from "./repository.js";
 
 const SESSION_COOKIE = "feedfold_session";
@@ -55,7 +55,7 @@ export class AuthService {
     const user = this.repository.registerUserWithSession(
       trimmedUsername,
       hashPassword(password),
-      this.defaultPollIntervalMinutes,
+      normalizeFeedPollInterval(this.defaultPollIntervalMinutes),
       storedSession,
     );
     return user ? { token, user } : null;

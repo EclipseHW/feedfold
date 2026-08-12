@@ -3,7 +3,7 @@ import type { Feed, WebFeedConfig } from "../../../shared/types.js";
 import type { ArticleRepository } from "../articles/repository.js";
 import type { FolderRepository } from "../folders/repository.js";
 import type { RuleRepository } from "../rules/repository.js";
-import { type FeedRecord, type ParsedFeed, WEB_FEED_POLL_INTERVAL_MINUTES } from "../shared.js";
+import type { FeedRecord, ParsedFeed } from "../shared.js";
 import { FeedIngestionService, type SuccessfulFeedRefresh } from "./ingestion-service.js";
 import type { FeedRepository } from "./repository.js";
 
@@ -71,7 +71,6 @@ export class FeedService {
         httpStatus: 200,
         etag: null,
         lastModified: null,
-        pollIntervalMinutes: WEB_FEED_POLL_INTERVAL_MINUTES,
         parsed: input.parsed,
         webMatchCount: input.parsed.articles.length,
       });
@@ -101,7 +100,6 @@ export class FeedService {
         httpStatus: 200,
         etag: null,
         lastModified: null,
-        pollIntervalMinutes: existing.pollIntervalMinutes,
         parsed,
         webMatchCount: parsed.articles.length,
       });

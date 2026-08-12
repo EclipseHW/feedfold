@@ -50,7 +50,6 @@ function seededDatabase(): {
     httpStatus: 200,
     etag: null,
     lastModified: null,
-    pollIntervalMinutes: 20,
     parsed: {
       title: "Scoped feed",
       siteUrl: null,
@@ -68,7 +67,6 @@ function seededDatabase(): {
     httpStatus: 200,
     etag: null,
     lastModified: null,
-    pollIntervalMinutes: 20,
     parsed: {
       title: "Outside feed",
       siteUrl: null,
@@ -119,7 +117,6 @@ describe("article filtering rules", () => {
       httpStatus: 200,
       etag: null,
       lastModified: null,
-      pollIntervalMinutes: 20,
       parsed: {
         title: "Incoming",
         siteUrl: null,

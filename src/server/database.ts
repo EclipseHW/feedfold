@@ -1,4 +1,5 @@
 import Sqlite from "better-sqlite3";
+import { normalizeFeedPollInterval } from "../shared/types.js";
 import { AiRepository } from "./features/ai/repository.js";
 import { ArticleRepository } from "./features/articles/repository.js";
 import { AuthRepository } from "./features/auth/repository.js";
@@ -44,7 +45,7 @@ export class AppDatabase {
     if (this.wasNewDatabase && defaultPollIntervalMinutes !== 20) {
       this.connection
         .prepare("UPDATE settings SET poll_interval_minutes = ? WHERE user_id = 1")
-        .run(defaultPollIntervalMinutes);
+        .run(normalizeFeedPollInterval(defaultPollIntervalMinutes));
     }
     this.connection.prepare("UPDATE feeds SET refreshing = 0 WHERE refreshing = 1").run();
     this.connection

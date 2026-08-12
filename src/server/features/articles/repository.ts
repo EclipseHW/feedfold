@@ -471,8 +471,9 @@ export class ArticleRepository {
     id: number,
     parsed: ParsedFeed,
     initialArticleLimit?: number,
-  ): Set<number> {
-    const ruleArticleIds = new Set<number>();
+  ): { changedArticleIds: Set<number>; insertedArticleCount: number } {
+    const changedArticleIds = new Set<number>();
+    let insertedArticleCount = 0;
     const initial =
       initialArticleLimit === undefined
         ? { included: parsed, ignoredExternalIds: [] }
@@ -592,7 +593,7 @@ export class ArticleRepository {
           aiSourceChanged ? 1 : 0,
           articleId,
         );
-        ruleArticleIds.add(articleId);
+        changedArticleIds.add(articleId);
         continue;
       }
       const duplicate =
@@ -627,10 +628,11 @@ export class ArticleRepository {
         extractionStatus,
       );
       const articleId = Number(result.lastInsertRowid);
-      ruleArticleIds.add(articleId);
+      changedArticleIds.add(articleId);
+      insertedArticleCount += 1;
     }
 
-    return ruleArticleIds;
+    return { changedArticleIds, insertedArticleCount };
   }
 
   listFeedArticleIds(feedId: number): number[] {

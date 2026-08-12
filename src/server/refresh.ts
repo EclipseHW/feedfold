@@ -82,7 +82,7 @@ function failureDetails(
 }
 
 export class FeedRefreshService {
-  private readonly pending: FeedRecord[] = [];
+  private readonly pending: Array<{ feed: FeedRecord; scheduled: boolean }> = [];
   private readonly requestedIds = new Set<number>();
   private readonly listeners = new Map<number, Set<() => void>>();
   private active = 0;
@@ -100,21 +100,29 @@ export class FeedRefreshService {
 
   start(): void {
     if (this.stopped || this.timer) return;
-    void this.request(this.feeds.getDueFeedIds());
+    void this.requestScheduled(this.feeds.getDueFeedIds());
     this.timer = setInterval(() => {
-      void this.request(this.feeds.getDueFeedIds());
+      void this.requestScheduled(this.feeds.getDueFeedIds());
     }, 30_000);
     this.timer.unref();
   }
 
   request(feedIds?: number[]): RefreshResult {
+    return this.enqueue(feedIds, false);
+  }
+
+  requestScheduled(feedIds?: number[]): RefreshResult {
+    return this.enqueue(feedIds, true);
+  }
+
+  private enqueue(feedIds: number[] | undefined, scheduled: boolean): RefreshResult {
     if (this.stopped) return { requested: 0, refreshingFeedIds: [] };
     const candidates = this.feeds.getRefreshCandidates(feedIds);
     const accepted = candidates.filter((feed) => !this.requestedIds.has(feed.id));
     for (const feed of accepted) {
       this.requestedIds.add(feed.id);
       this.feeds.markRefreshing(feed.id);
-      this.pending.push(feed);
+      this.pending.push({ feed, scheduled });
     }
     this.pump();
     return { requested: accepted.length, refreshingFeedIds: accepted.map((feed) => feed.id) };
@@ -132,10 +140,11 @@ export class FeedRefreshService {
 
   private pump(): void {
     while (!this.stopped && this.active < this.concurrency && this.pending.length > 0) {
-      const feed = this.pending.shift();
-      if (!feed) break;
+      const queued = this.pending.shift();
+      if (!queued) break;
+      const { feed, scheduled } = queued;
       this.active += 1;
-      void this.refresh(feed).finally(() => {
+      void this.refresh(feed, scheduled).finally(() => {
         this.active -= 1;
         this.requestedIds.delete(feed.id);
         this.notifyDataChanged(feed.userId);
@@ -146,7 +155,7 @@ export class FeedRefreshService {
     this.resolveIdleIfNeeded();
   }
 
-  private async refresh(feed: FeedRecord): Promise<void> {
+  private async refresh(feed: FeedRecord, scheduled: boolean): Promise<void> {
     let httpStatus: number | null = null;
     try {
       if (feed.sourceKind === "web") {
@@ -167,7 +176,7 @@ export class FeedRefreshService {
           httpStatus: result.httpStatus ?? 200,
           etag: null,
           lastModified: null,
-          pollIntervalMinutes: feed.pollIntervalMinutes,
+          scheduled,
           parsed: result.parsed,
           webMatchCount: result.matchCount,
           expectedSelectionRevision: feed.selectionRevision,
@@ -195,7 +204,7 @@ export class FeedRefreshService {
           httpStatus: response.status,
           etag: response.headers.get("etag"),
           lastModified: response.headers.get("last-modified"),
-          pollIntervalMinutes: feed.pollIntervalMinutes,
+          scheduled,
         });
         return;
       }
@@ -228,7 +237,7 @@ export class FeedRefreshService {
         httpStatus: response.status,
         etag: response.headers.get("etag"),
         lastModified: response.headers.get("last-modified"),
-        pollIntervalMinutes: feed.pollIntervalMinutes,
+        scheduled,
         parsed,
       });
     } catch (error) {
@@ -269,7 +278,7 @@ export class FeedRefreshService {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
-    for (const feed of this.pending.splice(0)) {
+    for (const { feed } of this.pending.splice(0)) {
       this.requestedIds.delete(feed.id);
       this.feeds.failRefresh(feed.id, {
         httpStatus: null,

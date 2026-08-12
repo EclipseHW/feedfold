@@ -142,7 +142,7 @@ Compose reads these values from the shell or a project-level `.env` file:
 | --- | --- | --- |
 | `FEEDFOLD_BIND_ADDRESS` | `127.0.0.1` | Host address that publishes the container port. Keep loopback when a local reverse proxy provides access. |
 | `FEEDFOLD_PORT` | `3000` | Host port forwarded to feedfold. |
-| `POLL_INTERVAL_MINUTES` | `20` | Initial polling interval for published feeds in a new database. |
+| `POLL_INTERVAL_MINUTES` | `20` | Starting interval for new published feeds, rounded up to 5, 10, 20, 30, or 60 minutes. |
 | `FEED_FETCH_TIMEOUT_MS` | `15000` | Feed request timeout, in milliseconds. |
 | `WEB_FEED_LOAD_TIMEOUT_MS` | `30000` | Maximum normal load time for a JavaScript-rendered web feed, in milliseconds. |
 | `ARTICLE_FETCH_TIMEOUT_MS` | `20000` | Full-article request timeout, in milliseconds. |
@@ -157,7 +157,7 @@ After changing container configuration, recreate the service:
 docker compose up -d
 ```
 
-The server continues background polling when no browser is open. Published feeds use the interval from `POLL_INTERVAL_MINUTES` until you change it in **Settings**. Changes made in **Settings** are stored in SQLite and survive restarts. Web feeds refresh every three hours and can also be refreshed manually.
+The server continues background polling when no browser is open. Published feeds start at the interval chosen in **Settings**, while web feeds start at 60 minutes. Each feed then adapts between 5, 10, 20, 30, and 60 minutes according to how often it produces new posts. Manual refreshes do not affect this schedule.
 
 ## Add a web feed
 
