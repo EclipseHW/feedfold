@@ -2,6 +2,14 @@
 
 feedfold is an opinionated feed reader built because I couldn't find one that met my requirements.
 
+## See feedfold
+
+| Reader | Filters |
+| :---: | :---: |
+| [![feedfold magazine view populated with demo feeds](docs/screenshots/reader-desktop.png)](docs/screenshots/reader-desktop.png) | [![A feedfold rule that hides matching articles](docs/screenshots/filters-desktop.png)](docs/screenshots/filters-desktop.png) |
+| **YouTube article** | **X / Nitter post** |
+| [![A YouTube video open in feedfold](docs/screenshots/article-youtube.png)](docs/screenshots/article-youtube.png) | [![An X post open in feedfold](docs/screenshots/article-nitter.png)](docs/screenshots/article-nitter.png) |
+
 ## Features
 
 - Supports websites without RSS, Atom, or JSON feeds by extracting repeated entries from webpages, including pages rendered by JavaScript.
