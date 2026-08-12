@@ -16,6 +16,11 @@ interface CachedXMedia {
 
 type PublicFetcher = (value: string, options?: RequestInit) => Promise<Response>;
 
+export interface XVideoResponse {
+  response: Response;
+  cancel: () => void;
+}
+
 function trustedCdnUrl(value: unknown, hostname: string): string | null {
   if (typeof value !== "string") return null;
   try {
@@ -113,5 +118,57 @@ export class XMediaService {
     const media = parseXPostMedia(await response.json());
     this.cache.set(postId, { expiresAt: Date.now() + CACHE_TTL_MS, media });
     return media;
+  }
+
+  async videoResponse(media: XPostMedia, range?: string): Promise<XVideoResponse> {
+    const controller = new AbortController();
+    let timeout: ReturnType<typeof setTimeout>;
+    const armTimeout = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+    };
+    const cancel = () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+    armTimeout();
+    try {
+      const response = await this.fetcher(media.url, {
+        headers: {
+          Accept: "video/mp4",
+          "User-Agent": USER_AGENT,
+          ...(range ? { Range: range } : {}),
+        },
+        redirect: "follow",
+        signal: controller.signal,
+      });
+      if (!response.ok && response.status !== 416) {
+        throw new Error(`X video returned HTTP ${response.status}`);
+      }
+      const body = response.body?.pipeThrough(
+        new TransformStream<Uint8Array, Uint8Array>({
+          transform(chunk, stream) {
+            armTimeout();
+            stream.enqueue(chunk);
+          },
+          flush() {
+            clearTimeout(timeout);
+          },
+        }),
+      );
+      return {
+        response: body
+          ? new Response(body, {
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers,
+            })
+          : response,
+        cancel,
+      };
+    } catch (error) {
+      cancel();
+      throw error;
+    }
   }
 }

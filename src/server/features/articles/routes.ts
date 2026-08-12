@@ -1,3 +1,4 @@
+import { Readable } from "node:stream";
 import type { FastifyInstance, FastifyReply } from "fastify";
 import { z } from "zod";
 import { telegramPostIdentity } from "../../../shared/telegram.js";
@@ -164,7 +165,26 @@ export async function articleRoutes(
   app.get("/api/articles/:id/x-media/source", async (request, reply) => {
     const { id } = idParams.parse(request.params);
     const media = await resolveXMedia(userId(request), id, reply);
-    return media ? reply.redirect(media.url) : reply;
+    if (!media) return reply;
+    try {
+      const { response, cancel } = await xMedia.videoResponse(media, request.headers.range);
+      for (const name of ["content-type", "content-length", "content-range", "accept-ranges"]) {
+        const value = response.headers.get(name);
+        if (value) reply.header(name, value);
+      }
+      reply.code(response.status);
+      if (!response.body) {
+        cancel();
+        return reply.send();
+      }
+      const stream = Readable.fromWeb(
+        response.body as unknown as import("node:stream/web").ReadableStream<Uint8Array>,
+      );
+      stream.once("close", cancel);
+      return reply.send(stream);
+    } catch {
+      return reply.code(502).send({ error: "X video is temporarily unavailable. Try again." });
+    }
   });
 
   app.get("/api/articles/:id/x-media/poster", async (request, reply) => {

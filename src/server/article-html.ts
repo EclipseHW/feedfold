@@ -68,6 +68,7 @@ const sanitizeOptions: sanitizeHtml.IOptions = {
     "figcaption",
     "picture",
     "img",
+    "video",
     "source",
     "table",
     "thead",
@@ -83,6 +84,18 @@ const sanitizeOptions: sanitizeHtml.IOptions = {
     div: ["class"],
     a: ["href", "title", "target", "rel"],
     img: ["src", "srcset", "alt", "title", "width", "height", "loading"],
+    video: [
+      "src",
+      "poster",
+      "width",
+      "height",
+      "controls",
+      "autoplay",
+      "muted",
+      "loop",
+      "playsinline",
+      "preload",
+    ],
     source: ["src", "srcset", "type", "media", "sizes"],
     td: ["colspan", "rowspan"],
     th: ["colspan", "rowspan", "scope"],
@@ -93,7 +106,11 @@ const sanitizeOptions: sanitizeHtml.IOptions = {
     figure: [QUOTE_FIGURE_CLASS],
   },
   allowedSchemes: ["http", "https", "mailto"],
-  allowedSchemesByTag: { img: ["http", "https", "data"], source: ["http", "https"] },
+  allowedSchemesByTag: {
+    img: ["http", "https", "data"],
+    video: ["http", "https"],
+    source: ["http", "https"],
+  },
   allowProtocolRelative: false,
 };
 
@@ -273,6 +290,14 @@ export function cleanArticleHtml(html: string, baseUrl?: string): string {
             ...attributes,
             ...(attributes.src ? { src: absoluteUrl(attributes.src, baseUrl) } : {}),
             ...(attributes.srcset ? { srcset: absoluteSrcset(attributes.srcset, baseUrl) } : {}),
+          },
+        }),
+        video: (tagName, attributes) => ({
+          tagName,
+          attribs: {
+            ...attributes,
+            ...(attributes.src ? { src: absoluteUrl(attributes.src, baseUrl) } : {}),
+            ...(attributes.poster ? { poster: absoluteUrl(attributes.poster, baseUrl) } : {}),
           },
         }),
         source: (tagName, attributes) => ({

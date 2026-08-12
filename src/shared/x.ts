@@ -25,11 +25,12 @@ export function nitterPostId(value: string | null | undefined): string | null {
 }
 
 function isVideoAnchor(anchor: string): boolean {
+  if (!/<br\b[^>]*>\s*Video\s*<br\b[^>]*>/i.test(anchor)) return false;
   const text = anchor
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-  return /(^|\s)Video($|\s)/i.test(text) && /(?:amplify|ext_tw)_video_thumb/i.test(anchor);
+  return /^Video$/i.test(text) && /<img\b/i.test(anchor);
 }
 
 export function nitterVideoPostId(

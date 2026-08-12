@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "../../src/server/app.js";
 import { AppDatabase } from "../../src/server/database.js";
 import { ExtractionQueue } from "../../src/server/extraction.js";
@@ -54,6 +54,76 @@ describe("X article media", () => {
     expect(() => parseXPostMedia(payload)).toThrow("playable MP4");
   });
 
+  it("aborts an X video body that stalls past the media timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const service = new XMediaService(100, async (_url, options) => {
+        const signal = options?.signal as AbortSignal;
+        let streamController: ReadableStreamDefaultController<Uint8Array>;
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            streamController = controller;
+            controller.enqueue(new Uint8Array([0]));
+          },
+        });
+        signal.addEventListener("abort", () => streamController.error(signal.reason), {
+          once: true,
+        });
+        return new Response(stream, { status: 200, headers: { "Content-Type": "video/mp4" } });
+      });
+
+      const { response, cancel } = await service.videoResponse(
+        { url: VIDEO_URL, posterUrl: null, aspectRatio: null },
+        "bytes=0-",
+      );
+      const reader = response.body?.getReader();
+      expect((await reader?.read())?.done).toBe(false);
+      const stalledRead = reader?.read().catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(101);
+      await expect(stalledRead).resolves.toMatchObject({ name: "AbortError" });
+      cancel();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an active X video body open beyond one media timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      let streamController!: ReadableStreamDefaultController<Uint8Array>;
+      const service = new XMediaService(100, async (_url, options) => {
+        const signal = options?.signal as AbortSignal;
+        const stream = new ReadableStream<Uint8Array>({
+          start(controller) {
+            streamController = controller;
+            controller.enqueue(new Uint8Array([0]));
+          },
+        });
+        signal.addEventListener("abort", () => streamController.error(signal.reason), {
+          once: true,
+        });
+        return new Response(stream, { status: 200, headers: { "Content-Type": "video/mp4" } });
+      });
+
+      const { response, cancel } = await service.videoResponse({
+        url: VIDEO_URL,
+        posterUrl: null,
+        aspectRatio: null,
+      });
+      const reader = response.body?.getReader();
+      expect((await reader?.read())?.done).toBe(false);
+      await vi.advanceTimersByTimeAsync(60);
+      streamController.enqueue(new Uint8Array([1]));
+      expect((await reader?.read())?.done).toBe(false);
+      await vi.advanceTimersByTimeAsync(60);
+      streamController.close();
+      expect((await reader?.read())?.done).toBe(true);
+      cancel();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("resolves a quoted video for an owned article and exposes authenticated URLs", async () => {
     const directory = await mkdtemp(join(tmpdir(), "feedfold-x-media-test-"));
     const database = new AppDatabase(join(directory, "feedfold.db"));
@@ -94,11 +164,31 @@ describe("X article media", () => {
 
     const extraction = new ExtractionQueue(database.extractions, 1, 1_000);
     const refresh = new FeedRefreshService(database.feeds, 1, 1_000);
-    const xMedia = new XMediaService(1_000, async (url) => {
-      expect(url).toContain(`id=${VIDEO_POST_ID}`);
-      return new Response(JSON.stringify(PAYLOAD), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
+    const xMedia = new XMediaService(1_000, async (url, options) => {
+      if (url.startsWith("https://cdn.syndication.twimg.com/")) {
+        expect(url).toContain(`id=${VIDEO_POST_ID}`);
+        return new Response(JSON.stringify(PAYLOAD), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      expect(url).toBe(VIDEO_URL);
+      const range = (options?.headers as Record<string, string> | undefined)?.Range;
+      if (range === "bytes=300-400") {
+        return new Response(null, {
+          status: 416,
+          headers: { "Content-Range": "bytes */200" },
+        });
+      }
+      expect(range).toBe("bytes=0-1");
+      return new Response(new Uint8Array([0, 1]), {
+        status: 206,
+        headers: {
+          "Accept-Ranges": "bytes",
+          "Content-Length": "2",
+          "Content-Range": "bytes 0-1/200",
+          "Content-Type": "video/mp4",
+        },
       });
     });
     const app = await createApp({
@@ -124,9 +214,26 @@ describe("X article media", () => {
       posterUrl: `/api/articles/${article.id}/x-media/poster`,
       aspectRatio: 17 / 30,
     });
-    expect((await request(`/api/articles/${article.id}/x-media/source`)).headers.location).toBe(
-      VIDEO_URL,
-    );
+    const source = await app.inject({
+      method: "GET",
+      url: `/api/articles/${article.id}/x-media/source`,
+      headers: { cookie, range: "bytes=0-1" },
+    });
+    expect(source.statusCode).toBe(206);
+    expect(source.headers).toMatchObject({
+      "accept-ranges": "bytes",
+      "content-length": "2",
+      "content-range": "bytes 0-1/200",
+      "content-type": "video/mp4",
+    });
+    expect(source.rawPayload).toEqual(Buffer.from([0, 1]));
+    const unsatisfiable = await app.inject({
+      method: "GET",
+      url: `/api/articles/${article.id}/x-media/source`,
+      headers: { cookie, range: "bytes=300-400" },
+    });
+    expect(unsatisfiable.statusCode).toBe(416);
+    expect(unsatisfiable.headers["content-range"]).toBe("bytes */200");
     expect((await request(`/api/articles/${article.id}/x-media/poster`)).headers.location).toBe(
       POSTER_URL,
     );

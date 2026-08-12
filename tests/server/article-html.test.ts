@@ -160,4 +160,25 @@ native dev
     expect(body.querySelector("img")?.getAttribute("src")).toBe(fallback);
     expect(html).not.toContain("https://publisher.example/p/w_424");
   });
+
+  it("preserves Nitter inline videos while resolving their media URLs", () => {
+    const sourceUrl = "https://nitter.net/person/status/2087000000000000000#m";
+    const html = cleanArticleHtml(
+      `<video poster="/pic/media%2Fposter.jpg" autoplay muted loop playsinline>
+         <source src="/pic/tweet_video%2Ffixture.mp4" type="video/mp4">
+       </video>`,
+      sourceUrl,
+    );
+    const video = articleBody(html).querySelector("video");
+
+    expect(video?.getAttribute("poster")).toBe("https://nitter.net/pic/media%2Fposter.jpg");
+    expect(video?.hasAttribute("autoplay")).toBe(true);
+    expect(video?.hasAttribute("muted")).toBe(true);
+    expect(video?.hasAttribute("loop")).toBe(true);
+    expect(video?.hasAttribute("playsinline")).toBe(true);
+    expect(video?.querySelector("source")).toMatchObject({
+      src: "https://nitter.net/pic/tweet_video%2Ffixture.mp4",
+      type: "video/mp4",
+    });
+  });
 });
