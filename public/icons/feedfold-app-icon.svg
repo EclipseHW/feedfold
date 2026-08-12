@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title">
-  <title id="title">Feedfold Plain Grid app icon</title>
+  <title id="title">Feedfold Balanced Grid app icon</title>
   <rect width="100" height="100" fill="#0f1211" />
   <g fill="#9bc8a7">
-    <rect x="20" y="18" width="18" height="18" rx="4" />
+    <rect x="18" y="18" width="18" height="18" rx="4" />
     <rect x="41" y="18" width="18" height="18" rx="4" />
-    <rect x="62" y="18" width="18" height="18" rx="4" />
-    <rect x="20" y="41" width="18" height="18" rx="4" />
+    <rect x="64" y="18" width="18" height="18" rx="4" />
+    <rect x="18" y="41" width="18" height="18" rx="4" />
     <rect x="41" y="41" width="18" height="18" rx="4" />
-    <rect x="20" y="64" width="18" height="18" rx="4" />
+    <rect x="18" y="64" width="18" height="18" rx="4" />
   </g>
 </svg>
