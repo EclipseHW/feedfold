@@ -81,7 +81,7 @@
     "brace-expansion@>=2.0.0 <2.1.3": "2.1.4"
   },
   "build": {
-    "appId": "com.echovale.app",
+    "appId": "com.feedfold.app",
     "productName": "feedfold",
     "afterPack": "scripts/after-pack.mjs",
     "asar": true,
