@@ -1,9 +1,8 @@
 import { spawn } from "node:child_process";
-import { mkdir, mkdtemp, rename, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import Sqlite from "better-sqlite3";
 
 const application = join(
   process.cwd(),
@@ -15,11 +14,8 @@ const application = join(
   "feedfold",
 );
 const smokeDirectory = await mkdtemp(join(tmpdir(), "feedfold-packaged-smoke-"));
-const seedUserData = join(smokeDirectory, "legacy-seed");
 const userData = join(smokeDirectory, "feedfold");
-const legacyDatabase = join(smokeDirectory, "echovale.db");
-const migrationMarker = "packaged-desktop-migration";
-await Promise.all([mkdir(seedUserData), mkdir(userData)]);
+await mkdir(userData);
 const page = `<!doctype html>
 <html>
   <head><title>Rendered reading list</title></head>
@@ -46,7 +42,7 @@ await new Promise((resolve, reject) => {
 const address = server.address();
 if (!address || typeof address === "string") throw new Error("The smoke server did not start.");
 
-async function runPackagedApp(userDataPath, legacyDatabasePath) {
+async function runPackagedApp(userDataPath) {
   await new Promise((resolve, reject) => {
     const env = {
       ...process.env,
@@ -55,11 +51,6 @@ async function runPackagedApp(userDataPath, legacyDatabasePath) {
       FEEDFOLD_DESKTOP_SMOKE_WEB_FEED_URL: `http://127.0.0.1:${address.port}/`,
       FEEDFOLD_DESKTOP_USER_DATA: userDataPath,
     };
-    if (legacyDatabasePath) {
-      env.FEEDFOLD_DESKTOP_LEGACY_DATABASE = legacyDatabasePath;
-    } else {
-      delete env.FEEDFOLD_DESKTOP_LEGACY_DATABASE;
-    }
     const child = spawn(application, [], {
       env,
       stdio: "inherit",
@@ -81,39 +72,8 @@ async function runPackagedApp(userDataPath, legacyDatabasePath) {
   });
 }
 
-function readMigrationMarker(databasePath) {
-  const database = new Sqlite(databasePath, { fileMustExist: true, readonly: true });
-  try {
-    return database.prepare("SELECT value FROM desktop_migration_smoke WHERE id = 1").pluck().get();
-  } finally {
-    database.close();
-  }
-}
-
 try {
-  await runPackagedApp(seedUserData);
-  await rename(join(seedUserData, "feedfold.db"), legacyDatabase);
-
-  const database = new Sqlite(legacyDatabase);
-  try {
-    database.exec(
-      "CREATE TABLE desktop_migration_smoke (id INTEGER PRIMARY KEY, value TEXT NOT NULL)",
-    );
-    database
-      .prepare("INSERT INTO desktop_migration_smoke (id, value) VALUES (1, ?)")
-      .run(migrationMarker);
-  } finally {
-    database.close();
-  }
-
-  await runPackagedApp(userData, legacyDatabase);
-  if (readMigrationMarker(join(userData, "feedfold.db")) !== migrationMarker) {
-    throw new Error("The packaged app did not migrate the legacy database.");
-  }
-  if (readMigrationMarker(legacyDatabase) !== migrationMarker) {
-    throw new Error("The packaged app did not preserve the legacy database.");
-  }
-  console.log("FEEDFOLD_DESKTOP_MIGRATION_SMOKE_OK");
+  await runPackagedApp(userData);
 } finally {
   await new Promise((resolve) => server.close(resolve));
   await rm(smokeDirectory, { recursive: true, force: true });

@@ -1,4 +1,4 @@
-export const YOUTUBE_EMBED_REFERRER = "https://github.com/egornomic/echovale/";
+export const YOUTUBE_EMBED_REFERRER = "https://github.com/egornomic/feedfold/";
 
 interface YouTubeEmbedRequest {
   requestHeaders: Record<string, string>;

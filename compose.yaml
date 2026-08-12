@@ -1,5 +1,5 @@
 services:
-  echovale:
+  feedfold:
     build:
       context: .
     image: feedfold:local
@@ -18,7 +18,6 @@ services:
       HOST: 0.0.0.0
       PORT: "3000"
       DATABASE_PATH: /data/feedfold.db
-      LEGACY_DATABASE_PATH: /data/echovale.db
       POLL_INTERVAL_MINUTES: "${POLL_INTERVAL_MINUTES:-20}"
       FEED_FETCH_TIMEOUT_MS: "${FEED_FETCH_TIMEOUT_MS:-15000}"
       WEB_FEED_LOAD_TIMEOUT_MS: "${WEB_FEED_LOAD_TIMEOUT_MS:-30000}"
@@ -26,9 +25,9 @@ services:
       AI_REQUEST_TIMEOUT_MS: "${AI_REQUEST_TIMEOUT_MS:-60000}"
       AI_CREDENTIALS_KEY: "${AI_CREDENTIALS_KEY:-}"
     ports:
-      - "${FEEDFOLD_BIND_ADDRESS:-${ECHOVALE_BIND_ADDRESS:-127.0.0.1}}:${FEEDFOLD_PORT:-${ECHOVALE_PORT:-3000}}:3000"
+      - "${FEEDFOLD_BIND_ADDRESS:-127.0.0.1}:${FEEDFOLD_PORT:-3000}:3000"
     volumes:
-      - echovale-data:/data
+      - feedfold-data:/data
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=256m
     shm_size: 256mb
@@ -45,4 +44,4 @@ services:
     stop_grace_period: 30s
 
 volumes:
-  echovale-data:
+  feedfold-data:

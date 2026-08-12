@@ -22,7 +22,6 @@ import { ZodError } from "zod";
 import { AiError } from "../server/ai/errors.js";
 import { ApplicationApi, ApplicationApiError, LOCAL_USER_ID } from "../server/application-api.js";
 import { AppDatabase } from "../server/database.js";
-import { migrateLegacyDatabaseFile } from "../server/database-file-migration.js";
 import { InvalidRequestError } from "../server/errors.js";
 import { ExtractionQueue } from "../server/extraction.js";
 import { AiService } from "../server/features/ai/service.js";
@@ -42,12 +41,11 @@ import { DesktopCredentialCipher } from "./credential-cipher.js";
 import { youtubeEmbedRequestHeaders } from "./youtube-player.js";
 
 const PRODUCT_NAME = "feedfold";
-const LEGACY_PRODUCT_NAME = "echovale";
 const configuredUserDataPath = process.env.FEEDFOLD_DESKTOP_USER_DATA;
 const userDataPath = resolve(configuredUserDataPath ?? join(app.getPath("appData"), PRODUCT_NAME));
 
 // Safe Storage derives its macOS Keychain identity from Electron's internal application name.
-app.setName(LEGACY_PRODUCT_NAME);
+app.setName(PRODUCT_NAME);
 mkdirSync(userDataPath, { recursive: true });
 app.setPath("userData", userDataPath);
 
@@ -73,12 +71,6 @@ const WINDOW_STATE_SAVE_DELAY_MS = 250;
 const developmentUrl = process.env.FEEDFOLD_DESKTOP_DEV_URL;
 const smokeTest = process.env.FEEDFOLD_DESKTOP_SMOKE === "1";
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
-const configuredLegacyDatabasePath = process.env.FEEDFOLD_DESKTOP_LEGACY_DATABASE;
-const legacyDatabasePath = configuredLegacyDatabasePath
-  ? resolve(configuredLegacyDatabasePath)
-  : configuredUserDataPath
-    ? null
-    : join(app.getPath("appData"), LEGACY_PRODUCT_NAME, "echovale.db");
 
 type WindowState = {
   bounds: Rectangle;
@@ -675,10 +667,6 @@ async function createWindow(): Promise<void> {
 }
 
 async function start(): Promise<void> {
-  const databasePath = resolve(join(app.getPath("userData"), "feedfold.db"));
-  if (legacyDatabasePath) {
-    await migrateLegacyDatabaseFile(databasePath, legacyDatabasePath);
-  }
   runtime = new DesktopRuntime();
   runtime.start();
   registerIpc();
