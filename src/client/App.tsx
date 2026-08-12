@@ -60,6 +60,11 @@ import {
 } from "./routes";
 
 const APP_BASE_PATH = import.meta.env.BASE_URL;
+const DEMO_SOURCE_URL =
+  (import.meta as ImportMeta & { env?: { VITE_FEEDFOLD_DEMO?: string } }).env
+    ?.VITE_FEEDFOLD_DEMO === "true"
+    ? "https://github.com/egornomic/feedfold"
+    : undefined;
 const FeedsPage = lazy(() => import("./management/feeds"));
 const AddFeedPage = lazy(async () => ({
   default: (await import("./management/feeds")).AddFeedPage,
@@ -675,6 +680,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
         bootstrap={bootstrap}
         user={user}
         localApp={isDesktopApp()}
+        sourceUrl={DEMO_SOURCE_URL}
         currentState={route.readerRoute.state}
         selectedFeedId={selectedFeedId}
         selectedFolderId={selectedFolderId}

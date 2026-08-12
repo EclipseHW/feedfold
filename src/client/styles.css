@@ -812,6 +812,13 @@ kbd {
   flex: 0 0 auto;
 }
 
+.sidebar-account-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+}
+
 /* Authentication */
 .auth-page {
   display: flex;

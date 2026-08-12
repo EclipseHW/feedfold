@@ -5,6 +5,7 @@ import {
   ChevronRight,
   CircleHelp,
   Ellipsis,
+  ExternalLink,
   FileText,
   Folder,
   LayoutList,
@@ -127,6 +128,7 @@ interface SidebarProps {
   bootstrap: BootstrapData;
   user: SessionUser;
   localApp?: boolean;
+  sourceUrl?: string;
   currentState: ArticleState;
   selectedFeedId: number | null;
   selectedFolderId: number | null;
@@ -183,6 +185,7 @@ export function Sidebar({
   bootstrap,
   user,
   localApp = false,
+  sourceUrl,
   currentState,
   selectedFeedId,
   selectedFolderId,
@@ -492,15 +495,29 @@ export function Sidebar({
               <UserRound aria-hidden="true" size={16} />
               <span className="truncate">{user.username}</span>
             </span>
-            <button
-              className="icon-button"
-              type="button"
-              aria-label={`Log out ${user.username}`}
-              title="Log out"
-              onClick={() => void onLogout()}
-            >
-              <LogOut aria-hidden="true" size={16} />
-            </button>
+            <span className="sidebar-account-actions">
+              {sourceUrl ? (
+                <a
+                  className="icon-button"
+                  href={sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label="View feedfold on GitHub"
+                  title="View on GitHub"
+                >
+                  <ExternalLink aria-hidden="true" size={16} />
+                </a>
+              ) : null}
+              <button
+                className="icon-button"
+                type="button"
+                aria-label={`Log out ${user.username}`}
+                title="Log out"
+                onClick={() => void onLogout()}
+              >
+                <LogOut aria-hidden="true" size={16} />
+              </button>
+            </span>
           </div>
         ) : null}
       </div>

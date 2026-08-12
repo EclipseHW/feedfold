@@ -20,6 +20,16 @@ feedfold is an opinionated feed reader built because I couldn't find one that me
 - OPML import/export.
 - Preserves separate sorting settings for each feed or folder in the aggregate view. For example, you can configure X.com posts to always display chronologically from oldest to newest without affecting the sorting method for other feeds.
 
+## Build the public demo
+
+The public demo reuses the production interface with curated in-browser data. It does not require a server, database, account, or API connection.
+
+```sh
+npm run build:demo
+```
+
+The deployable static website is written to `dist/demo/`. It is built for the domain root and includes a fallback for client-side routes such as `/articles/unread`.
+
 ## Run the macOS desktop app
 
 The Electron app is fully local. It opens no HTTP port, needs no account or hosted backend, and sends application requests through a narrow IPC bridge. SQLite, background refreshes, article extraction, and the bundled headless browser all run inside the app. The hosted version remains available separately.
