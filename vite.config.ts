@@ -4,33 +4,43 @@ import { VitePWA } from "vite-plugin-pwa";
 
 const apiOrigin = process.env.FEEDFOLD_DEV_API_ORIGIN ?? "http://127.0.0.1:43001";
 const devPort = Number(process.env.FEEDFOLD_DEV_PORT ?? 45173);
+const configuredBasePath = process.env.FEEDFOLD_BASE_PATH ?? "/";
+if (!configuredBasePath.startsWith("/")) {
+  throw new Error("FEEDFOLD_BASE_PATH must start with /");
+}
+const appBasePath = configuredBasePath === "/" ? "" : configuredBasePath.replace(/\/+$/, "");
+const appBaseUrl = `${appBasePath}/`;
+const appUrl = (path: string) => `${appBasePath}${path}`;
+const appBasePattern = appBasePath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const apiPathPattern = `${appBasePattern}/(?:api|health)(?:/|$)`;
+const stripBasePath = (path: string) => path.slice(appBasePath.length) || "/";
 
 export default defineConfig({
-  base: "/feedfold/",
+  base: appBaseUrl,
   plugins: [
     react(),
     VitePWA({
       registerType: "prompt",
       manifest: {
-        id: "/feedfold/",
+        id: appBaseUrl,
         name: "feedfold",
         short_name: "feedfold",
         description: "A quiet, keyboard-first, self-hosted feed reader.",
-        start_url: "/feedfold/",
-        scope: "/feedfold/",
+        start_url: appBaseUrl,
+        scope: appBaseUrl,
         display: "standalone",
         categories: ["news", "productivity"],
         background_color: "#0f1211",
         theme_color: "#0f1211",
         icons: [
           {
-            src: "/feedfold/icons/pwa-192.png",
+            src: appUrl("/icons/pwa-192.png"),
             sizes: "192x192",
             type: "image/png",
             purpose: "any",
           },
           {
-            src: "/feedfold/icons/pwa-512.png",
+            src: appUrl("/icons/pwa-512.png"),
             sizes: "512x512",
             type: "image/png",
             purpose: "any maskable",
@@ -40,24 +50,24 @@ export default defineConfig({
           {
             name: "Unread articles",
             short_name: "Unread",
-            url: "/feedfold/articles/unread",
-            icons: [{ src: "/feedfold/icons/pwa-192.png", sizes: "192x192" }],
+            url: appUrl("/articles/unread"),
+            icons: [{ src: appUrl("/icons/pwa-192.png"), sizes: "192x192" }],
           },
           {
             name: "Starred articles",
             short_name: "Starred",
-            url: "/feedfold/articles/starred",
-            icons: [{ src: "/feedfold/icons/pwa-192.png", sizes: "192x192" }],
+            url: appUrl("/articles/starred"),
+            icons: [{ src: appUrl("/icons/pwa-192.png"), sizes: "192x192" }],
           },
         ],
       },
       workbox: {
         globPatterns: ["**/*.{js,css,html,png,webp}"],
-        navigateFallback: "/feedfold/index.html",
-        navigateFallbackDenylist: [/^\/feedfold\/(?:api|health)(?:\/|$)/],
+        navigateFallback: appUrl("/index.html"),
+        navigateFallbackDenylist: [new RegExp(`^${apiPathPattern}`)],
         runtimeCaching: [
           {
-            urlPattern: /\/feedfold\/(?:api|health)(?:\/|$)/,
+            urlPattern: new RegExp(apiPathPattern),
             handler: "NetworkOnly",
           },
         ],
@@ -74,13 +84,13 @@ export default defineConfig({
     port: devPort,
     strictPort: true,
     proxy: {
-      "/feedfold/api": {
+      [appUrl("/api")]: {
         target: apiOrigin,
-        rewrite: (path) => path.replace(/^\/feedfold/, ""),
+        rewrite: stripBasePath,
       },
-      "/feedfold/health": {
+      [appUrl("/health")]: {
         target: apiOrigin,
-        rewrite: (path) => path.replace(/^\/feedfold/, ""),
+        rewrite: stripBasePath,
       },
     },
   },

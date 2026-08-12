@@ -128,11 +128,11 @@ describe("feed refresh delivery events", () => {
     );
     const origin = await app.listen({ host: "127.0.0.1", port: 0 });
 
-    const unauthorized = await fetch(`${origin}/feedfold/api/refresh/events`);
+    const unauthorized = await fetch(`${origin}/api/refresh/events`);
     expect(unauthorized.status).toBe(401);
     expect(await unauthorized.json()).toEqual({ error: "Sign in to continue." });
 
-    const registration = await fetch(`${origin}/feedfold/api/auth/register`, {
+    const registration = await fetch(`${origin}/api/auth/register`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ username: "stream-reader", password: "reader-password" }),
@@ -147,7 +147,7 @@ describe("feed refresh delivery events", () => {
       paused: true,
     });
 
-    const response = await fetch(`${origin}/feedfold/api/refresh/events`, {
+    const response = await fetch(`${origin}/api/refresh/events`, {
       headers: { Cookie: cookie },
       signal: controller.signal,
     });
@@ -164,7 +164,7 @@ describe("feed refresh delivery events", () => {
     expect(await within(nextEvent())).toBe("data: changed");
     expect(database.bootstrap.getBootstrap(account.user.id).counts.unread).toBe(1);
 
-    const logout = await fetch(`${origin}/feedfold/api/auth/logout`, {
+    const logout = await fetch(`${origin}/api/auth/logout`, {
       method: "POST",
       headers: { Cookie: cookie },
     });

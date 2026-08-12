@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { setTimeout } from "node:timers/promises";
 
-const url = `http://127.0.0.1:${process.env.FEEDFOLD_DEV_PORT ?? "45173"}/feedfold/`;
+const url = `http://127.0.0.1:${process.env.FEEDFOLD_DEV_PORT ?? "45173"}/`;
 const deadline = Date.now() + 30_000;
 
 while (Date.now() < deadline) {

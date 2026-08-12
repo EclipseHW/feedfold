@@ -63,7 +63,7 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 const DESKTOP_ORIGIN = "feedfold://app";
-const APP_URL = `${DESKTOP_ORIGIN}/feedfold/`;
+const APP_URL = `${DESKTOP_ORIGIN}/`;
 const DEFAULT_WINDOW_BOUNDS = { width: 1440, height: 940 };
 const MIN_WINDOW_WIDTH = 900;
 const MIN_WINDOW_HEIGHT = 620;
@@ -500,7 +500,7 @@ function htmlResponse(body: string, csp: string): Response {
 
 async function applicationResource(pathname: string, request: Request): Promise<Response | null> {
   if (!runtime) return new Response("feedfold is still starting", { status: 503 });
-  const snapshotMatch = pathname.match(/^\/feedfold\/api\/web-feed-snapshots\/([^/]+)$/);
+  const snapshotMatch = pathname.match(/^\/api\/web-feed-snapshots\/([^/]+)$/);
   if (snapshotMatch) {
     try {
       return htmlResponse(
@@ -511,9 +511,7 @@ async function applicationResource(pathname: string, request: Request): Promise<
       return new Response("This page preview has expired.", { status: 404 });
     }
   }
-  const telegramPreviewMatch = pathname.match(
-    /^\/feedfold\/api\/articles\/(\d+)\/telegram-media-preview$/,
-  );
+  const telegramPreviewMatch = pathname.match(/^\/api\/articles\/(\d+)\/telegram-media-preview$/);
   if (telegramPreviewMatch) {
     try {
       const url = await runtime.application.telegramPreviewUrl(Number(telegramPreviewMatch[1]));
@@ -526,7 +524,7 @@ async function applicationResource(pathname: string, request: Request): Promise<
 }
 
 function safeClientPath(clientRoot: string, pathname: string): string | null {
-  const relativePath = pathname.replace(/^\/feedfold\/?/, "") || "index.html";
+  const relativePath = pathname.replace(/^\/+/, "") || "index.html";
   const candidate = join(clientRoot, relativePath);
   const outside = relative(clientRoot, candidate);
   if (outside.startsWith("..") || outside.includes(`..${sep}`)) return null;

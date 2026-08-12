@@ -2,6 +2,8 @@ services:
   feedfold:
     build:
       context: .
+      args:
+        FEEDFOLD_BASE_PATH: "${FEEDFOLD_BASE_PATH:-/}"
     image: feedfold:local
     restart: unless-stopped
     init: true

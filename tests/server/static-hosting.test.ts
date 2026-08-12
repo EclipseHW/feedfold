@@ -9,7 +9,7 @@ import { AuthService } from "../../src/server/features/auth/service.js";
 import { FeedRefreshService } from "../../src/server/refresh.js";
 
 describe("production app hosting", () => {
-  it("serves navigation, assets, and APIs from the application base path", async () => {
+  it("serves navigation, assets, and APIs from the application root", async () => {
     const directory = await mkdtemp(join(tmpdir(), "feedfold-static-hosting-test-"));
     const staticDirectory = join(directory, "client");
     await mkdir(join(staticDirectory, "assets"), { recursive: true });
@@ -31,16 +31,16 @@ describe("production app hosting", () => {
     });
 
     try {
-      const navigation = await app.inject({ method: "GET", url: "/feedfold/feeds/all" });
+      const navigation = await app.inject({ method: "GET", url: "/feeds/all" });
       expect(navigation.statusCode).toBe(200);
       expect(navigation.body).toBe("<main>feedfold shell</main>");
 
-      const asset = await app.inject({ method: "GET", url: "/feedfold/assets/app.css" });
+      const asset = await app.inject({ method: "GET", url: "/assets/app.css" });
       expect(asset.statusCode).toBe(200);
       expect(asset.headers["content-type"]).toContain("text/css");
       expect(asset.body).toBe("body { color: green; }");
 
-      const api = await app.inject({ method: "GET", url: "/feedfold/api/auth/session" });
+      const api = await app.inject({ method: "GET", url: "/api/auth/session" });
       expect(api.statusCode).toBe(401);
       expect(api.json()).toEqual({ error: "Sign in to continue." });
     } finally {

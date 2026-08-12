@@ -1,5 +1,7 @@
 FROM node:24.18.0-bookworm-slim AS build
 
+ARG FEEDFOLD_BASE_PATH=/
+
 WORKDIR /app
 
 COPY package.json package-lock.json ./

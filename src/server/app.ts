@@ -39,18 +39,11 @@ export interface AppServices {
   logger?: boolean;
 }
 
-const appBasePath = "/feedfold";
-
 export async function createApp(services: AppServices): Promise<FastifyInstance> {
   const app = Fastify({
     logger: services.logger ?? false,
     bodyLimit: 10 * 1024 * 1024,
     trustProxy: true,
-    rewriteUrl(request) {
-      const url = request.url ?? "/";
-      if (url === appBasePath) return "/";
-      return url.startsWith(`${appBasePath}/`) ? url.slice(appBasePath.length) : url;
-    },
   });
   const ai =
     services.aiService ??

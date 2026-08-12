@@ -64,7 +64,7 @@ You need Docker Engine with Docker Compose v2.
    docker compose up -d --build
    ```
 
-2. Open `http://127.0.0.1:3000/feedfold/`.
+2. Open `http://127.0.0.1:3000/`.
 
 3. Choose **Create an account**. Registration signs in the new account immediately. feedfold hashes passwords before storing them in SQLite.
 
@@ -142,6 +142,7 @@ Compose reads these values from the shell or a project-level `.env` file:
 | --- | --- | --- |
 | `FEEDFOLD_BIND_ADDRESS` | `127.0.0.1` | Host address that publishes the container port. Keep loopback when a local reverse proxy provides access. |
 | `FEEDFOLD_PORT` | `3000` | Host port forwarded to feedfold. |
+| `FEEDFOLD_BASE_PATH` | `/` | Browser-facing path where feedfold is mounted. Set this at build time, including the leading and trailing slash, when a reverse proxy publishes feedfold below a path such as `/feedfold/`. |
 | `POLL_INTERVAL_MINUTES` | `20` | Starting interval for new published feeds, rounded up to 5, 10, 20, 30, or 60 minutes. |
 | `FEED_FETCH_TIMEOUT_MS` | `15000` | Feed request timeout, in milliseconds. |
 | `WEB_FEED_LOAD_TIMEOUT_MS` | `30000` | Maximum normal load time for a JavaScript-rendered web feed, in milliseconds. |

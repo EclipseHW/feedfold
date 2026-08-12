@@ -27,7 +27,7 @@ describe("desktop YouTube player requests", () => {
           url: "https://www.youtube.com/embed/video-id?autoplay=1",
           resourceType: "subFrame",
           webContentsId: 7,
-          requestHeaders: { referer: "feedfold://app/feedfold/" },
+          requestHeaders: { referer: "feedfold://app/" },
         },
         7,
       ),
