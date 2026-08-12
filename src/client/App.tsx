@@ -318,7 +318,11 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
     },
     setBootstrapError,
     reloadArticles: (signal, mode) =>
-      mode === "query" ? queue.reloadQuery(signal) : queue.reloadAfterMutation(signal),
+      mode === "query"
+        ? queue.reloadQuery(signal)
+        : mode === "delivery"
+          ? queue.reloadAfterDelivery(signal)
+          : queue.reloadAfterMutation(signal),
     reloadRules,
   };
   dataResource.connect(resourceBinding);

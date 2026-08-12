@@ -16,7 +16,7 @@ import {
   type RuleInput,
 } from "./api.js";
 
-export type ArticleReloadMode = "query" | "mutation";
+export type ArticleReloadMode = "query" | "mutation" | "delivery";
 
 export interface ReaderDataBinding {
   getBootstrap: () => BootstrapData | null;
@@ -67,24 +67,41 @@ const MAX_INVALIDATION_RETRY_MS = 30_000;
 
 class LatestRequest {
   private controller: AbortController | null = null;
+  private settled: Promise<void> | null = null;
 
   async run<T>(request: (signal: AbortSignal) => Promise<T>): Promise<T | undefined> {
     this.cancel();
     const controller = new AbortController();
+    let resolveSettled = () => {};
+    const settled = new Promise<void>((resolve) => {
+      resolveSettled = resolve;
+    });
     this.controller = controller;
+    this.settled = settled;
     try {
       return await request(controller.signal);
     } catch (error) {
       if (controller.signal.aborted) return undefined;
       throw error;
     } finally {
-      if (this.controller === controller) this.controller = null;
+      if (this.controller === controller) {
+        this.controller = null;
+        this.settled = null;
+      }
+      resolveSettled();
     }
   }
 
   cancel(): void {
     this.controller?.abort();
-    this.controller = null;
+  }
+
+  isRunning(): boolean {
+    return this.settled !== null;
+  }
+
+  async waitUntilIdle(): Promise<void> {
+    while (this.settled) await this.settled;
   }
 }
 
@@ -92,6 +109,7 @@ export class ReaderDataResource implements ReaderDataMutations {
   private binding: ReaderDataBinding | null = null;
   private readonly bootstrapRequest = new LatestRequest();
   private readonly articleRequest = new LatestRequest();
+  private readonly deliveryArticleRequest = new LatestRequest();
   private readonly ruleRequest = new LatestRequest();
   private readonly trackedFeedIds = new Set<number>();
   private observeRefreshingFeeds = false;
@@ -140,6 +158,7 @@ export class ReaderDataResource implements ReaderDataMutations {
     this.invalidationRetryMs = this.initialInvalidationRetryMs;
     this.bootstrapRequest.cancel();
     this.articleRequest.cancel();
+    this.deliveryArticleRequest.cancel();
     this.ruleRequest.cancel();
     this.trackedFeedIds.clear();
     this.observeRefreshingFeeds = false;
@@ -154,17 +173,34 @@ export class ReaderDataResource implements ReaderDataMutations {
     this.articleRequest.cancel();
   }
 
+  cancelArticleDelivery(): void {
+    this.interruptArticleDelivery();
+  }
+
   loadBootstrap = async (): Promise<void> => {
     await this.refreshBootstrap();
   };
 
-  loadArticles = async (mode: ArticleReloadMode = "query"): Promise<void> => {
-    const binding = this.binding;
-    if (!this.active || !binding) return;
+  loadArticles = async (mode: ArticleReloadMode = "query"): Promise<boolean> => {
+    if (!this.active || !this.binding) return false;
     try {
+      if (mode === "delivery") {
+        await this.articleRequest.waitUntilIdle();
+        const binding = this.binding;
+        if (!this.active || !binding) return false;
+        const completed = await this.deliveryArticleRequest.run(async (signal) => {
+          await binding.reloadArticles(signal, mode);
+          return true;
+        });
+        return completed === true;
+      }
+      const binding = this.binding;
+      this.interruptArticleDelivery();
       await this.articleRequest.run((signal) => binding.reloadArticles(signal, mode));
+      return true;
     } catch {
       // The bound reader loader owns its visible error state.
+      return false;
     }
   };
 
@@ -177,8 +213,15 @@ export class ReaderDataResource implements ReaderDataMutations {
     request: (signal: AbortSignal) => Promise<T>,
   ): Promise<T | undefined> => {
     if (!this.active) return undefined;
+    this.interruptArticleDelivery();
     return this.articleRequest.run(request);
   };
+
+  private interruptArticleDelivery(): void {
+    if (!this.deliveryArticleRequest.isRunning()) return;
+    this.deliveryArticleRequest.cancel();
+    this.queueInvalidation();
+  }
 
   runCounterMutation = async <T>(request: () => Promise<T>): Promise<T> => {
     this.counterMutationCount += 1;
@@ -405,8 +448,10 @@ export class ReaderDataResource implements ReaderDataMutations {
     while (this.active && this.invalidationPending) {
       this.invalidationPending = false;
       if (await this.refreshBootstrap()) {
-        this.invalidationRetryMs = this.initialInvalidationRetryMs;
-        continue;
+        if (await this.loadArticles("delivery")) {
+          this.invalidationRetryMs = this.initialInvalidationRetryMs;
+          continue;
+        }
       }
       if (!this.active) return;
       this.invalidationPending = true;

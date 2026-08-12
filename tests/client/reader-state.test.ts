@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendUnseenArticles,
   articleQueryForReaderRoute,
   articleSettingsInvalidation,
+  articlesWithLocalState,
   filterRuleName,
+  firstUnseenArticlePage,
   fullContentIdsAfterReload,
   invalidateArticleSummaries,
   readerRouteForSelection,
@@ -12,6 +15,7 @@ import {
   shouldAutoMarkRoutedArticleRead,
   updateBootstrapCounts,
 } from "../../src/client/reader-state.js";
+import { AppDatabase, type ParsedFeed } from "../../src/server/database.js";
 import type { Article, BootstrapData, Feed, Folder } from "../../src/shared/types.js";
 
 function folder(id: number, parentId: number | null, name: string): Folder {
@@ -165,6 +169,101 @@ describe("reader state", () => {
     expect(fullContentIdsAfterReload("magazine", articles, null)).toEqual(new Set());
     expect(fullContentIdsAfterReload("magazine", articles, 2)).toEqual(new Set([2]));
     expect(fullContentIdsAfterReload("expanded", articles, null)).toEqual(new Set([1, 2]));
+  });
+
+  it("adds newly delivered articles after the current reading sequence", () => {
+    const current = [
+      { ...article, id: 1, isRead: true },
+      { ...article, id: 2, isRead: true, isStarred: true },
+      { ...article, id: 3 },
+    ];
+    const delivered = { ...article, id: 4 };
+
+    const result = appendUnseenArticles(current, [delivered, { ...article, id: 3 }, delivered]);
+
+    expect(result.articles.map(({ id }) => id)).toEqual([1, 2, 3, 4]);
+    expect(result.appended.map(({ id }) => id)).toEqual([4]);
+    expect(result.articles.findIndex(({ id }) => id === 2)).toBe(1);
+    expect(result.articles.slice(2).map(({ id }) => id)).toEqual([3, 4]);
+    expect(result.articles[1]).toMatchObject({ id: 2, isRead: true, isStarred: true });
+  });
+
+  it("keeps local read and saved state while applying delivered article data", () => {
+    const current = [
+      { ...article, id: 1, isRead: true },
+      { ...article, id: 2, isStarred: true },
+    ];
+    const refreshed = [
+      { ...article, id: 1, title: "Refreshed one" },
+      { ...article, id: 2, title: "Refreshed two" },
+      { ...article, id: 3, title: "Delivered three" },
+    ];
+
+    expect(
+      articlesWithLocalState(current, refreshed).map(({ id, title, isRead, isStarred }) => ({
+        id,
+        title,
+        isRead,
+        isStarred,
+      })),
+    ).toEqual([
+      { id: 1, title: "Refreshed one", isRead: true, isStarred: false },
+      { id: 2, title: "Refreshed two", isRead: false, isStarred: true },
+      { id: 3, title: "Delivered three", isRead: false, isStarred: false },
+    ]);
+  });
+
+  it("continues through refreshed cursor pages until another unread article is reachable", async () => {
+    const database = new AppDatabase(":memory:");
+    const feed = database.feeds.createFeed(1, {
+      title: "Busy feed",
+      feedUrl: "https://example.test/busy.xml",
+      folderId: null,
+    });
+    const feedArticle = (index: number): ParsedFeed["articles"][number] => ({
+      externalId: `article-${index}`,
+      title: `Article ${index}`,
+      url: null,
+      author: null,
+      publishedAt: new Date(Date.UTC(2026, 6, index)).toISOString(),
+      summary: "",
+      imageUrl: null,
+      feedContentHtml: null,
+    });
+    database.feeds.completeRefresh(feed.id, {
+      httpStatus: 200,
+      etag: null,
+      lastModified: null,
+      pollIntervalMinutes: 20,
+      parsed: {
+        title: feed.title,
+        siteUrl: null,
+        articles: Array.from({ length: 8 }, (_, index) => feedArticle(index + 1)),
+      },
+    });
+
+    try {
+      const loaded = database.articles.listArticlePage(1, { state: "unread", limit: 6 }).articles;
+      const freshHead = database.articles.listArticlePage(1, { state: "unread", limit: 2 });
+      if (!freshHead.nextCursor) throw new Error("The live queue did not create a cursor");
+      const loadedCursors: string[] = [];
+
+      const page = await firstUnseenArticlePage(loaded, freshHead.nextCursor, async (cursor) => {
+        loadedCursors.push(cursor);
+        const next = database.articles.listArticlePage(1, {
+          state: "unread",
+          limit: 2,
+          cursor,
+        });
+        return { candidates: next.articles, nextCursor: next.nextCursor };
+      });
+
+      expect(loadedCursors).toHaveLength(3);
+      expect(page.appended.map(({ title }) => title)).toEqual(["Article 2", "Article 1"]);
+      expect(page.nextCursor).toBeNull();
+    } finally {
+      database.close();
+    }
   });
 
   it("keeps an open article unread after the reader explicitly marks it unread", () => {

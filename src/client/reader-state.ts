@@ -16,6 +16,53 @@ export interface ArticleSettingsInvalidation {
   invalidatedSummaryPromptIds: ReadonlySet<string | null>;
 }
 
+export interface AppendedArticles {
+  articles: Article[];
+  appended: Article[];
+}
+
+export interface ArticlePageBatch {
+  candidates: Article[];
+  nextCursor: string | null;
+}
+
+export function appendUnseenArticles(articles: Article[], candidates: Article[]): AppendedArticles {
+  const ids = new Set(articles.map((article) => article.id));
+  const appended = candidates.filter((article) => {
+    if (ids.has(article.id)) return false;
+    ids.add(article.id);
+    return true;
+  });
+  return {
+    articles: appended.length === 0 ? articles : [...articles, ...appended],
+    appended,
+  };
+}
+
+export function articlesWithLocalState(articles: Article[], candidates: Article[]): Article[] {
+  const currentById = new Map(articles.map((article) => [article.id, article]));
+  return candidates.map((article) => {
+    const current = currentById.get(article.id);
+    return current ? { ...article, isRead: current.isRead, isStarred: current.isStarred } : article;
+  });
+}
+
+export async function firstUnseenArticlePage(
+  articles: Article[],
+  cursor: string,
+  loadPage: (cursor: string) => Promise<ArticlePageBatch | undefined>,
+): Promise<ArticlePageBatch & { appended: Article[] }> {
+  let nextCursor: string | null = cursor;
+  while (nextCursor) {
+    const page = await loadPage(nextCursor);
+    if (!page) return { candidates: [], nextCursor, appended: [] };
+    const appended = appendUnseenArticles(articles, page.candidates).appended;
+    if (appended.length > 0 || page.nextCursor === null) return { ...page, appended };
+    nextCursor = page.nextCursor;
+  }
+  return { candidates: [], nextCursor: null, appended: [] };
+}
+
 export function readerRouteForSelection(
   state: ArticleState,
   feedId: number | null,

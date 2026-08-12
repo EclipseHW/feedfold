@@ -312,8 +312,10 @@ describe("reader data resource", () => {
     );
     cleanups.push(() => resource.pause());
     let latestBootstrap: BootstrapData | null = null;
+    let latestArticles: ArticlePage | null = null;
     let bootstrapError: string | null = null;
     const liveCountApplied = deferred();
+    const liveArticlesApplied = deferred();
     resource.connect({
       getBootstrap: () => latestBootstrap,
       applyBootstrap: (bootstrap) => {
@@ -323,12 +325,22 @@ describe("reader data resource", () => {
       setBootstrapError: (message) => {
         bootstrapError = message;
       },
-      reloadArticles: async () => {},
+      reloadArticles: async () => {
+        const page = database.articles.listArticlePage(1, { state: "unread" });
+        latestArticles = page;
+        if (page.articles.some((article) => article.title === "Delivered without a click")) {
+          liveArticlesApplied.resolve();
+        }
+      },
       reloadRules: async () => {},
     });
     const currentBootstrap = () => {
       if (!latestBootstrap) throw new Error("Bootstrap data was not reloaded");
       return latestBootstrap;
+    };
+    const currentArticles = () => {
+      if (!latestArticles) throw new Error("Articles were not reloaded");
+      return latestArticles;
     };
 
     resource.resume();
@@ -361,13 +373,16 @@ describe("reader data resource", () => {
     expect(currentBootstrap().counts.unread).toBe(0);
 
     invalidate();
-    await liveCountApplied.promise;
+    await Promise.all([liveCountApplied.promise, liveArticlesApplied.promise]);
 
     expect(currentBootstrap().counts.unread).toBe(1);
     expect(currentBootstrap().feeds[0]?.unreadCount).toBe(1);
     expect(currentBootstrap().folders[0]?.unreadCount).toBe(1);
     expect(bootstrapCalls).toBe(3);
     expect(bootstrapError).toBeNull();
+    expect(currentArticles().articles.map((article) => article.title)).toEqual([
+      "Delivered without a click",
+    ]);
 
     resource.pause();
     expect(unsubscribed).toBe(true);

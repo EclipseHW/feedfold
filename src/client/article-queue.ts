@@ -3,6 +3,7 @@ import {
   type SetStateAction,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -12,7 +13,13 @@ import { api, errorMessage } from "./api";
 import type { AppRouteController } from "./app-route";
 import { articlesWithContextReturn, type ContextArticleReturn } from "./contextual-filter";
 import type { ReaderDataResource } from "./data-resource";
-import { articleQueryForReaderRoute, fullContentIdsAfterReload } from "./reader-state";
+import {
+  appendUnseenArticles,
+  articleQueryForReaderRoute,
+  articlesWithLocalState,
+  firstUnseenArticlePage,
+  fullContentIdsAfterReload,
+} from "./reader-state";
 import { appRoutePath, type ReaderRoute } from "./routes";
 
 export interface ArticleQueueController {
@@ -32,6 +39,7 @@ export interface ArticleQueueController {
   loadArticles: (mode?: "query" | "mutation") => Promise<void>;
   reloadQuery: (signal: AbortSignal) => Promise<void>;
   reloadAfterMutation: (signal: AbortSignal) => Promise<void>;
+  reloadAfterDelivery: (signal: AbortSignal) => Promise<void>;
   loadOlderArticles: () => Promise<Article[]>;
   selectArticle: (articleId: number, keyboardTarget?: boolean) => void;
   clearKeyboardTarget: () => void;
@@ -81,12 +89,23 @@ export function useArticleQueue({
   const [queryRevision, setQueryRevision] = useState(0);
   const articlesRef = useRef(articles);
   const requestId = useRef(0);
+  const queueReloadId = useRef(0);
   const loadedReaderRequestKey = useRef<string | null>(null);
   const articleListNeedsReload = useRef(false);
   const contextArticleReturn = useRef<ContextArticleReturn | null>(null);
   const contextArticleReturnRoute = useRef<ReaderRoute | null>(null);
   const fullContentLoadedIds = useRef(new Set<number>());
+  const readerRouteRef = useRef(readerRoute);
+  const deliveryRequestKeyRef = useRef(`${appRoutePath(readerRoute)}:${readingMode}`);
   articlesRef.current = articles;
+  const deliveryRequestKey = `${appRoutePath(readerRoute)}:${readingMode}`;
+
+  useLayoutEffect(() => {
+    const requestKeyChanged = deliveryRequestKeyRef.current !== deliveryRequestKey;
+    readerRouteRef.current = readerRoute;
+    deliveryRequestKeyRef.current = deliveryRequestKey;
+    if (requestKeyChanged) dataResource.cancelArticleDelivery();
+  }, [dataResource, deliveryRequestKey, readerRoute]);
 
   const activeArticleIndex = useMemo(
     () => articles.findIndex((article) => article.id === activeArticleId),
@@ -99,6 +118,7 @@ export function useArticleQueue({
       const nextRoute = currentRoute();
       if (!bootstrapReady || nextRoute.kind !== "reader") return;
       const requestKey = `${appRoutePath(nextRoute)}:${readingMode}`;
+      queueReloadId.current += 1;
       const currentRequestId = requestId.current + 1;
       requestId.current = currentRequestId;
       setLoadingMore(false);
@@ -173,6 +193,7 @@ export function useArticleQueue({
         loadedReaderRequestKey.current = null;
         return;
       }
+      queueReloadId.current += 1;
       const routePath = appRoutePath(nextRoute);
       const activeIndex = articlesRef.current.findIndex(
         (article) => article.id === activeArticleId,
@@ -246,7 +267,132 @@ export function useArticleQueue({
     [activeArticleId, currentRoute, readerRoute, readingMode],
   );
 
-  const loadArticles = dataResource.loadArticles;
+  const reloadAfterDelivery = useCallback(
+    async (signal: AbortSignal) => {
+      const nextRoute = currentRoute();
+      const queryRoute =
+        nextRoute.kind === "reader"
+          ? nextRoute
+          : nextRoute.kind === "article"
+            ? readerRouteRef.current
+            : null;
+      if (!bootstrapReady || !queryRoute) {
+        loadedReaderRequestKey.current = null;
+        return;
+      }
+      const requestKey = `${appRoutePath(queryRoute)}:${readingMode}`;
+      const currentQueueReloadId = queueReloadId.current;
+
+      const page = await api.articles(
+        articleQueryForReaderRoute(queryRoute, {
+          limit: readingMode === "expanded" ? 20 : 100,
+          includeContent: readingMode === "expanded",
+        }),
+        signal,
+      );
+      const currentAppRoute = currentRoute();
+      const currentQueryRoute =
+        currentAppRoute.kind === "reader"
+          ? currentAppRoute
+          : currentAppRoute.kind === "article"
+            ? readerRouteRef.current
+            : null;
+      const currentRequestKey = currentQueryRoute
+        ? `${appRoutePath(currentQueryRoute)}:${readingMode}`
+        : null;
+      if (
+        signal.aborted ||
+        queueReloadId.current !== currentQueueReloadId ||
+        currentRequestKey !== requestKey ||
+        deliveryRequestKeyRef.current !== requestKey
+      ) {
+        if (!currentQueryRoute) loadedReaderRequestKey.current = null;
+        return;
+      }
+
+      requestId.current += 1;
+      setLoadingMore(false);
+
+      if (currentAppRoute.kind === "article") {
+        const { appended } = appendUnseenArticles(articlesRef.current, page.articles);
+        setArticles((current) => appendUnseenArticles(current, page.articles).articles);
+        setNextCursor(page.nextCursor);
+        setError(null);
+        if (readingMode === "expanded") {
+          for (const article of appended) fullContentLoadedIds.current.add(article.id);
+        }
+        return;
+      }
+
+      const loadedCount = articlesRef.current.length;
+      const reloaded = [...page.articles];
+      let cursor = page.nextCursor;
+      while (cursor && reloaded.length < loadedCount) {
+        const nextPage = await api.articles(
+          articleQueryForReaderRoute(queryRoute, {
+            limit: Math.min(500, loadedCount - reloaded.length),
+            includeContent: readingMode === "expanded",
+            cursor,
+          }),
+          signal,
+        );
+        reloaded.push(...nextPage.articles);
+        cursor = nextPage.nextCursor;
+      }
+      const latestAppRoute = currentRoute();
+      const latestRequestKey =
+        latestAppRoute.kind === "reader"
+          ? `${appRoutePath(latestAppRoute)}:${readingMode}`
+          : deliveryRequestKeyRef.current;
+      if (
+        signal.aborted ||
+        queueReloadId.current !== currentQueueReloadId ||
+        latestRequestKey !== requestKey ||
+        deliveryRequestKeyRef.current !== requestKey
+      ) {
+        return;
+      }
+
+      if (latestAppRoute.kind === "article") {
+        const { appended } = appendUnseenArticles(articlesRef.current, reloaded);
+        setArticles((current) => appendUnseenArticles(current, reloaded).articles);
+        setNextCursor(cursor);
+        setError(null);
+        if (readingMode === "expanded") {
+          for (const article of appended) fullContentLoadedIds.current.add(article.id);
+        }
+        return;
+      }
+      if (latestAppRoute.kind !== "reader") {
+        loadedReaderRequestKey.current = null;
+        return;
+      }
+
+      articleListNeedsReload.current = false;
+      loadedReaderRequestKey.current = requestKey;
+      const nextArticles = articlesWithLocalState(articlesRef.current, reloaded);
+      setArticles(nextArticles);
+      setNextCursor(cursor);
+      setError(null);
+      fullContentLoadedIds.current = new Set(
+        readingMode === "expanded" ? nextArticles.map((article) => article.id) : [],
+      );
+      setActiveArticleId((current) =>
+        current !== null && nextArticles.some((article) => article.id === current)
+          ? current
+          : (nextArticles[0]?.id ?? null),
+      );
+      setQueryRevision((current) => current + 1);
+    },
+    [bootstrapReady, currentRoute, readingMode],
+  );
+
+  const loadArticles = useCallback(
+    async (mode: "query" | "mutation" = "query") => {
+      await dataResource.loadArticles(mode);
+    },
+    [dataResource],
+  );
 
   const loadOlderArticles = useCallback(async (): Promise<Article[]> => {
     const nextRoute = currentRoute();
@@ -257,34 +403,40 @@ export function useArticleQueue({
     const currentRequestId = requestId.current;
     setLoadingMore(true);
     try {
-      const page = await dataResource.requestArticles((signal) =>
-        api.articles(
-          articleQueryForReaderRoute(queryRoute, {
-            limit: readingMode === "expanded" ? 20 : 100,
-            includeContent: readingMode === "expanded",
-            cursor: nextCursor,
-          }),
-          signal,
-        ),
-      );
-      if (!page) return [];
-      if (
-        requestId.current !== currentRequestId ||
-        (currentRoute().kind !== "reader" && currentRoute().kind !== "article")
-      ) {
-        return [];
-      }
-      const existingIds = new Set(articles.map((article) => article.id));
-      const appended = page.articles.filter((article) => !existingIds.has(article.id));
-      setArticles((current) => {
-        const ids = new Set(current.map((article) => article.id));
-        return [...current, ...page.articles.filter((article) => !ids.has(article.id))];
+      const appended = await dataResource.requestArticles(async (signal) => {
+        const page = await firstUnseenArticlePage(
+          articlesRef.current,
+          nextCursor,
+          async (cursor) => {
+            const loaded = await api.articles(
+              articleQueryForReaderRoute(queryRoute, {
+                limit: readingMode === "expanded" ? 20 : 100,
+                includeContent: readingMode === "expanded",
+                cursor,
+              }),
+              signal,
+            );
+            const latestRoute = currentRoute();
+            if (
+              signal.aborted ||
+              requestId.current !== currentRequestId ||
+              (latestRoute.kind !== "reader" && latestRoute.kind !== "article")
+            ) {
+              return undefined;
+            }
+            return { candidates: loaded.articles, nextCursor: loaded.nextCursor };
+          },
+        );
+        if (signal.aborted || requestId.current !== currentRequestId) return [];
+        setNextCursor(page.nextCursor);
+        if (page.appended.length === 0) return [];
+        setArticles((current) => appendUnseenArticles(current, page.candidates).articles);
+        if (readingMode === "expanded") {
+          for (const article of page.appended) fullContentLoadedIds.current.add(article.id);
+        }
+        return page.appended;
       });
-      setNextCursor(page.nextCursor);
-      if (readingMode === "expanded") {
-        for (const article of appended) fullContentLoadedIds.current.add(article.id);
-      }
-      return appended;
+      return appended ?? [];
     } catch (caught) {
       if (requestId.current === currentRequestId) {
         showToast(`Could not load more articles: ${errorMessage(caught)}`);
@@ -294,7 +446,6 @@ export function useArticleQueue({
       if (requestId.current === currentRequestId) setLoadingMore(false);
     }
   }, [
-    articles,
     bootstrapReady,
     currentRoute,
     dataResource,
@@ -331,6 +482,7 @@ export function useArticleQueue({
     if (!bootstrapReady || articleId === null) return;
     void routedArticleRetry;
     let active = true;
+    const currentRequestId = requestId.current;
     const existing = articlesRef.current.find((article) => article.id === articleId);
 
     const showArticle = (article: Article) => {
@@ -356,52 +508,62 @@ export function useArticleQueue({
       };
     }
 
+    const currentQueueReloadId = queueReloadId.current + 1;
+    queueReloadId.current = currentQueueReloadId;
     setLoading(true);
     setError(null);
-    void dataResource
-      .requestArticles(async (signal) => {
-        const article = await api.article(articleId, signal);
-        const context = articleContext();
-        const queueRoute = context?.route ?? {
-          kind: "reader" as const,
-          scope: "feed" as const,
-          scopeId: article.feedId,
-          state: "all" as const,
-          search: "",
-        };
-        const page = await api.articles(
-          articleQueryForReaderRoute(queueRoute, {
-            limit: readingMode === "expanded" ? 20 : 100,
-            includeContent: readingMode === "expanded",
-            anchorId: article.id,
-          }),
-          signal,
-        );
-        return { article, page, queueRoute, articleIndex: context?.articleIndex };
-      })
-      .then((loaded) => {
-        if (!active || !loaded) return;
-        const { article, page, queueRoute, articleIndex } = loaded;
-        const pageIndex = page.articles.findIndex((item) => item.id === article.id);
-        const nextArticles = articlesWithContextReturn(page.articles, {
-          article,
-          index: page.anchorIndex ?? (pageIndex >= 0 ? pageIndex : (articleIndex ?? 0)),
+    void (async () => {
+      try {
+        await dataResource.requestArticles(async (signal) => {
+          const article = await api.article(articleId, signal);
+          const context = articleContext();
+          const queueRoute = context?.route ?? {
+            kind: "reader" as const,
+            scope: "feed" as const,
+            scopeId: article.feedId,
+            state: "all" as const,
+            search: "",
+          };
+          const page = await api.articles(
+            articleQueryForReaderRoute(queueRoute, {
+              limit: readingMode === "expanded" ? 20 : 100,
+              includeContent: readingMode === "expanded",
+              anchorId: article.id,
+            }),
+            signal,
+          );
+          if (
+            signal.aborted ||
+            !active ||
+            requestId.current !== currentRequestId ||
+            queueReloadId.current !== currentQueueReloadId
+          ) {
+            return;
+          }
+          const pageIndex = page.articles.findIndex((item) => item.id === article.id);
+          const anchoredArticles = articlesWithContextReturn(page.articles, {
+            article,
+            index: page.anchorIndex ?? (pageIndex >= 0 ? pageIndex : (context?.articleIndex ?? 0)),
+          });
+          const nextArticles = appendUnseenArticles(anchoredArticles, articlesRef.current).articles;
+          const actualArticleIndex = nextArticles.findIndex((item) => item.id === article.id);
+          setArticleContext(
+            queueRoute,
+            actualArticleIndex >= 0 ? actualArticleIndex : context?.articleIndex,
+          );
+          loadedReaderRequestKey.current = `${appRoutePath(queueRoute)}:${readingMode}`;
+          fullContentLoadedIds.current.add(article.id);
+          setArticles(nextArticles);
+          setNextCursor(page.nextCursor);
+          setError(null);
+          setActiveArticleId(article.id);
         });
-        const actualArticleIndex = nextArticles.findIndex((item) => item.id === article.id);
-        setArticleContext(queueRoute, actualArticleIndex >= 0 ? actualArticleIndex : articleIndex);
-        loadedReaderRequestKey.current = `${appRoutePath(queueRoute)}:${readingMode}`;
-        fullContentLoadedIds.current.add(article.id);
-        setArticles(nextArticles);
-        setNextCursor(page.nextCursor);
-        setError(null);
-        setActiveArticleId(article.id);
-      })
-      .catch((caught) => {
+      } catch (caught) {
         if (active) setError(errorMessage(caught));
-      })
-      .finally(() => {
+      } finally {
         if (active) setLoading(false);
-      });
+      }
+    })();
 
     return () => {
       active = false;
@@ -470,6 +632,7 @@ export function useArticleQueue({
     loadArticles,
     reloadQuery,
     reloadAfterMutation,
+    reloadAfterDelivery,
     loadOlderArticles,
     selectArticle,
     clearKeyboardTarget: () => setExpandedKeyboardTargetId(null),
