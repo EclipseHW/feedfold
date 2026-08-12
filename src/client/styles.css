@@ -2369,16 +2369,12 @@ kbd {
 
 .article-header h2 a {
   color: inherit;
-  text-decoration-color: var(--border-strong);
-  text-decoration-thickness: max(1px, 0.02em);
-  text-underline-offset: 0.1em;
+  text-decoration: none;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .article-header h2 a:hover {
     color: var(--accent);
-    text-decoration-color: var(--accent-strong);
-    text-decoration-thickness: max(1px, 0.035em);
   }
 }
 
