@@ -114,6 +114,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        clientsClaim: true,
         globPatterns: ["**/*.{js,css,html,png,webp}"],
         navigateFallback: appUrl("/index.html"),
         navigateFallbackDenylist: [new RegExp(`^${apiPathPattern}`)],
