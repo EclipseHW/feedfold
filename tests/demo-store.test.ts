@@ -34,6 +34,21 @@ describe("static demo data", () => {
     expect(store.articles({ state: "all", search: "solar-powered" }).articles).toHaveLength(1);
   });
 
+  it("starts with an explorable folder hierarchy", () => {
+    const store = new DemoStore(DEMO_NOW);
+    const bootstrap = store.bootstrap();
+
+    expect(bootstrap.folders).toMatchObject([
+      { id: 1, parentId: null, unreadCount: 6 },
+      { id: 2, parentId: 1, unreadCount: 3 },
+      { id: 3, parentId: null, unreadCount: 3 },
+      { id: 4, parentId: null, unreadCount: 4 },
+    ]);
+    expect(bootstrap.feeds.some((feed) => feed.folderId === null)).toBe(true);
+    expect(store.articles({ state: "all", folderId: 1 }).articles).toHaveLength(6);
+    expect(store.articles({ state: "all", folderId: 2 }).articles).toHaveLength(3);
+  });
+
   it("keeps the linked feedfold release saved and first in the demo", () => {
     const store = new DemoStore(new Date("2027-08-12T12:00:00.000Z"));
     const releaseFeed = store

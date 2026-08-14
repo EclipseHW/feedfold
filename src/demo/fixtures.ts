@@ -35,6 +35,11 @@ interface DemoFeedSource {
   siteUrl: string;
 }
 
+interface DemoFeedOptions {
+  folderId?: number;
+  source?: DemoFeedSource;
+}
+
 const IMAGE_PARAMS = "auto=format&fit=crop&w=720&q=82";
 
 function before(now: Date, hours: number): string {
@@ -48,14 +53,19 @@ function slug(value: string): string {
     .replace(/^-|-$/g, "");
 }
 
-function createFeed(id: number, title: string, createdAt: string, source?: DemoFeedSource): Feed {
+function createFeed(
+  id: number,
+  title: string,
+  createdAt: string,
+  options: DemoFeedOptions = {},
+): Feed {
   const feedSlug = slug(title);
   return {
     id,
-    folderId: null,
+    folderId: options.folderId ?? null,
     title,
-    feedUrl: source?.feedUrl ?? `https://example.com/${feedSlug}/feed.xml`,
-    siteUrl: source?.siteUrl ?? `https://example.com/${feedSlug}`,
+    feedUrl: options.source?.feedUrl ?? `https://example.com/${feedSlug}/feed.xml`,
+    siteUrl: options.source?.siteUrl ?? `https://example.com/${feedSlug}`,
     sourceKind: id === 6 ? "web" : "published",
     healthStatus: "healthy",
     lastErrorKind: null,
@@ -125,18 +135,55 @@ function createArticle(spec: DemoArticleSpec, feed: Feed, now: Date): Article {
 
 export function createDemoData(now = new Date()): DemoData {
   const createdAt = before(now, 24 * 90);
+  const folders: Folder[] = [
+    {
+      id: 1,
+      parentId: null,
+      name: "Design",
+      position: 0,
+      sortDirection: "newest",
+      unreadCount: 0,
+    },
+    {
+      id: 2,
+      parentId: 1,
+      name: "Interfaces",
+      position: 0,
+      sortDirection: "newest",
+      unreadCount: 0,
+    },
+    {
+      id: 3,
+      parentId: null,
+      name: "Independent web",
+      position: 1,
+      sortDirection: "oldest",
+      unreadCount: 0,
+    },
+    {
+      id: 4,
+      parentId: null,
+      name: "Technology",
+      position: 2,
+      sortDirection: "newest",
+      unreadCount: 0,
+    },
+  ];
   const feeds = [
     createFeed(8, "feedfold releases", createdAt, {
-      feedUrl: "https://github.com/egornomic/feedfold/releases.atom",
-      siteUrl: "https://github.com/egornomic/feedfold/releases",
+      folderId: 4,
+      source: {
+        feedUrl: "https://github.com/egornomic/feedfold/releases.atom",
+        siteUrl: "https://github.com/egornomic/feedfold/releases",
+      },
     }),
-    createFeed(1, "Signal & Craft", createdAt),
+    createFeed(1, "Signal & Craft", createdAt, { folderId: 1 }),
     createFeed(2, "Field Notes", createdAt),
-    createFeed(3, "Interface Notes", createdAt),
-    createFeed(4, "Common Ground", createdAt),
-    createFeed(5, "Systems Weekly", createdAt),
-    createFeed(6, "Low-tech Dispatch", createdAt),
-    createFeed(7, "Margins", createdAt),
+    createFeed(3, "Interface Notes", createdAt, { folderId: 2 }),
+    createFeed(4, "Common Ground", createdAt, { folderId: 3 }),
+    createFeed(5, "Systems Weekly", createdAt, { folderId: 4 }),
+    createFeed(6, "Low-tech Dispatch", createdAt, { folderId: 4 }),
+    createFeed(7, "Margins", createdAt, { folderId: 3 }),
   ];
   const feedsById = new Map(feeds.map((feed) => [feed.id, feed]));
   const articleSpecs: DemoArticleSpec[] = [
@@ -487,5 +534,5 @@ export function createDemoData(now = new Date()): DemoData {
     },
   ];
 
-  return { articles, feeds, folders: [], rules, settings, aiSettings };
+  return { articles, feeds, folders, rules, settings, aiSettings };
 }
