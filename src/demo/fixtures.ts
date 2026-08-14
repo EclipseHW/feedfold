@@ -198,15 +198,16 @@ export function createDemoData(now = new Date()): DemoData {
     {
       id: DEMO_RELEASE_ARTICLE_ID,
       feedId: 8,
-      title: "feedfold 0.4.1",
-      url: "https://github.com/egornomic/feedfold/releases/tag/v0.4.1",
+      title: "feedfold 0.4.2",
+      url: "https://github.com/egornomic/feedfold/releases/tag/v0.4.2",
       author: "egornomic",
-      publishedAt: "2026-08-12T18:52:19.000Z",
+      publishedAt: "2026-08-14T18:23:32.000Z",
       summary:
-        "Saved articles are now sorted by save time. Article titles no longer have underlines.",
+        "Try feedfold in the browser, organize subscriptions with drag and drop, and add GitHub activity feeds directly.",
       contentHtml: `<ul>
-<li>Saved articles are now sorted by save time.</li>
-<li>Article titles no longer have underlines.</li>
+<li>Try feedfold in a fully interactive browser demo at feedfold.com.</li>
+<li>Organize subscriptions by dragging feeds between folders.</li>
+<li>Add GitHub activity feeds directly from profile, release, tag, or commit pages.</li>
 </ul>`,
       isStarred: true,
     },
