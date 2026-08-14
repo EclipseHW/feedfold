@@ -921,6 +921,7 @@ function ReaderApp({ user, onLogout }: { user: SessionUser; onLogout: () => Prom
               onRefresh={(feedId) => void refresh(feedId)}
               onFeedAction={openFeedManagement}
               onFolderAction={openFolderManagement}
+              onMoveFeed={moveFeed}
               showToast={showToast}
             />
           </Suspense>

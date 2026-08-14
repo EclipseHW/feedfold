@@ -24,7 +24,6 @@ import {
 } from "lucide-react";
 import {
   type FormEvent,
-  type DragEvent as ReactDragEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
   type SyntheticEvent,
@@ -46,6 +45,7 @@ import type {
 } from "../shared/types";
 import { MARK_READ_AGE_DAYS } from "../shared/types";
 import { BrandIdentity } from "./brand";
+import { type FeedDragState, useFeedDrag } from "./feed-drag";
 import {
   FeedActionMenuItems,
   type FeedManagementAction,
@@ -148,23 +148,6 @@ interface SidebarProps {
   onLogout: () => Promise<void>;
 }
 
-type FeedDropTarget = number | "top-level";
-
-interface SidebarFeedDrag {
-  draggedFeed: Feed | null;
-  dropTarget: FeedDropTarget | null;
-  movingFeedId: number | null;
-  start: (feed: Feed, event: ReactDragEvent<HTMLButtonElement>) => void;
-  end: () => void;
-  enterTarget: (folderId: number | null, event: ReactDragEvent<HTMLElement>) => boolean;
-  leaveTarget: (folderId: number | null, event: ReactDragEvent<HTMLElement>) => void;
-  dropOnTarget: (folderId: number | null, event: ReactDragEvent<HTMLElement>) => Promise<boolean>;
-}
-
-function feedDropTarget(folderId: number | null): FeedDropTarget {
-  return folderId ?? "top-level";
-}
-
 type SidebarContextMenuState =
   | {
       kind: "feed";
@@ -205,12 +188,10 @@ export function Sidebar({
   onLogout,
 }: SidebarProps) {
   const [contextMenu, setContextMenu] = useState<SidebarContextMenuState | null>(null);
-  const [draggedFeedId, setDraggedFeedId] = useState<number | null>(null);
-  const [dropTarget, setDropTarget] = useState<FeedDropTarget | null>(null);
-  const [movingFeedId, setMovingFeedId] = useState<number | null>(null);
   const rootFolders = bootstrap.folders.filter((folder) => folder.parentId === null);
   const uncategorized = bootstrap.feeds.filter((feed) => feed.folderId === null);
-  const draggedFeed = bootstrap.feeds.find((feed) => feed.id === draggedFeedId) ?? null;
+  const feedDrag = useFeedDrag(bootstrap.feeds, onMoveFeed);
+  const { draggedFeed, dropTarget } = feedDrag;
   const hasFeedErrors = bootstrap.feeds.some((feed) => feed.lastError);
   const refreshing = bootstrap.feeds.some((feed) => feed.refreshing);
   const selectedFolderPathIds = selectedFolderPath(
@@ -241,78 +222,6 @@ export function Sidebar({
     [],
   );
 
-  const endFeedDrag = useCallback(() => {
-    setDraggedFeedId(null);
-    setDropTarget(null);
-  }, []);
-
-  const startFeedDrag = useCallback(
-    (feed: Feed, event: ReactDragEvent<HTMLButtonElement>) => {
-      if (movingFeedId !== null) {
-        event.preventDefault();
-        return;
-      }
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("application/x-feedfold-feed", String(feed.id));
-      setDraggedFeedId(feed.id);
-      setDropTarget(null);
-    },
-    [movingFeedId],
-  );
-
-  const enterFeedDropTarget = useCallback(
-    (folderId: number | null, event: ReactDragEvent<HTMLElement>) => {
-      const target = feedDropTarget(folderId);
-      if (!draggedFeed || movingFeedId !== null || draggedFeed.folderId === folderId) {
-        event.dataTransfer.dropEffect = "none";
-        setDropTarget((current) => (current === target ? null : current));
-        return false;
-      }
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-      setDropTarget(target);
-      return true;
-    },
-    [draggedFeed, movingFeedId],
-  );
-
-  const leaveFeedDropTarget = useCallback(
-    (folderId: number | null, event: ReactDragEvent<HTMLElement>) => {
-      const relatedTarget = event.relatedTarget;
-      if (relatedTarget instanceof Node && event.currentTarget.contains(relatedTarget)) return;
-      const target = feedDropTarget(folderId);
-      setDropTarget((current) => (current === target ? null : current));
-    },
-    [],
-  );
-
-  const dropFeedOnTarget = useCallback(
-    async (folderId: number | null, event: ReactDragEvent<HTMLElement>) => {
-      if (!draggedFeed || movingFeedId !== null || draggedFeed.folderId === folderId) return false;
-      event.preventDefault();
-      event.stopPropagation();
-      const feed = draggedFeed;
-      endFeedDrag();
-      setMovingFeedId(feed.id);
-      try {
-        return await onMoveFeed(feed, folderId);
-      } finally {
-        setMovingFeedId((current) => (current === feed.id ? null : current));
-      }
-    },
-    [draggedFeed, endFeedDrag, movingFeedId, onMoveFeed],
-  );
-
-  const feedDrag: SidebarFeedDrag = {
-    draggedFeed,
-    dropTarget,
-    movingFeedId,
-    start: startFeedDrag,
-    end: endFeedDrag,
-    enterTarget: enterFeedDropTarget,
-    leaveTarget: leaveFeedDropTarget,
-    dropOnTarget: dropFeedOnTarget,
-  };
   const topLevelDropAvailable = draggedFeed !== null && draggedFeed.folderId !== null;
   const topLevelDropActive = dropTarget === "top-level";
 
@@ -633,7 +542,7 @@ function SidebarFolder({
   selectedFolderId: number | null;
   selectedFolderPathIds: Set<number>;
   currentView: AppView;
-  feedDrag: SidebarFeedDrag;
+  feedDrag: FeedDragState;
   onSelectScope: (feedId: number | null, folderId: number | null) => void;
   onOpenFeedMenu: (feed: Feed, trigger: HTMLButtonElement, left: number, top: number) => void;
   onOpenFolderMenu: (
@@ -774,7 +683,7 @@ function SidebarFeed({
 }: {
   feed: Feed;
   selected: boolean;
-  feedDrag: SidebarFeedDrag;
+  feedDrag: FeedDragState;
   onSelect: () => void;
   onOpenMenu: (feed: Feed, trigger: HTMLButtonElement, left: number, top: number) => void;
 }) {

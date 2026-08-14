@@ -3,11 +3,13 @@ import {
   ArrowLeft,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronRight,
   ExternalLink,
   Folder as FolderIcon,
   FolderPlus,
   Globe2,
+  GripVertical,
   ListFilter,
   LoaderCircle,
   MoreHorizontal,
@@ -20,7 +22,6 @@ import {
   X,
 } from "lucide-react";
 import {
-  type CSSProperties,
   type FormEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
@@ -44,6 +45,7 @@ import type {
 import { api, errorMessage } from "../api";
 import type { ReaderDataMutations } from "../data-resource";
 import { DropdownSelect } from "../dropdown";
+import { type FeedDragState, type FeedDropTarget, feedDropTarget, useFeedDrag } from "../feed-drag";
 import { FeedEntriesPreview } from "../feed-entries-preview";
 import {
   type FeedStatusFilter,
@@ -357,6 +359,7 @@ function FeedsPage({
   onRefresh,
   onFeedAction,
   onFolderAction,
+  onMoveFeed,
   showToast,
 }: {
   bootstrap: BootstrapData;
@@ -367,6 +370,7 @@ function FeedsPage({
   onRefresh: (feedId: number) => void;
   onFeedAction: (feed: Feed, action: FeedManagementAction) => void;
   onFolderAction: (folder: Folder, action: FolderManagementAction) => void;
+  onMoveFeed: (feed: Feed, folderId: number | null) => Promise<boolean>;
   showToast: (message: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState<FeedsPageTab>("subscriptions");
@@ -387,6 +391,9 @@ function FeedsPage({
   ).length;
   const webFeedCount = bootstrap.feeds.length - publishedFeedCount;
   const orderedFolders = folderHierarchy(bootstrap.folders);
+  const rootFolders = orderedFolders.filter(({ depth }) => depth === 0).map(({ folder }) => folder);
+  const feedDrag = useFeedDrag(bootstrap.feeds, onMoveFeed);
+  const [expandedLocations, setExpandedLocations] = useState<Set<FeedDropTarget>>(() => new Set());
   const statusCounts: Record<Exclude<FeedStatusFilter, "all">, number> = {
     healthy: 0,
     needs_attention: 0,
@@ -405,6 +412,24 @@ function FeedsPage({
     setSearchQuery("");
     setFeedTypeFilter("all");
     setFeedStatusFilter("all");
+  };
+
+  const toggleLocation = (target: FeedDropTarget) => {
+    setExpandedLocations((current) => {
+      const next = new Set(current);
+      if (next.has(target)) next.delete(target);
+      else next.add(target);
+      return next;
+    });
+  };
+
+  const revealLocation = (target: FeedDropTarget) => {
+    setExpandedLocations((current) => {
+      if (current.has(target)) return current;
+      const next = new Set(current);
+      next.add(target);
+      return next;
+    });
   };
 
   return (
@@ -630,13 +655,14 @@ function FeedsPage({
           <div className="folder-section-heading">
             <div>
               <h2 id="folders-heading">Folder structure</h2>
-              <p>Nesting and article order apply everywhere the folder appears.</p>
+              <p>Expand folders to see feeds, then drag a feed onto another folder.</p>
             </div>
             <span>
               {bootstrap.folders.length} {bootstrap.folders.length === 1 ? "folder" : "folders"}
+              {` · ${bootstrap.feeds.length} ${bootstrap.feeds.length === 1 ? "feed" : "feeds"}`}
             </span>
           </div>
-          {bootstrap.folders.length === 0 ? (
+          {bootstrap.folders.length === 0 && bootstrap.feeds.length === 0 ? (
             <div className="section-empty">
               <FolderIcon aria-hidden="true" size={22} />
               <h3>No folders yet</h3>
@@ -647,15 +673,33 @@ function FeedsPage({
               </button>
             </div>
           ) : (
-            <ul className="folder-management-list">
-              {orderedFolders.map(({ folder, depth, path }) => (
-                <FolderRow
+            <ul
+              className={`folder-management-list${feedDrag.draggedFeed ? " is-dragging-feed" : ""}`}
+              aria-label="Folders and feeds"
+            >
+              <FolderBranch
+                folder={null}
+                folders={bootstrap.folders}
+                feeds={bootstrap.feeds}
+                expandedLocations={expandedLocations}
+                feedDrag={feedDrag}
+                onToggle={toggleLocation}
+                onReveal={revealLocation}
+                onFeedAction={onFeedAction}
+                onFolderAction={onFolderAction}
+              />
+              {rootFolders.map((folder) => (
+                <FolderBranch
                   key={folder.id}
                   folder={folder}
-                  depth={depth}
-                  path={path}
-                  feedCount={folderBranchFeedCount(folder.id, bootstrap.folders, bootstrap.feeds)}
-                  onAction={(action) => onFolderAction(folder, action)}
+                  folders={bootstrap.folders}
+                  feeds={bootstrap.feeds}
+                  expandedLocations={expandedLocations}
+                  feedDrag={feedDrag}
+                  onToggle={toggleLocation}
+                  onReveal={revealLocation}
+                  onFeedAction={onFeedAction}
+                  onFolderAction={onFolderAction}
                 />
               ))}
             </ul>
@@ -1369,6 +1413,13 @@ function feedFailureLabel(feed: Feed): string {
   return "Refresh failed";
 }
 
+function feedStatusLabel(feed: Feed, status: ReturnType<typeof visibleFeedStatus>): string {
+  if (status === "needs_attention") return feedFailureLabel(feed);
+  if (status === "paused") return "Paused";
+  if (status === "refreshing") return "Refreshing";
+  return "Healthy";
+}
+
 function FeedSourceIcon({
   feed,
   sourceUrl,
@@ -1418,14 +1469,7 @@ function FeedRow({
 }) {
   const status = visibleFeedStatus(feed);
   const sourceUrl = feed.siteUrl ?? feed.feedUrl;
-  const statusLabel =
-    status === "needs_attention"
-      ? feedFailureLabel(feed)
-      : status === "paused"
-        ? "Paused"
-        : status === "refreshing"
-          ? "Refreshing"
-          : "Healthy";
+  const statusLabel = feedStatusLabel(feed, status);
 
   return (
     <li className="feed-management-row" data-feed-status={status}>
@@ -1644,40 +1688,185 @@ export function FolderForm({
   );
 }
 
-function FolderRow({
-  folder,
-  depth,
-  path,
-  feedCount,
+function FolderFeedRow({
+  feed,
+  feedDrag,
   onAction,
 }: {
-  folder: Folder;
-  depth: number;
-  path: string;
-  feedCount: number;
-  onAction: (action: FolderManagementAction) => void;
+  feed: Feed;
+  feedDrag: FeedDragState;
+  onAction: (action: FeedManagementAction) => void;
 }) {
+  const status = visibleFeedStatus(feed);
+  const statusLabel = feedStatusLabel(feed, status);
+  const sourceUrl = feed.siteUrl ?? feed.feedUrl;
+  const dragging = feedDrag.draggedFeed?.id === feed.id;
+  const moving = feedDrag.movingFeedId === feed.id;
+
   return (
-    <li className="folder-management-row" style={{ "--folder-depth": depth } as CSSProperties}>
-      <div className="folder-row-identity" title={path}>
-        <FolderIcon aria-hidden="true" size={16} />
-        <span>
-          <strong>{folder.name}</strong>
-          <small>
-            {feedCount} {feedCount === 1 ? "feed" : "feeds"}
-            {` · ${folder.sortDirection === "oldest" ? "Oldest" : "Newest"} first`}
-          </small>
+    <li
+      className={`folder-feed-row${dragging ? " is-dragging" : ""}${moving ? " is-moving" : ""}`}
+      data-feed-status={status}
+      aria-busy={moving || undefined}
+    >
+      <button
+        className="folder-feed-drag-region"
+        type="button"
+        aria-label={`Move ${feed.title} to another folder`}
+        draggable={feedDrag.movingFeedId === null}
+        title={`Drag ${feed.title} to another folder`}
+        onDragStart={(event) => feedDrag.start(feed, event)}
+        onDragEnd={feedDrag.end}
+        onClick={() => onAction("move")}
+      >
+        <GripVertical className="folder-feed-grip" aria-hidden="true" size={15} />
+        <FeedSourceIcon
+          feed={feed}
+          sourceUrl={sourceUrl}
+          status={status}
+          statusLabel={statusLabel}
+        />
+        <span className="folder-feed-copy">
+          <strong>{feed.title}</strong>
+          <small>{feedHost(sourceUrl)}</small>
         </span>
-      </div>
+      </button>
       <AnchoredPopover
-        label={`${path} actions`}
-        triggerClassName="folder-actions-trigger"
+        label={`${feed.title} actions`}
+        triggerClassName="feed-actions-trigger"
         triggerContent={<MoreHorizontal aria-hidden="true" size={17} />}
         variant="actions"
-        managementTarget={{ kind: "folder", id: folder.id }}
+        managementTarget={{ kind: "feed", id: feed.id }}
       >
-        <FolderActionMenuItems onAction={onAction} />
+        <FeedActionMenuItems feed={feed} onAction={onAction} />
       </AnchoredPopover>
+    </li>
+  );
+}
+
+function FolderBranch({
+  folder,
+  folders,
+  feeds,
+  expandedLocations,
+  feedDrag,
+  onToggle,
+  onReveal,
+  onFeedAction,
+  onFolderAction,
+}: {
+  folder: Folder | null;
+  folders: Folder[];
+  feeds: Feed[];
+  expandedLocations: ReadonlySet<FeedDropTarget>;
+  feedDrag: FeedDragState;
+  onToggle: (target: FeedDropTarget) => void;
+  onReveal: (target: FeedDropTarget) => void;
+  onFeedAction: (feed: Feed, action: FeedManagementAction) => void;
+  onFolderAction: (folder: Folder, action: FolderManagementAction) => void;
+}) {
+  const folderId = folder?.id ?? null;
+  const target = feedDropTarget(folderId);
+  const topLevel = folder === null;
+  const path = folder ? folderPathLabel(folder.id, folders) : "Top level";
+  const childFolders = folder
+    ? folders
+        .filter((candidate) => candidate.parentId === folder.id)
+        .sort((left, right) => left.name.localeCompare(right.name))
+    : [];
+  const childFeeds = feeds.filter((feed) => feed.folderId === folderId);
+  const feedCount = folder ? folderBranchFeedCount(folder.id, folders, feeds) : childFeeds.length;
+  const hasChildren = childFolders.length > 0 || childFeeds.length > 0;
+  const expanded = expandedLocations.has(target);
+  const dropAvailable = feedDrag.draggedFeed !== null && feedDrag.draggedFeed.folderId !== folderId;
+  const dropActive = feedDrag.dropTarget === target;
+  const branchId = `folder-branch-${target}`;
+
+  return (
+    <li className="folder-tree-branch">
+      <fieldset
+        className={`folder-management-row${topLevel ? " is-top-level" : ""}${dropAvailable ? " is-feed-drop-available" : ""}${dropActive ? " is-feed-drop-target" : ""}`}
+        aria-label={`${path} folder`}
+        onDragEnter={(event) => feedDrag.enterTarget(folderId, event)}
+        onDragOver={(event) => feedDrag.enterTarget(folderId, event)}
+        onDragLeave={(event) => feedDrag.leaveTarget(folderId, event)}
+        onDrop={(event) => {
+          void feedDrag.dropOnTarget(folderId, event).then((moved) => {
+            if (moved) onReveal(target);
+          });
+        }}
+      >
+        <button
+          className="folder-disclosure"
+          type="button"
+          aria-label={`${expanded ? "Collapse" : "Expand"} ${path}`}
+          aria-expanded={hasChildren ? expanded : undefined}
+          aria-controls={hasChildren ? branchId : undefined}
+          disabled={!hasChildren}
+          onClick={() => onToggle(target)}
+        >
+          {expanded ? (
+            <ChevronDown aria-hidden="true" size={15} />
+          ) : (
+            <ChevronRight aria-hidden="true" size={15} />
+          )}
+        </button>
+        <div className="folder-row-identity" title={path}>
+          {topLevel ? (
+            <Rss aria-hidden="true" size={16} />
+          ) : (
+            <FolderIcon aria-hidden="true" size={16} />
+          )}
+          <span>
+            <strong>{folder?.name ?? "Top level"}</strong>
+            <small>
+              {feedCount} {feedCount === 1 ? "feed" : "feeds"}
+              {folder
+                ? ` · ${folder.sortDirection === "oldest" ? "Oldest" : "Newest"} first`
+                : " · No folder"}
+            </small>
+          </span>
+        </div>
+        {folder ? (
+          <AnchoredPopover
+            label={`${path} actions`}
+            triggerClassName="folder-actions-trigger"
+            triggerContent={<MoreHorizontal aria-hidden="true" size={17} />}
+            variant="actions"
+            managementTarget={{ kind: "folder", id: folder.id }}
+          >
+            <FolderActionMenuItems onAction={(action) => onFolderAction(folder, action)} />
+          </AnchoredPopover>
+        ) : (
+          <span className="folder-row-action-space" aria-hidden="true" />
+        )}
+      </fieldset>
+      {expanded && hasChildren ? (
+        <ul id={branchId} className="folder-management-children">
+          {childFolders.map((childFolder) => (
+            <FolderBranch
+              key={childFolder.id}
+              folder={childFolder}
+              folders={folders}
+              feeds={feeds}
+              expandedLocations={expandedLocations}
+              feedDrag={feedDrag}
+              onToggle={onToggle}
+              onReveal={onReveal}
+              onFeedAction={onFeedAction}
+              onFolderAction={onFolderAction}
+            />
+          ))}
+          {childFeeds.map((feed) => (
+            <FolderFeedRow
+              key={feed.id}
+              feed={feed}
+              feedDrag={feedDrag}
+              onAction={(action) => onFeedAction(feed, action)}
+            />
+          ))}
+        </ul>
+      ) : null}
     </li>
   );
 }
