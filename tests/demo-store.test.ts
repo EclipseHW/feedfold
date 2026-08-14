@@ -13,7 +13,7 @@ describe("static demo data", () => {
 
     await expect(demoApi.session()).resolves.toEqual({ id: 1, username: "demo" });
     await expect(demoApi.bootstrap()).resolves.toMatchObject({
-      counts: { unread: 15, starred: 4, all: 17 },
+      counts: { unread: 15, starred: 1, all: 17 },
     });
     expect(fetch).not.toHaveBeenCalled();
   });
@@ -21,13 +21,13 @@ describe("static demo data", () => {
   it("keeps reader filters and counts in sync with article actions", () => {
     const store = new DemoStore(DEMO_NOW);
 
-    expect(store.bootstrap().counts).toEqual({ unread: 15, starred: 4, all: 17 });
+    expect(store.bootstrap().counts).toEqual({ unread: 15, starred: 1, all: 17 });
     expect(store.articles({ state: "unread" }).articles).toHaveLength(15);
-    expect(store.articles({ state: "starred" }).articles).toHaveLength(4);
+    expect(store.articles({ state: "starred" }).articles).toHaveLength(1);
 
-    store.updateArticleState(1, { isRead: true, isStarred: false });
+    store.updateArticleState(1, { isRead: true, isStarred: true });
 
-    expect(store.bootstrap().counts).toEqual({ unread: 14, starred: 3, all: 17 });
+    expect(store.bootstrap().counts).toEqual({ unread: 14, starred: 2, all: 17 });
     expect(store.articles({ state: "unread" }).articles.map((article) => article.id)).not.toContain(
       1,
     );
@@ -39,10 +39,11 @@ describe("static demo data", () => {
     const bootstrap = store.bootstrap();
 
     expect(bootstrap.folders).toMatchObject([
+      { id: 5, parentId: null, name: "feedfold", unreadCount: 1 },
       { id: 1, parentId: null, unreadCount: 6 },
       { id: 2, parentId: 1, unreadCount: 3 },
       { id: 3, parentId: null, unreadCount: 3 },
-      { id: 4, parentId: null, unreadCount: 4 },
+      { id: 4, parentId: null, unreadCount: 3 },
     ]);
     expect(bootstrap.feeds.some((feed) => feed.folderId === null)).toBe(true);
     expect(store.articles({ state: "all", folderId: 1 }).articles).toHaveLength(6);
@@ -56,7 +57,8 @@ describe("static demo data", () => {
       .feeds.find((feed) => feed.feedUrl === "https://github.com/egornomic/feedfold/releases.atom");
 
     expect(releaseFeed).toMatchObject({
-      title: "feedfold releases",
+      folderId: 5,
+      title: "releases",
       siteUrl: "https://github.com/egornomic/feedfold/releases",
       unreadCount: 1,
       totalCount: 1,

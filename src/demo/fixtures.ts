@@ -137,10 +137,18 @@ export function createDemoData(now = new Date()): DemoData {
   const createdAt = before(now, 24 * 90);
   const folders: Folder[] = [
     {
+      id: 5,
+      parentId: null,
+      name: "feedfold",
+      position: 0,
+      sortDirection: "newest",
+      unreadCount: 0,
+    },
+    {
       id: 1,
       parentId: null,
       name: "Design",
-      position: 0,
+      position: 1,
       sortDirection: "newest",
       unreadCount: 0,
     },
@@ -156,7 +164,7 @@ export function createDemoData(now = new Date()): DemoData {
       id: 3,
       parentId: null,
       name: "Independent web",
-      position: 1,
+      position: 2,
       sortDirection: "oldest",
       unreadCount: 0,
     },
@@ -164,14 +172,14 @@ export function createDemoData(now = new Date()): DemoData {
       id: 4,
       parentId: null,
       name: "Technology",
-      position: 2,
+      position: 3,
       sortDirection: "newest",
       unreadCount: 0,
     },
   ];
   const feeds = [
-    createFeed(8, "feedfold releases", createdAt, {
-      folderId: 4,
+    createFeed(8, "releases", createdAt, {
+      folderId: 5,
       source: {
         feedUrl: "https://github.com/egornomic/feedfold/releases.atom",
         siteUrl: "https://github.com/egornomic/feedfold/releases",
@@ -217,7 +225,6 @@ export function createDemoData(now = new Date()): DemoData {
         "The goal is not perfect coverage. It is a durable habit that leaves enough attention for the ideas you decided to read in the first place.",
       ],
       imageUrl: `https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?${IMAGE_PARAMS}`,
-      isStarred: true,
     },
     {
       id: 2,
@@ -435,7 +442,6 @@ export function createDemoData(now = new Date()): DemoData {
         "The practice works because it replaces the performance of completion with the habit of tending.",
       ],
       isRead: true,
-      isStarred: true,
     },
     {
       id: 16,
@@ -452,7 +458,6 @@ export function createDemoData(now = new Date()): DemoData {
         "The strongest productivity feature may be the one that makes the product itself needed less often.",
       ],
       isRead: true,
-      isStarred: true,
     },
   ];
   const articles = articleSpecs.map((spec) => {
